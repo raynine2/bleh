@@ -65,6 +65,23 @@ Config.Rods = {
 	{ id = "Abyssal", name = "Abyssal Rod", lureSpeed = 1.60, luck = 1.75, control = 1.45, resilience = 1.55, biomes = 4, cost = 40000 },
 	{ id = "Riftcaster", name = "Riftcaster", lureSpeed = 1.90, luck = 2.10, control = 1.70, resilience = 1.85, biomes = 5, cost = 120000 },
 	{ id = "Celestial", name = "Celestial Rod", lureSpeed = 2.50, luck = 3.00, control = 2.20, resilience = 2.40, biomes = 5, cost = 0, prestigeOnly = true },
+	-- Patch 21: trial rods, never sold: each unlocks by finishing its Rod Trial (Config.RodTrials)
+	{ id = "CrimsonCrow", name = "Crimson Crow Rod", lureSpeed = 1.70, luck = 1.90, control = 1.80, resilience = 1.60, biomes = 4, cost = 0, trial = true },
+	{ id = "Jackpot", name = "Jackpot Rod", lureSpeed = 1.60, luck = 2.40, control = 1.50, resilience = 1.60, biomes = 4, cost = 0, trial = true },
+	{ id = "ThiefTome", name = "Thief's Tome Rod", lureSpeed = 1.80, luck = 2.00, control = 1.90, resilience = 1.80, biomes = 5, cost = 0, trial = true },
+	{ id = "SunRubber", name = "Sun Rubber Rod", lureSpeed = 2.00, luck = 2.10, control = 1.60, resilience = 2.20, biomes = 5, cost = 0, trial = true },
+	{ id = "Boundless", name = "Boundless Rod", lureSpeed = 2.40, luck = 2.80, control = 2.30, resilience = 2.30, biomes = 5, cost = 0, trial = true },
+}
+
+-- Patch 21: Rod Trials. Each trial rod unlocks the moment every goal is met; `kind` is a mob kind
+-- (Config.Mobs.kinds: crab, puffer, gull, shark, golem) or "any", `count` is how many you have to defeat, and
+-- `rods` lists trial rods you must own first. Change these freely: progress is kept per mob kind.
+Config.RodTrials = {
+	CrimsonCrow = { order = 1, text = "Hunt the gulls that circle the islands.", goals = { { kind = "gull", count = 25 }, { kind = "puffer", count = 10 } } },
+	Jackpot = { order = 2, text = "Beat enough crabs and puffers and your luck turns.", goals = { { kind = "crab", count = 30 }, { kind = "puffer", count = 15 } } },
+	ThiefTome = { order = 3, text = "Take on the big ones: golems and the sharks in open water.", goals = { { kind = "golem", count = 5 }, { kind = "shark", count = 8 } } },
+	SunRubber = { order = 4, text = "Fight everything. Then fight some golems.", goals = { { kind = "any", count = 60 }, { kind = "golem", count = 8 } } },
+	Boundless = { order = 5, text = "Master every other trial, then prove it.", goals = { { kind = "any", count = 150 }, { kind = "golem", count = 15 } }, rods = { "CrimsonCrow", "Jackpot", "ThiefTome", "SunRubber" } },
 }
 
 -- Each bait multiplies rod luck on the fish rarity roll. `shop` = sold at the Sunken Shoals nest.
@@ -185,7 +202,7 @@ Config.Durability = {
 	max = 100,
 	perCast = 1,
 	perSnap = 10, -- a fish that gets away snaps the line
-	repairCost = { Drift = 50, Coral = 150, Stormline = 400, Abyssal = 900, Riftcaster = 2000, Celestial = 3000 }, -- full repair
+	repairCost = { Drift = 50, Coral = 150, Stormline = 400, Abyssal = 900, Riftcaster = 2000, Celestial = 3000, CrimsonCrow = 1200, Jackpot = 1200, ThiefTome = 1800, SunRubber = 2200, Boundless = 3000 }, -- full repair
 }
 
 -- Master Patch 2: wiping at heat 75+ carries heat into the next run until you rest at your Home Nest.

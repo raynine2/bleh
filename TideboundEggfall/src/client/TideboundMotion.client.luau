@@ -23,6 +23,7 @@ local MotionBus = require(Shared:WaitForChild("MotionBus"))
 local Fx = require(Shared:WaitForChild("Fx"))
 local Audio = require(Shared:WaitForChild("Audio"))
 local DashMoves = require(Shared:WaitForChild("DashMoves")) -- Patch 19: every dash move's pose
+local RodSkills = require(Shared:WaitForChild("RodSkills")) -- Patch 21: every rod ability's pose
 
 local player = Players.LocalPlayer
 local rng = Random.new()
@@ -771,6 +772,7 @@ local function clearRecord(rec)
 	end
 	MotionBus.dash[rec.character] = nil
 	MotionBus.tired[rec.character] = nil
+	MotionBus.skill[rec.character] = nil
 	MotionBus.arms[rec.character] = nil
 	MotionBus.pose[rec.character] = nil
 	if rec.eggs then
@@ -1140,6 +1142,26 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 		if dash.u < length then
 			local dp = DashMoves.pose(dash.kind, dash.u, t)
 			mix(pose, dp, envelope(dash.u, length, 0.04, 0.2))
+		end
+	end
+
+	-- Patch 21: a rod ability (your own plays at once; everyone else's comes through SkillRod / SkillAlt / SkillAt)
+	local castInfo = nil
+	if p == player then
+		local own = MotionBus.skill[character]
+		if own then
+			castInfo = { u = os.clock() - own.start, rod = own.rod, alt = own.alt }
+		end
+	else
+		local skillAt = character:GetAttribute("SkillAt")
+		if skillAt then
+			castInfo = { u = serverNow - skillAt, rod = character:GetAttribute("SkillRod"), alt = character:GetAttribute("SkillAlt") }
+		end
+	end
+	if castInfo and castInfo.rod and castInfo.u >= 0 then
+		local length = RodSkills.timing(castInfo.rod, castInfo.alt)
+		if castInfo.u < length then
+			mix(pose, RodSkills.pose(castInfo.rod, castInfo.alt, castInfo.u, t), envelope(castInfo.u, length, 0.08, 0.25))
 		end
 	end
 

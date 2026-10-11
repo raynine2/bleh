@@ -39,6 +39,8 @@ local function template()
 		dashes = { Zoomies = 1 },
 		equippedDashes = { "Zoomies" },
 		capsules = 1,
+		-- Patch 21: mobs defeated, per kind and in total ("any"), for the Rod Trials
+		mobKills = { any = 0, crab = 0, puffer = 0, gull = 0, shark = 0, golem = 0 },
 		collection = {},
 		aquarium = {},
 		history = {},

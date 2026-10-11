@@ -768,7 +768,7 @@ end
 local nameLabel = Instance.new("TextLabel")
 nameLabel.BackgroundTransparency = 1
 nameLabel.AnchorPoint = Vector2.new(0.5, 1)
-nameLabel.Position = UDim2.new(0.5, 0, 1, -48)
+nameLabel.Position = UDim2.new(0.5, 0, 1, -80) -- above the stamina bar and the ability pill
 nameLabel.Size = UDim2.fromOffset(360, 40)
 nameLabel.Font = Enum.Font.LuckiestGuy
 nameLabel.TextScaled = true

@@ -860,6 +860,7 @@ local TABS = {
 	{ id = "DIVE", title = "DIVE & CREW", group = "home" },
 	{ id = "DASHES", title = "DASHES", group = "dash" }, -- Patch 20
 	{ id = "CAPSULES", title = "DASH CAPSULE ODDS", group = "dash" },
+	{ id = "TRIALS", title = "ROD TRIALS", group = "dash" }, -- Patch 21
 }
 local groupSize = {}
 for _, tab in ipairs(TABS) do
@@ -1045,13 +1046,14 @@ refreshers.PITY = function()
 end
 
 -- RODS tab
+local RodSkillsLib = require(Shared:WaitForChild("RodSkills")) -- Patch 21: each rod's ability (R)
 local rodsPage = makePage("RODS")
 section(rodsPage, "RODS · locked stats, bought with Pearls")
 local rodRows = {}
 for i, rod in ipairs(Config.Rods) do
 	local row = rowFrame(rodsPage, 56)
 	label({ Text = rod.name, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 5), Size = UDim2.new(0.66, -12, 0, 22), TextSize = 17, Parent = row })
-	label({ Text = ("Lure %.2fx · Luck %.2fx · Control %.2fx · Resil %.2fx · %d biomes"):format(rod.lureSpeed, rod.luck, rod.control, rod.resilience, rod.biomes), Position = UDim2.new(0, 12, 0, 28), Size = UDim2.new(0.66, -12, 0, 24), TextSize = 12, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
+	label({ Text = ("R: %s · Lure %.2fx · Luck %.2fx · Control %.2fx · Resil %.2fx · %d biomes"):format(RodSkillsLib.get(rod.id).name, rod.lureSpeed, rod.luck, rod.control, rod.resilience, rod.biomes), Position = UDim2.new(0, 12, 0, 28), Size = UDim2.new(0.66, -12, 0, 24), TextSize = 12, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
 	rodRows[i] = button({ Size = UDim2.new(0.32, -10, 0, 36), Position = UDim2.new(0.68, 0, 0.5, -18), TextSize = 14, Parent = row }, "gold", function()
 		if not state then
 			return
@@ -1078,6 +1080,9 @@ refreshers.RODS = function()
 			restyle(b, "blue")
 		elseif rod.prestigeOnly then
 			b.Text = "PRESTIGE"
+			restyle(b, "grey")
+		elseif rod.trial then
+			b.Text = "ROD TRIAL"
 			restyle(b, "grey")
 		elseif not previousOwned then
 			b.Text = "LOCKED"
@@ -1886,6 +1891,68 @@ do
 			if labelInst then
 				labelInst.Text = row.remaining <= 1 and "NEXT CAPSULE!" or ("%d / %d · %d left"):format(row.count, row.at, row.remaining)
 				labelInst.TextColor3 = row.remaining <= 1 and C.gold or C.text
+			end
+		end
+	end
+end
+
+-- Patch 21: the TRIALS tab. Each trial rod, its ability, and how far along its goals you are (counted from the
+-- mobs you've defeated, state.mobKills). Kept in one table inside this block: this script is at the 200-local limit.
+do
+	local tr = { rows = {} }
+	tr.page = makePage("TRIALS")
+	note(tr.page, "Trial rods can't be bought: each one unlocks the moment you finish its trial. Defeat mobs out in the Shoals and Kelp Cathedral (swipes, the combo and rod abilities all count). Then equip it in RODS and press R.")
+	tr.order = {}
+	for rodId, trial in pairs(Config.RodTrials) do
+		table.insert(tr.order, { id = rodId, trial = trial })
+	end
+	table.sort(tr.order, function(a, b)
+		return a.trial.order < b.trial.order
+	end)
+	tr.KIND = { any = "mobs of any kind", crab = "Snapper Crabs", puffer = "Spike Puffers", gull = "Raider Gulls", shark = "Reef Sharks", golem = "Coral Golems" }
+	function tr.build(entry)
+		local rod = Config.RodsById[entry.id]
+		local skill = RodSkillsLib.get(entry.id)
+		local row = rowFrame(tr.page, 40 + 26 * (#entry.trial.goals + ((entry.trial.rods and 1) or 0)))
+		label({ Text = rod.name, Font = DISPLAY, TextSize = 17, TextColor3 = skill.colors[1]:Lerp(WHITE, 0.3), Position = UDim2.new(0, 12, 0, 4), Size = UDim2.new(0.6, -12, 0, 22), Parent = row })
+		local status = label({ Font = DISPLAY, TextSize = 14, Position = UDim2.new(0.6, 0, 0, 4), Size = UDim2.new(0.4, -12, 0, 22), TextXAlignment = Enum.TextXAlignment.Right, Parent = row })
+		label({ Text = ("R: %s · %s"):format(skill.name, entry.trial.text), TextSize = 12, TextColor3 = C.muted, Position = UDim2.new(0, 12, 0, 24), Size = UDim2.new(1, -24, 0, 16), Parent = row }, { textStroke(1) })
+		local goals = {}
+		for i, goal in ipairs(entry.trial.goals) do
+			local y = 42 + (i - 1) * 26
+			local text = label({ TextSize = 13, Position = UDim2.new(0, 12, 0, y), Size = UDim2.new(0.5, -12, 0, 20), Parent = row }, { textStroke(1) })
+			local fill = bar(row, UDim2.new(0.5, 0, 0, y + 6), UDim2.new(0.5, -12, 0, 10), "gold")
+			goals[i] = { goal = goal, text = text, fill = fill }
+		end
+		local needs = nil
+		if entry.trial.rods then
+			needs = label({ TextSize = 13, Position = UDim2.new(0, 12, 0, 42 + #entry.trial.goals * 26), Size = UDim2.new(1, -24, 0, 20), Parent = row }, { textStroke(1) })
+		end
+		tr.rows[entry.id] = { status = status, goals = goals, needs = needs, trial = entry.trial }
+	end
+	for _, entry in ipairs(tr.order) do
+		tr.build(entry)
+	end
+	refreshers.TRIALS = function()
+		local kills = state.mobKills or {}
+		for rodId, ui in pairs(tr.rows) do
+			local owned = state.ownedRods[rodId]
+			ui.status.Text = owned and "✓ UNLOCKED" or "IN PROGRESS"
+			ui.status.TextColor3 = owned and C.good or C.warn
+			for _, g in ipairs(ui.goals) do
+				local have = math.min(kills[g.goal.kind] or 0, g.goal.count)
+				if owned then
+					have = g.goal.count
+				end
+				g.text.Text = ("Defeat %d %s: %d / %d"):format(g.goal.count, tr.KIND[g.goal.kind] or g.goal.kind, have, g.goal.count)
+				g.fill.Size = UDim2.new(have / g.goal.count, 0, 1, 0)
+			end
+			if ui.needs then
+				local names = {}
+				for _, need in ipairs(ui.trial.rods) do
+					table.insert(names, (state.ownedRods[need] and "✓ " or "") .. Config.RodsById[need].name)
+				end
+				ui.needs.Text = "Own first: " .. table.concat(names, ", ")
 			end
 		end
 	end

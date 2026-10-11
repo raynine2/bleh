@@ -73,6 +73,14 @@ local Audio = {
 		DashSplash = { id = WATER, volume = 0.6, pitch = 1.3, note = "Fish Surf: splashing along" },
 		DashBoop = { id = PING, volume = 0.5, pitch = 0.6, note = "Fish Rocket: BOOP" },
 		DashSlap = { id = WATER, volume = 0.9, pitch = 2, note = "Tail Slap: a wet SLAP" },
+		-- Patch 21: rod abilities
+		SkillCast = { id = LUNGE, volume = 0.55, pitch = 0.9, note = "An ability starts" },
+		SkillWave = { id = WATER, volume = 0.8, pitch = 0.75, note = "Tide Lash: the wave" },
+		SkillCrash = { id = THUD, volume = 1, pitch = 0.5, note = "A heavy ability lands" },
+		SkillZap = { id = PING, volume = 0.5, pitch = 0.45, note = "Lightning, rifts, the void" },
+		SkillCaw = { id = UNSHEATH, volume = 0.6, pitch = 1.7, note = "Crimson Illusion: the crows burst out" },
+		SkillCoins = { id = PING, volume = 0.45, pitch = 1.8, note = "Jackpot: coins and reels" },
+		SkillDrum = { id = THUD, volume = 0.9, pitch = 0.75, note = "Sun God Bounce: the drum beats" },
 	},
 }
 

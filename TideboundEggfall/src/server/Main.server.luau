@@ -45,6 +45,7 @@ local TownBuilder = require(script.Parent:WaitForChild("TownBuilder"))
 local ShoalsBuilder = require(script.Parent:WaitForChild("ShoalsBuilder"))
 local Mobs = require(script.Parent:WaitForChild("Mobs"))
 local DashMoves = require(Shared:WaitForChild("DashMoves"))
+local RodSkills = require(Shared:WaitForChild("RodSkills"))
 local CollectionService = game:GetService("CollectionService")
 
 -- the remotes come first, so clients never wait on the world build (or on a builder that fails)
@@ -385,6 +386,7 @@ local function buildState(player)
 		dashes = data.dashes,
 		equippedDashes = data.equippedDashes,
 		dashPity = data.pity.DashCapsule,
+		mobKills = data.mobKills, -- Patch 21: Rod Trials progress
 		history = data.history,
 		collection = data.collection,
 		bestiary = data.bestiary,
@@ -739,8 +741,52 @@ Threats.init({
 	giveBait = giveBait,
 })
 
+-- Patch 21: Rod Trials. Every mob you defeat counts (per kind and in total); a trial rod unlocks the moment all
+-- of its goals (Config.RodTrials) are met.
+local function trialProgress(data, rodId)
+	local trial = Config.RodTrials[rodId]
+	local done = true
+	local goals = {}
+	for _, goal in ipairs(trial.goals) do
+		local have = math.min(data.mobKills[goal.kind] or 0, goal.count)
+		table.insert(goals, { kind = goal.kind, count = goal.count, have = have })
+		done = done and have >= goal.count
+	end
+	for _, need in ipairs(trial.rods or {}) do
+		done = done and data.ownedRods[need] == true
+	end
+	return done, goals
+end
+
+local function checkTrials(player, data)
+	local unlocked = false
+	for rodId in pairs(Config.RodTrials) do
+		if not data.ownedRods[rodId] and trialProgress(data, rodId) then
+			data.ownedRods[rodId] = true
+			unlocked = true
+			local rod = Config.RodsById[rodId]
+			notify(player, ("ROD TRIAL COMPLETE: the %s is yours! Equip it in RODS and press R."):format(rod.name), "rare")
+			notifyAll(("%s unlocked the %s!"):format(player.DisplayName, rod.name), "rare")
+			cue(player, "RodUnlocked", { rod = rodId })
+		end
+	end
+	return unlocked
+end
+
+local function onKill(player, kind)
+	local data = PlayerData.get(player)
+	if not data then
+		return
+	end
+	data.mobKills[kind] = (data.mobKills[kind] or 0) + 1
+	data.mobKills.any = (data.mobKills.any or 0) + 1
+	checkTrials(player, data)
+	push(player)
+end
+
 -- Patch 10: wild mobs across the Open Isles and Kelp Cathedral, and the rod swipe that fights them.
 Mobs.init({
+	onKill = onKill,
 	world = world,
 	notify = notify,
 	exposed = exposedRoot,
@@ -1613,6 +1659,78 @@ function handlers.EquipDash(player, data, run, key)
 	return { ok = true }
 end
 
+-- Patch 21: your rod's ability (RodSkills). Checks the cooldown, rolls the Thief's Tome's stolen page and the
+-- Jackpot's reels here, shows the cast to everyone (SkillRod / SkillAlt / SkillRoll / SkillAt), keeps you safe
+-- through the cinematic, and lands the hit when the animation does.
+local skillTokens = {}
+function handlers.UseSkill(player, data, run)
+	local root = rootOf(player)
+	local rodId = data.rod
+	local skill = RodSkills.list[rodId]
+	if not root or not skill then
+		return { error = "No ability." }
+	end
+	local t = now()
+	if t < (run.skillReadyAt or 0) - 0.15 then
+		return { error = ("Ability ready in %.1f s."):format((run.skillReadyAt or 0) - t) }
+	end
+	if run.session or t < math.max(run.revealUntil, run.travelUntil, run.stunUntil) then
+		return { error = "Not right now." }
+	end
+	local alt, roll = nil, nil
+	local hit = skill
+	if rodId == "ThiefTome" then
+		alt = skill.steals[rng:NextInteger(1, #skill.steals)]
+		hit = RodSkills.list[alt]
+	elseif rodId == "Jackpot" then
+		roll = rng:NextNumber() < skill.jackpotChance and 1 or 0
+	end
+	local length, impact = RodSkills.timing(rodId, alt)
+	run.skillReadyAt = t + skill.cooldown
+	run.invulnerableUntil = math.max(run.invulnerableUntil, t + (skill.cut > 0 and skill.cut + 0.4 or 0))
+	mark(player, "SkillRod", rodId)
+	mark(player, "SkillAlt", alt)
+	mark(player, "SkillRoll", roll)
+	mark(player, "SkillAt", t)
+	Rods.hold(player, true)
+	skillTokens[player] = t
+	task.delay(length + 0.1, function()
+		local current = runs[player]
+		if skillTokens[player] == t and not (current and current.session) then
+			skillTokens[player] = nil
+			Rods.hold(player, false)
+		end
+	end)
+	task.delay(impact, function()
+		local at = rootOf(player)
+		if runs[player] ~= run or not at then
+			return
+		end
+		if rodId == "Jackpot" and roll == 1 then
+			run.health = R.maxHealth
+			run.invulnerableUntil = math.max(run.invulnerableUntil, now() + skill.fever)
+			notify(player, ("JACKPOT! Healed, and untouchable for %d seconds."):format(skill.fever), "rare")
+			push(player)
+		end
+		if hit.radius > 0 and not Config.safeZone(at.Position) then
+			local look = Vector3.new(at.CFrame.LookVector.X, 0, at.CFrame.LookVector.Z).Unit
+			local damageAmount = hit.damage + ((rodId == "Jackpot" and roll == 1) and 2 or 0)
+			Mobs.area(player, at.Position + look * hit.forward, hit.radius, damageAmount, { stun = hit.stun, knock = hit.knock, pull = hit.pull })
+		end
+	end)
+	return { ok = true, rod = rodId, alt = alt, roll = roll, at = t, cooldown = skill.cooldown }
+end
+
+-- Patch 21: Rod Trials progress for the TRIALS tab.
+function handlers.Trials(player, data)
+	local out = {}
+	for rodId in pairs(Config.RodTrials) do
+		local done, goals = trialProgress(data, rodId)
+		out[rodId] = { done = done, owned = data.ownedRods[rodId] == true, goals = goals }
+	end
+	return { ok = true, trials = out }
+end
+
 function handlers.ClaimQuest(player, data, run, questId)
 	local quests = questsFor(data)
 	for _, quest in ipairs(Config.Quests) do
@@ -1643,6 +1761,9 @@ function handlers.BuyRod(player, data, run, rodId)
 	end
 	if rod.prestigeOnly then
 		return { error = "The Celestial Rod is a prestige reward." }
+	end
+	if rod.trial then
+		return { error = ("The %s is earned by finishing its Rod Trial (see TRIALS)."):format(rod.name) }
 	end
 	if data.ownedRods[rodId] then
 		return { error = "You already own that rod." }
@@ -2112,6 +2233,8 @@ local function onPlayerAdded(player)
 	end
 	data.equippedDashes = kept
 	syncDashes(player, data)
+	-- Patch 21: a trial whose goals were lowered since you last played unlocks now
+	checkTrials(player, data)
 	-- after the client has loaded, so the toast is seen
 	task.delay(4, function()
 		if player.Parent then

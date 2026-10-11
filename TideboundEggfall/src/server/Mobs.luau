@@ -294,7 +294,7 @@ local function think(mob, dt, t, exposed)
 		return
 	end
 	if state == "hurt" then
-		if since >= 0.35 then
+		if since >= 0.35 and now() >= (mob.stunUntil or 0) then
 			setState(mob, mob.target and "chase" or "idle")
 		end
 		return
@@ -532,6 +532,43 @@ end
 
 -- A rod swipe from `player`: every living mob in front of them within reach takes a hit and is knocked back.
 -- `step` is the combo hit (Config.Swipe.combo): the Whirl hits all round, the Big Fish Slap hits twice as hard.
+-- One hit on one mob from `player`: damage, the hit flash, and either its defeat (bait drop, respawn, and the kill
+-- reported for Rod Trials) or a knock along `push` and a flinch (`stun` seconds of being frozen, Patch 21).
+local function strike(player, mob, damage, push, hitStep, stun)
+	mob.hp -= damage
+	send(mob, "Hp", mob.hp)
+	mob.inst:SetAttribute("HitStep", hitStep or 1) -- Patch 17: the client plays a bigger hit for the slam
+	mob.inst:SetAttribute("HitAt", now())
+	mob.target = player
+	lastAggro[player] = os.clock()
+	if mob.hp <= 0 then
+		setState(mob, "dead")
+		local drop = M.drop
+		if rng:NextNumber() < drop.chance then
+			deps.giveBait(player, drop.bait, drop.count)
+			deps.notify(player, ("You beat the %s! It dropped %d %s."):format(mob.cfg.name, drop.count, drop.bait), "good")
+		end
+		if deps.onKill then
+			deps.onKill(player, mob.kind)
+		end
+		task.delay(rng:NextNumber(M.respawn[1], M.respawn[2]), respawn, mob)
+		return
+	end
+	-- knocked (a golem barely budges), and a wind-up is interrupted
+	local p = mob.pos + push * (mob.kind == "golem" and 0.3 or 1)
+	if mob.kind == "crab" or mob.kind == "golem" then
+		p = clampLand(mob, p)
+	end
+	mob.pos = Vector3.new(p.X, heightFor(mob, p), p.Z)
+	if stun and stun > 0 then
+		mob.stunUntil = now() + stun
+		mob.inst:SetAttribute("StunUntil", mob.stunUntil)
+		setState(mob, "hurt")
+	elseif mob.kind ~= "golem" or mob.state ~= "tell" then
+		setState(mob, "hurt")
+	end
+end
+
 function Mobs.swipe(player, root, step)
 	local S = Config.Swipe.combo[step or 1] or Config.Swipe
 	local look = flat(root.CFrame.LookVector).Unit
@@ -543,32 +580,32 @@ function Mobs.swipe(player, root, step)
 			local reach = S.range + (mob.kind == "golem" and 2 or 0)
 			if d.Magnitude <= reach and math.abs(offset.Y) < 7 and (d.Magnitude < 2.5 or d.Unit:Dot(look) >= S.cone) then
 				hits += 1
-				mob.hp -= S.damage
-				send(mob, "Hp", mob.hp)
-				mob.inst:SetAttribute("HitStep", step or 1) -- Patch 17: the client plays a bigger hit for the slam
-				mob.inst:SetAttribute("HitAt", now())
-				mob.target = player
-				lastAggro[player] = os.clock()
-				if mob.hp <= 0 then
-					setState(mob, "dead")
-					local drop = M.drop
-					if rng:NextNumber() < drop.chance then
-						deps.giveBait(player, drop.bait, drop.count)
-						deps.notify(player, ("You beat the %s! It dropped %d %s."):format(mob.cfg.name, drop.count, drop.bait), "good")
-					end
-					task.delay(rng:NextNumber(M.respawn[1], M.respawn[2]), respawn, mob)
-				else
-					-- knocked back (a golem barely budges), and a wind-up is interrupted
-					local push = (d.Magnitude > 0.1 and d.Unit or look) * (mob.kind == "golem" and S.knock * 0.3 or S.knock)
-					local p = mob.pos + push
-					if mob.kind == "crab" or mob.kind == "golem" then
-						p = clampLand(mob, p)
-					end
-					mob.pos = Vector3.new(p.X, heightFor(mob, p), p.Z)
-					if mob.kind ~= "golem" or mob.state ~= "tell" then
-						setState(mob, "hurt")
-					end
+				strike(player, mob, S.damage, (d.Magnitude > 0.1 and d.Unit or look) * S.knock, step or 1)
+			end
+		end
+	end
+	return hits
+end
+
+-- Patch 21: a rod ability landing at `center`: every living mob within `radius` takes `damage`, and is knocked
+-- out from the centre (`opts.knock`), dragged in (`opts.pull`) and/or frozen (`opts.stun` seconds).
+function Mobs.area(player, center, radius, damage, opts)
+	opts = opts or {}
+	local hits = 0
+	for _, mob in ipairs(mobs) do
+		if mob.state ~= "dead" and mob.camp.awake then
+			local offset = mob.pos - center
+			local d = flat(offset)
+			if d.Magnitude <= radius and math.abs(offset.Y) < radius * 0.6 + 6 then
+				hits += 1
+				local out = d.Magnitude > 0.1 and d.Unit or Vector3.new(1, 0, 0)
+				local push = Vector3.zero
+				if opts.pull then
+					push = -out * math.min(d.Magnitude * 0.85, 12)
+				elseif opts.knock then
+					push = out * opts.knock
 				end
+				strike(player, mob, damage, push, 3, opts.stun)
 			end
 		end
 	end

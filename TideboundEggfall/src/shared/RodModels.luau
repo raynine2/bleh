@@ -30,6 +30,12 @@ RodModels.looks = {
 	Abyssal = { line = hex("7A3CC8"), trail = ColorSequence.new(hex("9A5CFF"), hex("120C1C")), castFx = "Shadow", glow = hex("9A5CFF"), pulse = true, castSound = "CastAbyssal" },
 	Riftcaster = { line = RAINBOW, trail = RAINBOW, castFx = "Rift", glow = hex("B4F0FF"), aurora = true, castSound = "CastRiftcaster" },
 	Celestial = { line = hex("FFF1C4"), trail = RAINBOW, castFx = "Aurora", glow = hex("FFF1C4"), aurora = true, castSound = "CastCelestial" },
+	-- Patch 21: the trial rods
+	CrimsonCrow = { line = hex("FF2F45"), trail = ColorSequence.new(hex("FF2F45"), hex("140A0E")), castFx = "Shadow", glow = hex("FF2F45"), pulse = true, castSound = "CastAbyssal" },
+	Jackpot = { line = hex("FFD54A"), trail = ColorSequence.new(hex("FFE98A"), hex("2FCF6A")), castFx = "Coral", glow = hex("FFD54A"), castSound = "CastCoral" },
+	ThiefTome = { line = hex("B07CFF"), trail = ColorSequence.new(hex("E6D6FF"), hex("3A1F66")), castFx = "Rift", glow = hex("B07CFF"), castSound = "CastRiftcaster" },
+	SunRubber = { line = hex("FFFFFF"), trail = ColorSequence.new(hex("FFFFFF"), hex("FFE27A")), castFx = "Aurora", glow = hex("FFF2B0"), aurora = true, castSound = "CastCelestial" },
+	Boundless = { line = hex("8FD8FF"), trail = ColorSequence.new(hex("FFFFFF"), hex("2A5BFF")), castFx = "Rift", glow = hex("6FC8FF"), aurora = true, castSound = "CastRiftcaster" },
 }
 
 RodModels.HANDLE, RodModels.MID, RodModels.TIP = 1.6, 2.4, 2.4 -- segment lengths in studs
@@ -227,6 +233,104 @@ function BUILDERS.Celestial(model, h, m, t, reel, look)
 	motes.SpreadAngle = Vector2.new(180, 180)
 	motes.Size = NumberSequence.new(0.12, 0)
 	motes.Parent = t
+end
+
+-- Patch 21: the trial rods -----------------------------------------------------------------------------------------
+
+function BUILDERS.CrimsonCrow(model, h, m, t, reel, look)
+	-- black lacquer bound in crimson cord, crow feathers at the tip, a red eye-bead at the reel
+	local black = Color3.fromRGB(22, 18, 24)
+	for _, seg in ipairs({ h, m, t }) do
+		seg.Material, seg.Color = Enum.Material.SmoothPlastic, black
+	end
+	deco(h, "Grip", Vector3.new(0.36, 0.9, 0.36), CFrame.new(0, -0.25, 0), Color3.fromRGB(120, 20, 30), Enum.Material.Fabric)
+	for _, spec in ipairs({ { m, -0.6 }, { m, 0.5 }, { t, -0.4 } }) do
+		deco(spec[1], "Glow", Vector3.new(0.26, 0.06, 0.26), CFrame.new(0, spec[2], 0), look.glow, Enum.Material.Neon)
+	end
+	for i, angle in ipairs({ -0.5, 0.1, 0.6 }) do
+		local feather = deco(t, "Feather", Vector3.new(0.05, 0.55, 0.16), CFrame.new(0.05, RodModels.TIP / 2 - 0.35, 0) * CFrame.Angles(0, i * 2.1, angle), Color3.fromRGB(16, 14, 20))
+		feather.Material = Enum.Material.SmoothPlastic
+	end
+	reel.Material, reel.Color = Enum.Material.Metal, Color3.fromRGB(40, 30, 34)
+	local eye = deco(reel, "Glow", Vector3.new(0.24, 0.24, 0.24), CFrame.new(0, 0, -0.12), look.glow, Enum.Material.Neon, Enum.PartType.Ball)
+	for k = 0, 2 do
+		local a = k * math.pi * 2 / 3
+		deco(eye, "Tomoe", Vector3.new(0.05, 0.05, 0.05), CFrame.new(math.cos(a) * 0.08, math.sin(a) * 0.08, -0.11), Color3.fromRGB(10, 6, 8), Enum.Material.SmoothPlastic, Enum.PartType.Ball)
+	end
+	light(eye, look.glow, 1.2, 6)
+end
+
+function BUILDERS.Jackpot(model, h, m, t, reel, look)
+	-- casino gold on green felt, a gold-coin reel, and a pair of dice dangling from the tip
+	local gold = Color3.fromRGB(255, 206, 70)
+	h.Material, h.Color = Enum.Material.Fabric, Color3.fromRGB(30, 130, 70)
+	m.Material, m.Color = Enum.Material.Metal, gold
+	t.Material, t.Color = Enum.Material.Metal, Color3.fromRGB(255, 230, 140)
+	deco(h, "Grip", Vector3.new(0.38, 0.9, 0.38), CFrame.new(0, -0.25, 0), Color3.fromRGB(20, 100, 52), Enum.Material.Fabric)
+	deco(h, "Glow", Vector3.new(0.34, 0.06, 0.34), CFrame.new(0, 0.55, 0), look.glow, Enum.Material.Neon)
+	reel.Material, reel.Color = Enum.Material.Metal, gold
+	local coin = deco(reel, "Coin", Vector3.new(0.08, 0.42, 0.42), CFrame.new(-0.08, 0, 0), gold, Enum.Material.Neon, Enum.PartType.Cylinder)
+	light(coin, look.glow, 1, 6)
+	for i, x in ipairs({ -0.16, 0.16 }) do
+		local die = deco(t, "Die", Vector3.new(0.2, 0.2, 0.2), CFrame.new(x, RodModels.TIP / 2 - 0.25, 0.12) * CFrame.Angles(0.4 * i, 0.6, 0.3), Color3.fromRGB(250, 250, 250), Enum.Material.SmoothPlastic)
+		deco(die, "Pip", Vector3.new(0.05, 0.05, 0.02), CFrame.new(0, 0, -0.1), Color3.fromRGB(200, 20, 30), Enum.Material.SmoothPlastic)
+	end
+end
+
+function BUILDERS.ThiefTome(model, h, m, t, reel, look)
+	-- dark leather wrapped in purple, a small book chained at the grip with a red ribbon bookmark
+	h.Material, h.Color = Enum.Material.Fabric, Color3.fromRGB(40, 26, 56)
+	m.Material, m.Color = Enum.Material.SmoothPlastic, Color3.fromRGB(60, 40, 86)
+	t.Material, t.Color = Enum.Material.SmoothPlastic, Color3.fromRGB(80, 56, 120)
+	deco(m, "Glow", Vector3.new(0.05, RodModels.MID * 0.9, 0.05), CFrame.new(0, 0, 0.08), look.glow, Enum.Material.Neon)
+	local book = deco(h, "Book", Vector3.new(0.5, 0.62, 0.16), CFrame.new(0.3, 0.2, 0) * CFrame.Angles(0, 0, 0.2), Color3.fromRGB(70, 34, 110), Enum.Material.SmoothPlastic)
+	deco(book, "Pages", Vector3.new(0.44, 0.56, 0.12), CFrame.new(0.03, 0, 0), Color3.fromRGB(246, 238, 220), Enum.Material.SmoothPlastic)
+	deco(book, "Ribbon", Vector3.new(0.05, 0.5, 0.02), CFrame.new(0.08, -0.4, 0.07), Color3.fromRGB(200, 30, 50), Enum.Material.Fabric)
+	deco(book, "Glow", Vector3.new(0.18, 0.18, 0.02), CFrame.new(0, 0, -0.09), look.glow, Enum.Material.Neon)
+	reel.Material, reel.Color = Enum.Material.Metal, Color3.fromRGB(70, 60, 90)
+	light(t, look.glow, 1.1, 7)
+end
+
+function BUILDERS.SunRubber(model, h, m, t, reel, look)
+	-- puffy and white like a cloud, straw-gold grip, a little sun at the tip
+	local white = Color3.fromRGB(250, 250, 246)
+	for _, seg in ipairs({ h, m, t }) do
+		seg.Material, seg.Color = Enum.Material.SmoothPlastic, white
+	end
+	deco(h, "Grip", Vector3.new(0.38, 0.9, 0.38), CFrame.new(0, -0.25, 0), Color3.fromRGB(230, 190, 90), Enum.Material.Fabric)
+	for _, spec in ipairs({ { m, -0.7 }, { m, 0.2 }, { m, 0.9 }, { t, -0.6 }, { t, 0.3 } }) do
+		deco(spec[1], "Puff", Vector3.new(0.34, 0.34, 0.34), CFrame.new(0, spec[2], 0), white, Enum.Material.SmoothPlastic, Enum.PartType.Ball)
+	end
+	local sun = deco(t, "Glow", Vector3.new(0.32, 0.32, 0.32), CFrame.new(0, RodModels.TIP / 2 + 0.1, 0), Color3.fromRGB(255, 220, 90), Enum.Material.Neon, Enum.PartType.Ball)
+	for k = 0, 5 do
+		deco(sun, "Ray", Vector3.new(0.05, 0.18, 0.05), CFrame.Angles(0, 0, k * math.pi / 3) * CFrame.new(0, 0.26, 0), Color3.fromRGB(255, 240, 160), Enum.Material.Neon)
+	end
+	reel.Material, reel.Color = Enum.Material.SmoothPlastic, Color3.fromRGB(255, 230, 150)
+	light(sun, look.glow, 1.4, 8)
+	local steam = Instance.new("ParticleEmitter")
+	steam.Name = "Motes"
+	steam.Color = ColorSequence.new(Color3.new(1, 1, 1))
+	steam.LightEmission = 0.6
+	steam.Rate = 5
+	steam.Lifetime = NumberRange.new(0.6, 1.1)
+	steam.Speed = NumberRange.new(0.4, 1)
+	steam.SpreadAngle = Vector2.new(180, 180)
+	steam.Size = NumberSequence.new(0.16, 0)
+	steam.Parent = t
+end
+
+function BUILDERS.Boundless(model, h, m, t, reel, look)
+	-- white and deep blue, a ring that floats round the rod, and a blue-black orb at the tip
+	h.Material, h.Color = Enum.Material.Metal, Color3.fromRGB(230, 236, 248)
+	m.Color, t.Color = Color3.fromRGB(250, 252, 255), Color3.fromRGB(240, 246, 255)
+	deco(h, "Grip", Vector3.new(0.36, 0.9, 0.36), CFrame.new(0, -0.25, 0), Color3.fromRGB(20, 24, 40), Enum.Material.Fabric)
+	deco(m, "Glow", Vector3.new(0.05, RodModels.MID * 0.9, 0.05), CFrame.new(0, 0, 0.08), look.glow, Enum.Material.Neon)
+	deco(t, "Glow", Vector3.new(0.05, RodModels.TIP * 0.9, 0.05), CFrame.new(0, 0, 0.06), look.glow, Enum.Material.Neon)
+	local orb = deco(t, "Orb", Vector3.new(0.34, 0.34, 0.34), CFrame.new(0, RodModels.TIP / 2 + 0.12, 0), Color3.fromRGB(14, 16, 40), Enum.Material.Glass, Enum.PartType.Ball)
+	deco(orb, "Glow", Vector3.new(0.2, 0.2, 0.2), CFrame.new(), look.glow, Enum.Material.Neon, Enum.PartType.Ball)
+	reel.Material, reel.Color = Enum.Material.Metal, Color3.fromRGB(40, 50, 90)
+	ring(m, "RodHalo", CFrame.new(0, 0.3, 0) * CFrame.Angles(math.rad(25), 0, 0), 0.42, look.glow, 10, 0.06)
+	light(orb, look.glow, 1.5, 9)
 end
 
 -- Builds a rod model for `rodId`. Its PrimaryPart is the Handle; parts are unanchored and massless, so weld
