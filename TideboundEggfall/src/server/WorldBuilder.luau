@@ -11,7 +11,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local WorldBuilder = {}
 
-local VERSION = 10
+local VERSION = 11
 
 -- REF 1 palette
 -- Patch 12: the snow is a soft blue-grey, not paper white, so it doesn't glare
@@ -192,51 +192,107 @@ end
 
 -- REF 1 props -----------------------------------------------------------------------------
 
--- Voxel tree: thick dark trunk that forks, chunky rectangular leaf slabs in two or three greens.
+-- Patch 13: voxel trees in the reference style. A thick trunk with a root flare and a branch or two, and a
+-- crown heaped from chunky cubes in three tiers: darker cubes underneath, lighter ones on top.
 local function voxelTree(parent, base, rng, scale)
 	scale = scale or 1
-	local height = rng:NextNumber(7, 10) * scale
-	local w = 2.2 * scale
+	local s = scale
+	local height = rng:NextNumber(6, 8.5) * s
+	local w = 2.2 * s
+	decor({ Name = "TreeRoot", Size = Vector3.new(w * 1.8, 0.9 * s, w * 1.8), CFrame = CFrame.new(base + Vector3.new(0, 0.45 * s, 0)) * CFrame.Angles(0, math.rad(45), 0), Color = TRUNK, Parent = parent })
 	decor({ Name = "TreeTrunk", Size = Vector3.new(w, height, w), CFrame = CFrame.new(base + Vector3.new(0, height / 2, 0)), Color = TRUNK, Parent = parent })
-	local crowns = { Vector3.new(0, height + 1.5 * scale, 0) }
-	if rng:NextNumber() < 0.6 then
-		local side = rng:NextNumber() < 0.5 and -1 or 1
-		local branchEnd = base + Vector3.new(side * 3.5 * scale, height * 0.75, 0)
-		decor({ Name = "TreeBranch", Size = Vector3.new(4 * scale, 1.2 * scale, 1.2 * scale), CFrame = CFrame.new(base + Vector3.new(side * 1.8 * scale, height * 0.62, 0)) * CFrame.Angles(0, 0, side * 0.45), Color = TRUNK, Parent = parent })
-		table.insert(crowns, branchEnd - base + Vector3.new(0, 1.2 * scale, 0))
+	decor({ Name = "TreeTrunkLight", Size = Vector3.new(w * 0.4, height * 0.8, w + 0.1), CFrame = CFrame.new(base + Vector3.new(w * 0.25, height * 0.45, 0)), Color = TRUNK:Lerp(Color3.new(1, 1, 1), 0.12), Parent = parent })
+	for _ = 1, rng:NextInteger(1, 2) do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local from = base + Vector3.new(0, height * rng:NextNumber(0.55, 0.8), 0)
+		decor({ Name = "TreeBranch", Size = Vector3.new(1.1 * s, 1.1 * s, 3.4 * s), CFrame = CFrame.lookAt(from, from + Vector3.new(math.cos(a), 0.6, math.sin(a))) * CFrame.new(0, 0, -1.4 * s), Color = TRUNK, Parent = parent })
 	end
-	for _, crown in ipairs(crowns) do
-		for i = 1, 3 do
-			local sw, sd = rng:NextNumber(6, 9) * scale, rng:NextNumber(4, 6.5) * scale
-			windy(decor({
-				Name = "TreeLeaves",
-				Size = Vector3.new(sw, 2.2 * scale, sd),
-				CFrame = CFrame.new(base + crown + Vector3.new(rng:NextNumber(-1.5, 1.5) * scale, (i - 2) * 1.9 * scale, rng:NextNumber(-1.5, 1.5) * scale)) * CFrame.Angles(0, rng:NextInteger(0, 1) * math.pi / 2, 0),
-				Color = LEAF[rng:NextInteger(1, #LEAF)],
-				Parent = parent,
-			}))
-		end
+	local top = base + Vector3.new(0, height, 0)
+	local dark = LEAF[3]
+	local light = LEAF[2]:Lerp(Color3.fromRGB(190, 240, 120), 0.25)
+	local function cube(offset, size, color)
+		windy(decor({ Name = "TreeLeaves", Size = Vector3.new(size, size * 0.9, size), CFrame = CFrame.new(top + offset) * CFrame.Angles(0, rng:NextInteger(0, 3) * math.pi / 2, 0), Color = color, Parent = parent }))
+	end
+	-- bottom tier: a wide ring of dark cubes
+	local n = rng:NextInteger(6, 8)
+	for i = 1, n do
+		local a = i / n * math.pi * 2 + rng:NextNumber(-0.2, 0.2)
+		local r = rng:NextNumber(2.6, 3.6) * s
+		cube(Vector3.new(math.cos(a) * r, rng:NextNumber(-0.5, 0.5) * s, math.sin(a) * r), rng:NextNumber(3.4, 4.6) * s, (i % 3 == 0) and LEAF[1] or dark)
+	end
+	cube(Vector3.new(0, 0, 0), 5 * s, dark)
+	-- middle tier
+	for i = 1, 5 do
+		local a = i / 5 * math.pi * 2 + rng:NextNumber(-0.3, 0.3)
+		local r = rng:NextNumber(1.4, 2.2) * s
+		cube(Vector3.new(math.cos(a) * r, rng:NextNumber(2.2, 3) * s, math.sin(a) * r), rng:NextNumber(3, 4) * s, LEAF[1])
+	end
+	-- top: one or two bright cubes
+	cube(Vector3.new(rng:NextNumber(-0.6, 0.6) * s, 4.8 * s, rng:NextNumber(-0.6, 0.6) * s), rng:NextNumber(2.8, 3.6) * s, light)
+	if rng:NextNumber() < 0.5 then
+		cube(Vector3.new(rng:NextNumber(-1.5, 1.5) * s, 4 * s, rng:NextNumber(-1.5, 1.5) * s), 2.4 * s, light)
 	end
 end
 
--- Tiered pine made of stacked light-green boxes.
+-- Snowy voxel pine: tiers made of a cross of boxes, each tier capped with a little snow (REF 1).
 local function pineTree(parent, base, scale)
 	scale = scale or 1
-	decor({ Name = "PineTrunk", Size = Vector3.new(1.4 * scale, 2.5 * scale, 1.4 * scale), CFrame = CFrame.new(base + Vector3.new(0, 1.25 * scale, 0)), Color = TRUNK, Parent = parent })
-	local y = base.Y + 2.5 * scale
-	for i, s in ipairs({ 6, 5, 4, 3, 2 }) do
-		local size = s * scale
-		windy(decor({ Name = "PineTier", Size = Vector3.new(size, 2.4 * scale, size), CFrame = CFrame.new(base.X, y + 1.2 * scale, base.Z), Color = PINE[(i % #PINE) + 1], Parent = parent }))
-		y += 2.4 * scale
+	local s = scale
+	decor({ Name = "PineTrunk", Size = Vector3.new(1.6 * s, 3 * s, 1.6 * s), CFrame = CFrame.new(base + Vector3.new(0, 1.5 * s, 0)), Color = TRUNK, Parent = parent })
+	local y = base.Y + 2.6 * s
+	for i, size in ipairs({ 7, 5.8, 4.6, 3.4, 2.2 }) do
+		local w = size * s
+		local h = 2.4 * s
+		local color = PINE[(i % #PINE) + 1]:Lerp(Color3.fromRGB(40, 110, 70), 0.45)
+		local c = Vector3.new(base.X, y + h / 2, base.Z)
+		windy(decor({ Name = "PineTier", Size = Vector3.new(w, h, w * 0.62), CFrame = CFrame.new(c), Color = color, Parent = parent }))
+		windy(decor({ Name = "PineTier", Size = Vector3.new(w * 0.62, h, w), CFrame = CFrame.new(c), Color = color, Parent = parent }))
+		decor({ Name = "PineSnow", Size = Vector3.new(w * 0.7, 0.35 * s, w * 0.42), CFrame = CFrame.new(c + Vector3.new(0, h / 2 + 0.1, 0)), Color = SNOW_CAP, Parent = parent })
+		decor({ Name = "PineSnow", Size = Vector3.new(w * 0.42, 0.35 * s, w * 0.7), CFrame = CFrame.new(c + Vector3.new(0, h / 2 + 0.1, 0)), Color = SNOW_CAP, Parent = parent })
+		y += h * 0.82
 	end
 end
 
 local function lampPost(parent, base, facing)
 	local cf = CFrame.lookAt(base, Vector3.new(facing.X, base.Y, facing.Z))
+	decor({ Name = "LampFoot", Size = Vector3.new(1.6, 0.8, 1.6), CFrame = cf * CFrame.new(0, 0.4, 0), Color = Color3.fromRGB(70, 72, 82), Parent = parent })
 	decor({ Name = "LampPost", Size = Vector3.new(0.8, 9, 0.8), CFrame = cf * CFrame.new(0, 4.5, 0), Color = LAMP_WOOD, Parent = parent })
+	decor({ Name = "LampRing", Size = Vector3.new(1.1, 0.4, 1.1), CFrame = cf * CFrame.new(0, 3, 0), Color = Color3.fromRGB(70, 72, 82), Parent = parent })
 	decor({ Name = "LampArm", Size = Vector3.new(0.4, 0.4, 2.2), CFrame = cf * CFrame.new(0, 8.4, -1), Color = LAMP_WOOD, Parent = parent })
-	decor({ Name = "LampLantern", Size = Vector3.new(0.9, 1.2, 0.9), CFrame = cf * CFrame.new(0, 7.3, -1.9), Color = LANTERN_ORANGE, Parent = parent })
-	decor({ Name = "LampCap", Size = Vector3.new(1.2, 0.3, 1.2), CFrame = cf * CFrame.new(0, 8, -1.9), Color = LAMP_WOOD, Parent = parent })
+	decor({ Name = "LampFrame", Size = Vector3.new(1.3, 1.6, 1.3), CFrame = cf * CFrame.new(0, 7.3, -1.9), Color = Color3.fromRGB(46, 40, 40), Transparency = 0.5, Parent = parent })
+	local glow = decor({ Name = "LampLantern", Size = Vector3.new(0.9, 1.2, 0.9), CFrame = cf * CFrame.new(0, 7.3, -1.9), Color = Color3.fromRGB(255, 200, 120), Material = Enum.Material.Neon, Parent = parent })
+	decor({ Name = "LampCap", Size = Vector3.new(1.6, 0.4, 1.6), CFrame = cf * CFrame.new(0, 8.25, -1.9), Color = LAMP_WOOD, Parent = parent })
+	light(glow, Color3.fromRGB(255, 196, 120), 16, 1)
+end
+
+-- Patch 13: blocky ground. A disc (or ring, with `inner`) built from strips snapped to a grid, so coasts and
+-- floors have the reference's stepped voxel edge, with classic studs on top.
+local function voxelDisk(parent, name, center, radius, bottom, top, color, step, inner, material)
+	step = step or 4
+	local made = {}
+	local rows = math.ceil(radius / step)
+	for i = -rows, rows - 1 do
+		local zc = (i + 0.5) * step
+		if math.abs(zc) < radius then
+			local half = math.floor(math.sqrt(radius * radius - zc * zc) / step + 0.5) * step
+			if half >= step * 0.5 then
+				local spans = { { -half, half } }
+				if inner and math.abs(zc) < inner then
+					local ih = math.floor(math.sqrt(inner * inner - zc * zc) / step + 0.5) * step
+					spans = { { -half, -ih }, { ih, half } }
+				end
+				for _, span in ipairs(spans) do
+					local w = span[2] - span[1]
+					if w > 0.5 then
+						local p = part({ Name = name, Size = Vector3.new(w, top - bottom, step), CFrame = CFrame.new(center.X + (span[1] + span[2]) / 2, (top + bottom) / 2, center.Z + zc), Color = color, Material = material or Enum.Material.Plastic, Parent = parent })
+						p.TopSurface = Enum.SurfaceType.Studs
+						table.insert(made, p)
+					end
+				end
+			end
+		end
+	end
+	return made
 end
 
 local function crate(parent, cframe)
@@ -626,43 +682,100 @@ local ROOF_SLATE = Color3.fromRGB(86, 98, 120)
 local TORII_RED = Color3.fromRGB(176, 34, 30)
 local TORII_BLACK = Color3.fromRGB(44, 34, 34)
 
--- Half-timbered house: cream plaster, dark timber frame and braces, steep tiled roof.
+-- Patch 13: a detailed half-timbered cottage. A stone foundation, plaster walls with a timber frame and braces,
+-- framed glass windows with sills and flower boxes, a panelled door under a little porch roof with a lantern, a
+-- stepped roof of studded rows with eaves, and a chimney with wisps of smoke that drift in the wind.
 local function timberHouse(parent, center, facing, w, d, h, roofColor)
 	local cf = CFrame.lookAt(center, Vector3.new(facing.X, center.Y, facing.Z))
 	local model = Instance.new("Model")
 	model.Name = "TimberHouse"
 	model.Parent = parent
-	part({ Name = "Walls", Size = Vector3.new(w, h, d), CFrame = cf * CFrame.new(0, h / 2, 0), Color = PLASTER, Parent = model })
+	local stone = Color3.fromRGB(150, 150, 160)
+	part({ Name = "Foundation", Size = Vector3.new(w + 1, 1.4, d + 1), CFrame = cf * CFrame.new(0, 0.7, 0), Color = stone, Material = Enum.Material.Plastic, Parent = model }).TopSurface = Enum.SurfaceType.Studs
+	for x = -w / 2, w / 2 - 1, 2.2 do
+		decor({ Name = "FoundationStone", Size = Vector3.new(2, 1, 0.3), CFrame = cf * CFrame.new(x + 1.1, 0.75, -d / 2 - 0.55), Color = (math.floor(x) % 2 == 0) and stone:Lerp(Color3.new(0, 0, 0), 0.12) or stone, Parent = model })
+	end
+	local base = 1.4
+	part({ Name = "Walls", Size = Vector3.new(w, h, d), CFrame = cf * CFrame.new(0, base + h / 2, 0), Color = PLASTER, Parent = model })
 	local front = -d / 2 - 0.15
 	for _, x in ipairs({ -w / 2, -w / 6, w / 6, w / 2 }) do
-		decor({ Name = "Timber", Size = Vector3.new(0.7, h, 0.4), CFrame = cf * CFrame.new(x, h / 2, front), Color = TIMBER, Parent = model })
+		decor({ Name = "Timber", Size = Vector3.new(0.7, h, 0.4), CFrame = cf * CFrame.new(x, base + h / 2, front), Color = TIMBER, Parent = model })
 	end
-	for _, y in ipairs({ 0.4, h * 0.5, h - 0.3 }) do
-		decor({ Name = "Timber", Size = Vector3.new(w + 0.2, 0.6, 0.4), CFrame = cf * CFrame.new(0, y, front), Color = TIMBER, Parent = model })
+	for _, y in ipairs({ 0.3, h * 0.5, h - 0.3 }) do
+		decor({ Name = "Timber", Size = Vector3.new(w + 0.2, 0.6, 0.4), CFrame = cf * CFrame.new(0, base + y, front), Color = TIMBER, Parent = model })
 	end
 	for _, side in ipairs({ -1, 1 }) do
-		decor({ Name = "Brace", Size = Vector3.new(0.5, h * 0.55, 0.4), CFrame = cf * CFrame.new(side * w / 3, h * 0.75, front) * CFrame.Angles(0, 0, side * math.rad(35)), Color = TIMBER, Parent = model })
-		for _, z in ipairs({ -d / 4, d / 4 }) do
-			decor({ Name = "SideTimber", Size = Vector3.new(0.4, h, 0.7), CFrame = cf * CFrame.new(side * (w / 2 + 0.15), h / 2, z), Color = TIMBER, Parent = model })
+		decor({ Name = "Brace", Size = Vector3.new(0.5, h * 0.55, 0.4), CFrame = cf * CFrame.new(side * w / 3, base + h * 0.75, front) * CFrame.Angles(0, 0, side * math.rad(35)), Color = TIMBER, Parent = model })
+		for _, z in ipairs({ -d / 2, 0, d / 2 }) do
+			decor({ Name = "SideTimber", Size = Vector3.new(0.4, h, 0.7), CFrame = cf * CFrame.new(side * (w / 2 + 0.15), base + h / 2, z), Color = TIMBER, Parent = model })
 		end
-		decor({ Name = "SideBand", Size = Vector3.new(0.4, 0.6, d), CFrame = cf * CFrame.new(side * (w / 2 + 0.15), h * 0.5, 0), Color = TIMBER, Parent = model })
+		decor({ Name = "SideBand", Size = Vector3.new(0.4, 0.6, d), CFrame = cf * CFrame.new(side * (w / 2 + 0.15), base + h * 0.5, 0), Color = TIMBER, Parent = model })
+		-- a side window too
+		decor({ Name = "SideWindow", Size = Vector3.new(0.3, 2, 1.8), CFrame = cf * CFrame.new(side * (w / 2 + 0.3), base + h * 0.72, 0), Color = Color3.fromRGB(255, 226, 160), Material = Enum.Material.Neon, Transparency = 0.35, Parent = model })
 	end
-	for _, y in ipairs({ h * 0.28, h * 0.74 }) do
+	-- framed windows with glass, sills and flower boxes
+	local flowers = { Color3.fromRGB(255, 90, 120), Color3.fromRGB(255, 210, 80), Color3.fromRGB(200, 120, 255) }
+	for row, y in ipairs({ h * 0.28, h * 0.74 }) do
 		for _, x in ipairs({ -w / 3, w / 3 }) do
-			decor({ Name = "WindowFrame", Size = Vector3.new(2, 2.2, 0.3), CFrame = cf * CFrame.new(x, y, front - 0.15), Color = TIMBER, Parent = model })
-			decor({ Name = "WindowPane", Size = Vector3.new(1.4, 1.6, 0.3), CFrame = cf * CFrame.new(x, y, front - 0.25), Color = Color3.fromRGB(40, 46, 60), Parent = model })
+			local at = cf * CFrame.new(x, base + y, front - 0.15)
+			decor({ Name = "WindowFrame", Size = Vector3.new(2.4, 2.6, 0.3), CFrame = at, Color = TIMBER, Parent = model })
+			decor({ Name = "WindowGlass", Size = Vector3.new(1.8, 2, 0.3), CFrame = at * CFrame.new(0, 0, -0.08), Color = Color3.fromRGB(150, 200, 230), Material = Enum.Material.Glass, Transparency = 0.25, Parent = model })
+			decor({ Name = "Mullion", Size = Vector3.new(0.2, 2, 0.35), CFrame = at * CFrame.new(0, 0, -0.12), Color = TIMBER, Parent = model })
+			decor({ Name = "Mullion", Size = Vector3.new(1.8, 0.2, 0.35), CFrame = at * CFrame.new(0, 0, -0.12), Color = TIMBER, Parent = model })
+			decor({ Name = "Sill", Size = Vector3.new(2.8, 0.3, 0.7), CFrame = at * CFrame.new(0, -1.45, -0.3), Color = Color3.fromRGB(230, 226, 214), Parent = model })
+			if row == 1 then
+				decor({ Name = "FlowerBox", Size = Vector3.new(2.4, 0.6, 0.6), CFrame = at * CFrame.new(0, -1.85, -0.45), Color = TIMBER, Parent = model })
+				for k = -1, 1 do
+					windy(decor({ Name = "Flower", Size = Vector3.new(0.5, 0.5, 0.5), CFrame = at * CFrame.new(k * 0.7, -1.35, -0.45), Color = flowers[(k + 2)], Parent = model }))
+				end
+			end
 		end
 	end
-	decor({ Name = "Door", Size = Vector3.new(2.6, 4.2, 0.3), CFrame = cf * CFrame.new(0, 2.1, front - 0.15), Color = TIMBER, Parent = model })
-	local angle = math.rad(45)
+	-- the door, a step and a little porch roof with a lantern
+	local door = cf * CFrame.new(0, base + 2.2, front - 0.15)
+	decor({ Name = "DoorFrame", Size = Vector3.new(3.2, 4.8, 0.3), CFrame = door, Color = TIMBER:Lerp(Color3.new(0, 0, 0), 0.2), Parent = model })
+	decor({ Name = "Door", Size = Vector3.new(2.6, 4.3, 0.3), CFrame = door * CFrame.new(0, -0.15, -0.08), Color = Color3.fromRGB(150, 90, 56), Parent = model })
+	for _, y in ipairs({ -1, 1 }) do
+		decor({ Name = "DoorPanel", Size = Vector3.new(1.8, 1.4, 0.2), CFrame = door * CFrame.new(0, y * 1, -0.2), Color = Color3.fromRGB(126, 74, 46), Parent = model })
+	end
+	decor({ Name = "Knob", Size = Vector3.new(0.3, 0.3, 0.3), CFrame = door * CFrame.new(0.9, -0.2, -0.3), Color = GOLD, Parent = model })
+	part({ Name = "Step", Size = Vector3.new(3.6, 0.6, 1.4), CFrame = cf * CFrame.new(0, 0.3, -d / 2 - 1.1), Color = stone, Material = Enum.Material.Plastic, Parent = model }).TopSurface = Enum.SurfaceType.Studs
+	decor({ Name = "PorchRoof", Size = Vector3.new(4.4, 0.4, 1.8), CFrame = cf * CFrame.new(0, base + 5.1, front - 0.8) * CFrame.Angles(math.rad(-15), 0, 0), Color = roofColor, Parent = model })
+	local lantern = decor({ Name = "DoorLantern", Size = Vector3.new(0.7, 0.9, 0.7), CFrame = cf * CFrame.new(2.1, base + 3.8, front - 0.5), Color = Color3.fromRGB(255, 210, 140), Material = Enum.Material.Neon, Parent = model })
+	light(lantern, Color3.fromRGB(255, 200, 130), 12, 0.8)
+	-- the roof: rows of studded slabs stepping up to the ridge, with eaves and a ridge beam
+	local rows = 5
 	local half = d / 2 + 1.2
+	local rise = math.min(h * 0.7, half)
 	for _, dir in ipairs({ -1, 1 }) do
-		decor({ Name = "Roof", Size = Vector3.new(w + 2, 0.9, half / math.cos(angle)), CFrame = cf * CFrame.new(0, h + math.tan(angle) * half / 2, dir * half / 2) * CFrame.Angles(dir * angle, 0, 0), Color = roofColor, Parent = model })
+		for i = 0, rows - 1 do
+			local s = i / rows
+			local slab = part({ Name = "RoofRow", Size = Vector3.new(w + 2, 0.9, half / rows + 0.5), CFrame = cf * CFrame.new(0, base + h + rise * s + 0.45, dir * (half - (i + 0.5) * half / rows)), Color = (i % 2 == 0) and roofColor or roofColor:Lerp(Color3.new(0, 0, 0), 0.12), Material = Enum.Material.Plastic, CanCollide = false, Parent = model })
+			slab.TopSurface = Enum.SurfaceType.Studs
+		end
 	end
-	local gable = d / math.sqrt(2)
+	decor({ Name = "Ridge", Size = Vector3.new(w + 2.4, 0.8, 1.2), CFrame = cf * CFrame.new(0, base + h + rise + 0.6, 0), Color = roofColor:Lerp(Color3.new(0, 0, 0), 0.3), Parent = model })
 	for _, side in ipairs({ -1, 1 }) do
-		decor({ Name = "Gable", Size = Vector3.new(0.6, gable, gable), CFrame = cf * CFrame.new(side * (w / 2 - 0.3), h, 0) * CFrame.Angles(math.rad(45), 0, 0), Color = PLASTER, Parent = model })
+		-- gable ends stepped to follow the roof
+		for i = 0, rows - 1 do
+			local s = i / rows
+			decor({ Name = "Gable", Size = Vector3.new(0.6, rise / rows + 0.1, 2 * (half - i * half / rows) - 1.4), CFrame = cf * CFrame.new(side * (w / 2 - 0.3), base + h + rise * s + rise / rows / 2, 0), Color = PLASTER, Parent = model })
+		end
 	end
+	-- the chimney, smoking
+	local chimney = decor({ Name = "Chimney", Size = Vector3.new(1.6, rise + 3, 1.6), CFrame = cf * CFrame.new(w / 3, base + h + (rise + 3) / 2, d / 4), Color = Color3.fromRGB(170, 96, 80), Parent = model })
+	decor({ Name = "ChimneyCap", Size = Vector3.new(2, 0.5, 2), CFrame = chimney.CFrame * CFrame.new(0, (rise + 3) / 2, 0), Color = Color3.fromRGB(80, 70, 70), Parent = model })
+	particles(chimney, {
+		Color = ColorSequence.new(Color3.fromRGB(230, 230, 236)),
+		Rate = 3,
+		Lifetime = NumberRange.new(3, 5),
+		Speed = NumberRange.new(2, 3),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.8), NumberSequenceKeypoint.new(1, 3) }),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1) }),
+		EmissionDirection = Enum.NormalId.Top,
+		Drag = 0.5,
+		WindAffectsDrag = true,
+	})
 	return cf
 end
 
@@ -1004,6 +1117,7 @@ WorldBuilder.kit = {
 	awningStall = awningStall,
 	greyHouse = greyHouse,
 	timberHouse = timberHouse,
+	voxelDisk = voxelDisk,
 	toriiGate = toriiGate,
 	latticeHut = latticeHut,
 	TOP = TOP,

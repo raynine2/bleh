@@ -21,7 +21,7 @@ local L = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild("Isle
 
 local TownBuilder = {}
 
-local VERSION = 2
+local VERSION = 3
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -103,30 +103,64 @@ local function isLand(p, margin)
 	return (flat(p) - BEACH.c).Magnitude <= BEACH.r - margin
 end
 
+-- Patch 13: the whole island is rasterised onto a 6-stud grid and laid as studded strips (grass, the snowy
+-- plaza, the beach, the sand shore), so the coast has the reference's stepped voxel edge and no two strips
+-- overlap. Grass strips are tagged TideboundGrass: TideboundFoliage grows tall voxel grass on them.
+local GRID = 6
 local function buildLand(parent)
-	for i, shape in ipairs(LAND) do
-		local h = TOP - FLOOR
-		if shape.kind == "disk" then
-			disk(parent, "TownLand" .. i, Vector3.new(shape.c.X, (TOP + FLOOR) / 2, shape.c.Z), shape.r, h, GRASS, Enum.Material.Grass)
-			disk(parent, "TownShore" .. i, Vector3.new(shape.c.X, (WATER_Y + 0.8 + FLOOR) / 2, shape.c.Z), shape.r + 6, WATER_Y + 0.8 - FLOOR, SAND, Enum.Material.Sand)
-		else
-			part({ Name = "TownLand" .. i, Size = Vector3.new(shape.size.X, h, shape.size.Z), CFrame = CFrame.new(shape.c.X, (TOP + FLOOR) / 2, shape.c.Z), Color = GRASS, Material = Enum.Material.Grass, Parent = parent })
-			part({ Name = "TownShore" .. i, Size = Vector3.new(shape.size.X + 4, WATER_Y + 0.8 - FLOOR, shape.size.Z + 12), CFrame = CFrame.new(shape.c.X - 2, (WATER_Y + 0.8 + FLOOR) / 2, shape.c.Z), Color = SAND, Material = Enum.Material.Sand, Parent = parent })
+	local function kindAt(x, z)
+		local p = v(x, z)
+		if p.Magnitude <= T.plazaRadius + 4 then
+			return "plaza"
+		end
+		for _, shape in ipairs(LAND) do
+			if inShape(shape, p, 0) then
+				return "grass"
+			end
+		end
+		if (flat(p) - BEACH.c).Magnitude <= BEACH.r then
+			return "beach"
+		end
+		if isLand(p, -7) then
+			return "shore"
+		end
+		return nil
+	end
+	local STYLE = {
+		grass = { top = TOP, color = GRASS },
+		plaza = { top = TOP, color = P.SNOW_GROUND },
+		beach = { top = TOP - 0.4, color = SAND },
+		shore = { top = WATER_Y + 0.8, color = SAND:Lerp(Color3.fromRGB(180, 160, 120), 0.3) },
+	}
+	for gz = -228, 228 - GRID, GRID do
+		local zc = gz + GRID / 2
+		local runKind, runStart = nil, nil
+		local function flush(xEnd)
+			if runKind then
+				local style = STYLE[runKind]
+				local w = xEnd - runStart
+				local strip = part({ Name = "Town_" .. runKind, Size = Vector3.new(w, style.top - FLOOR, GRID), CFrame = CFrame.new(runStart + w / 2, (style.top + FLOOR) / 2, zc), Color = style.color, Material = Enum.Material.Plastic, Parent = parent })
+				strip.TopSurface = Enum.SurfaceType.Studs
+				if runKind == "grass" then
+					CollectionService:AddTag(strip, "TideboundGrass")
+				end
+			end
+		end
+		for gx = -228, 228, GRID do
+			local kind = gx < 228 and kindAt(gx + GRID / 2, zc) or nil
+			if kind ~= runKind then
+				flush(gx)
+				runKind, runStart = kind, gx
+			end
 		end
 	end
-	disk(parent, "SouthBeach", Vector3.new(BEACH.c.X, (TOP - 0.4 + FLOOR) / 2, BEACH.c.Z), BEACH.r, TOP - 0.4 - FLOOR, SAND, Enum.Material.Sand)
-	disk(parent, "SouthBeachShelf", Vector3.new(BEACH.c.X, (WATER_Y + 0.6 + FLOOR) / 2, BEACH.c.Z), BEACH.r + 12, WATER_Y + 0.6 - FLOOR, SAND, Enum.Material.Sand)
-	-- REF 1: the snowy plaza
-	local snow = disk(parent, "PlazaSnow", Vector3.new(0, TOP + 0.03, 0), T.plazaRadius + 4, 0.1, P.SNOW_GROUND)
-	snow.CanCollide = false
-	snow.CanQuery = false
 	-- sea cliffs: rocks along the shore
 	local rng = Random.new(91)
 	for _, shape in ipairs(LAND) do
 		if shape.kind == "disk" then
 			for _ = 1, math.floor(shape.r / 4) do
 				local a = rng:NextNumber(0, math.pi * 2)
-				local p = shape.c + Vector3.new(math.cos(a), 0, math.sin(a)) * (shape.r + rng:NextNumber(0, 3))
+				local p = shape.c + Vector3.new(math.cos(a), 0, math.sin(a)) * (shape.r + rng:NextNumber(2, 5))
 				if not isLand(p, 1) then
 					K.mintRock(parent, at(p, WATER_Y + 0.8), rng, 1.3)
 				end
@@ -175,10 +209,15 @@ local function street(parent, a, b, width, index)
 		K.boardwalkSegment(parent, fa, fb, width)
 		return
 	end
-	local frame = CFrame.lookAt(at(mid, TOP + 0.06), at(fb, TOP + 0.06))
-	decor({ Name = "Street", Size = Vector3.new(width, 0.12, length + width * 0.6), CFrame = frame, Color = COBBLE, Material = Enum.Material.Cobblestone, Parent = parent })
+	local frame = CFrame.lookAt(at(mid, TOP + 0.1), at(fb, TOP + 0.1))
+	-- studded paving (queryable, so no grass grows through it) with a darker kerb either side
+	local paving = decor({ Name = "Street", Size = Vector3.new(width, 0.2, length + width * 0.6), CFrame = frame, Color = COBBLE, Material = Enum.Material.Plastic, Parent = parent })
+	paving.TopSurface = Enum.SurfaceType.Studs
+	paving.CanQuery = true
 	for _, side in ipairs({ -1, 1 }) do
-		decor({ Name = "Curb", Size = Vector3.new(0.8, 0.3, length), CFrame = frame * CFrame.new(side * (width / 2 + 0.4), 0.1, 0), Color = COBBLE_EDGE, Parent = parent })
+		local kerb = decor({ Name = "Curb", Size = Vector3.new(1, 0.5, length), CFrame = frame * CFrame.new(side * (width / 2 + 0.5), 0.15, 0), Color = COBBLE_EDGE, Material = Enum.Material.Plastic, Parent = parent })
+		kerb.TopSurface = Enum.SurfaceType.Studs
+		kerb.CanQuery = true
 	end
 	local count = math.floor(length / 26)
 	for i = 0, count do
@@ -211,30 +250,99 @@ end
 
 -- Buildings ---------------------------------------------------------------------------------------------------
 
--- A neon shop (REF 3): a coloured block with a big lit sign, an awning, windows and a glowing door.
+-- Patch 13: a detailed shopfront in the reference's style. A studded stone plinth, walls with chunky corner
+-- pillars and trim bands, a cornice and parapet, big framed display windows with glass and mullions, a panelled
+-- door with a glowing transom, a striped awning with a scalloped edge on brackets, a framed sign with a neon
+-- border, a flag on the roof that flaps in the wind, and a potted plant, crates or a bench out front.
 local function neonShop(parent, center, target, title, color, w, d, h)
 	w, d, h = w or 14, d or 10, h or 10
 	local cf = facing(center, target)
 	local model = Instance.new("Model")
 	model.Name = "Shop"
 	model.Parent = parent
-	local body = color:Lerp(Color3.fromRGB(40, 30, 60), 0.55)
-	part({ Name = "Body", Size = Vector3.new(w, h, d), CFrame = cf * CFrame.new(0, h / 2, 0), Color = body, Parent = model })
-	part({ Name = "Roof", Size = Vector3.new(w + 1, 0.8, d + 1), CFrame = cf * CFrame.new(0, h + 0.4, 0), Color = body:Lerp(Color3.new(0, 0, 0), 0.3), Parent = model })
+	local wall = color:Lerp(Color3.fromRGB(236, 230, 220), 0.55)
+	local trim = color:Lerp(Color3.fromRGB(40, 30, 50), 0.45)
+	local dark = Color3.fromRGB(46, 40, 52)
 	local front = -d / 2
-	decor({ Name = "Door", Size = Vector3.new(3, 5, 0.3), CFrame = cf * CFrame.new(0, 2.5, front - 0.15), Color = color, Material = Enum.Material.Neon, Transparency = 0.15, Parent = model })
-	for _, x in ipairs({ -w / 3, w / 3 }) do
-		decor({ Name = "Window", Size = Vector3.new(w / 4, 3, 0.3), CFrame = cf * CFrame.new(x, 3, front - 0.15), Color = Color3.fromRGB(255, 236, 190), Material = Enum.Material.Neon, Transparency = 0.25, Parent = model })
+	local function studs(p)
+		p.Material = Enum.Material.Plastic
+		p.TopSurface = Enum.SurfaceType.Studs
+		return p
 	end
-	local stripes = 6
+	studs(part({ Name = "Plinth", Size = Vector3.new(w + 1.6, 1, d + 1.6), CFrame = cf * CFrame.new(0, 0.5, 0), Color = Color3.fromRGB(150, 152, 162), Parent = model }))
+	part({ Name = "Body", Size = Vector3.new(w, h, d), CFrame = cf * CFrame.new(0, 1 + h / 2, 0), Color = wall, Parent = model })
+	-- corner pillars and trim bands
+	for _, x in ipairs({ -w / 2, w / 2 }) do
+		for _, z in ipairs({ -d / 2, d / 2 }) do
+			decor({ Name = "Pillar", Size = Vector3.new(1.4, h + 0.4, 1.4), CFrame = cf * CFrame.new(x, 1 + h / 2, z), Color = trim, Parent = model })
+		end
+	end
+	decor({ Name = "TrimBand", Size = Vector3.new(w + 0.4, 0.6, d + 0.4), CFrame = cf * CFrame.new(0, 1 + h * 0.6, 0), Color = trim, Parent = model })
+	decor({ Name = "Cornice", Size = Vector3.new(w + 1.6, 0.8, d + 1.6), CFrame = cf * CFrame.new(0, 1 + h + 0.4, 0), Color = trim, Parent = model })
+	studs(decor({ Name = "Roof", Size = Vector3.new(w + 0.8, 0.6, d + 0.8), CFrame = cf * CFrame.new(0, 1 + h + 1.1, 0), Color = Color3.fromRGB(120, 124, 136), Parent = model }))
+	for _, x in ipairs({ -w / 2 - 0.4, w / 2 + 0.4 }) do
+		decor({ Name = "Parapet", Size = Vector3.new(0.6, 1, d + 1.6), CFrame = cf * CFrame.new(x, 1 + h + 1.3, 0), Color = trim, Parent = model })
+	end
+	-- display windows either side of the door
+	local winW = (w - 5) / 2 - 1
+	for _, side in ipairs({ -1, 1 }) do
+		local at = cf * CFrame.new(side * (2.5 + winW / 2 + 0.3), 1 + 3.4, front - 0.12)
+		decor({ Name = "WindowFrame", Size = Vector3.new(winW + 0.8, 4.6, 0.4), CFrame = at, Color = dark, Parent = model })
+		decor({ Name = "Glass", Size = Vector3.new(winW, 3.8, 0.3), CFrame = at * CFrame.new(0, 0, -0.1), Color = Color3.fromRGB(150, 210, 240), Material = Enum.Material.Glass, Transparency = 0.3, Parent = model })
+		decor({ Name = "WindowGlow", Size = Vector3.new(winW - 0.4, 3.4, 0.1), CFrame = at * CFrame.new(0, 0, 0.12), Color = Color3.fromRGB(255, 232, 180), Material = Enum.Material.Neon, Transparency = 0.45, Parent = model })
+		decor({ Name = "Mullion", Size = Vector3.new(0.25, 3.8, 0.4), CFrame = at * CFrame.new(0, 0, -0.15), Color = dark, Parent = model })
+		decor({ Name = "Sill", Size = Vector3.new(winW + 1.2, 0.4, 0.9), CFrame = at * CFrame.new(0, -2.45, -0.35), Color = trim, Parent = model })
+	end
+	-- the door, its frame and a glowing transom
+	local door = cf * CFrame.new(0, 1 + 2.5, front - 0.12)
+	decor({ Name = "DoorFrame", Size = Vector3.new(4, 5.6, 0.4), CFrame = door * CFrame.new(0, 0.3, 0), Color = dark, Parent = model })
+	decor({ Name = "Door", Size = Vector3.new(3, 4.6, 0.3), CFrame = door * CFrame.new(0, -0.2, -0.12), Color = color:Lerp(Color3.new(0, 0, 0), 0.25), Parent = model })
+	decor({ Name = "DoorGlass", Size = Vector3.new(1.8, 1.8, 0.2), CFrame = door * CFrame.new(0, 0.7, -0.25), Color = Color3.fromRGB(255, 232, 180), Material = Enum.Material.Neon, Transparency = 0.3, Parent = model })
+	decor({ Name = "Transom", Size = Vector3.new(3, 0.6, 0.2), CFrame = door * CFrame.new(0, 2.6, -0.2), Color = color, Material = Enum.Material.Neon, Parent = model })
+	studs(part({ Name = "Step", Size = Vector3.new(4.4, 0.5, 1.6), CFrame = cf * CFrame.new(0, 0.25, front - 1.6), Color = Color3.fromRGB(150, 152, 162), Parent = model }))
+	-- striped awning on brackets, with a scalloped edge
+	local stripes = math.max(5, math.floor(w / 2))
 	for i = 1, stripes do
-		decor({ Name = "Awning", Size = Vector3.new(w / stripes, 0.3, 3.4), CFrame = cf * CFrame.new(-w / 2 + (i - 0.5) * (w / stripes), 5.8, front - 1.5) * CFrame.Angles(math.rad(-18), 0, 0), Color = (i % 2 == 0) and WHITE or color, Parent = model })
+		local x = -w / 2 + (i - 0.5) * (w / stripes)
+		local c = (i % 2 == 0) and WHITE or color
+		decor({ Name = "Awning", Size = Vector3.new(w / stripes + 0.02, 0.3, 3.4), CFrame = cf * CFrame.new(x, 1 + 6.4, front - 1.5) * CFrame.Angles(math.rad(-20), 0, 0), Color = c, Parent = model })
+		decor({ Name = "Scallop", Size = Vector3.new(w / stripes * 0.8, 0.7, 0.3), CFrame = cf * CFrame.new(x, 1 + 5.55, front - 3.1), Color = c, Parent = model })
 	end
-	local sign = decor({ Name = "Sign", Size = Vector3.new(w - 2, 2.6, 0.5), CFrame = cf * CFrame.new(0, h - 2, front - 0.4), Color = SIGN_DARK, Parent = model })
-	surfaceText(sign, title, color)
-	decor({ Name = "SignNeon", Size = Vector3.new(w - 1.4, 0.3, 0.3), CFrame = cf * CFrame.new(0, h - 0.5, front - 0.5), Color = color, Material = Enum.Material.Neon, Parent = model })
-	light(model:FindFirstChild("Door"), color, 14, 1.2)
-	reserve(center, math.max(w, d) * 0.7)
+	for _, side in ipairs({ -1, 1 }) do
+		decor({ Name = "Bracket", Size = Vector3.new(0.3, 0.3, 3), CFrame = cf * CFrame.new(side * (w / 2 - 0.4), 1 + 6, front - 1.4) * CFrame.Angles(math.rad(-30), 0, 0), Color = dark, Parent = model })
+	end
+	-- the sign: a framed board with a neon border, above the awning
+	local signCf = cf * CFrame.new(0, 1 + h - 1.6, front - 0.5)
+	local board = decor({ Name = "Sign", Size = Vector3.new(w - 3, 2.6, 0.5), CFrame = signCf, Color = Color3.fromRGB(28, 22, 40), Parent = model })
+	surfaceText(board, title, color:Lerp(WHITE, 0.25))
+	for _, spec in ipairs({ { 0, 1.4, w - 2.4, 0.25 }, { 0, -1.4, w - 2.4, 0.25 }, { -(w - 3) / 2 - 0.2, 0, 0.25, 3 }, { (w - 3) / 2 + 0.2, 0, 0.25, 3 } }) do
+		decor({ Name = "SignNeon", Size = Vector3.new(spec[3], spec[4], 0.3), CFrame = signCf * CFrame.new(spec[1], spec[2], -0.1), Color = color, Material = Enum.Material.Neon, Parent = model })
+	end
+	light(board, color, 16, 1.2)
+	-- a flag on the roof that flaps in the wind
+	local pole = cf * CFrame.new(w / 2 - 1, 1 + h + 1.4, d / 2 - 1)
+	decor({ Name = "FlagPole", Size = Vector3.new(0.3, 6, 0.3), CFrame = pole * CFrame.new(0, 3, 0), Color = Color3.fromRGB(200, 200, 206), Parent = model })
+	K.windy(decor({ Name = "Flag", Size = Vector3.new(0.12, 1.6, 2.6), CFrame = pole * CFrame.new(0, 5.1, 1.3), Color = color, Parent = model }))
+	-- a little life out front
+	local extra = math.random(1, 3)
+	local beside = cf * CFrame.new(w / 2 + 1.6, 0, front - 1)
+	if extra == 1 then
+		decor({ Name = "Pot", Size = Vector3.new(1.6, 1.4, 1.6), CFrame = beside * CFrame.new(0, 0.7, 0), Color = Color3.fromRGB(176, 96, 70), Parent = model })
+		for k = 1, 4 do
+			K.windy(decor({ Name = "Leaf", Size = Vector3.new(0.6, 1.8, 0.6), CFrame = beside * CFrame.new(math.cos(k * 1.6) * 0.4, 2.1, math.sin(k * 1.6) * 0.4) * CFrame.Angles(math.cos(k) * 0.4, 0, math.sin(k) * 0.4), Color = Color3.fromRGB(70, 160, 70), Parent = model }))
+		end
+	elseif extra == 2 then
+		K.crate(model, beside * CFrame.new(0, 1.3, 0))
+		K.crate(model, beside * CFrame.new(0.3, 3.9, 0.2) * CFrame.Angles(0, 0.4, 0))
+	else
+		local bench = cf * CFrame.new(-w / 2 - 2, 0, front - 1.2)
+		decor({ Name = "BenchSeat", Size = Vector3.new(0.9, 0.4, 3.6), CFrame = bench * CFrame.new(0, 1.2, 0), Color = Color3.fromRGB(150, 104, 68), Parent = model })
+		decor({ Name = "BenchBack", Size = Vector3.new(0.3, 1.2, 3.6), CFrame = bench * CFrame.new(-0.4, 1.9, 0), Color = Color3.fromRGB(150, 104, 68), Parent = model })
+		for _, z in ipairs({ -1.4, 1.4 }) do
+			decor({ Name = "BenchLeg", Size = Vector3.new(0.9, 1, 0.3), CFrame = bench * CFrame.new(0, 0.5, z), Color = dark, Parent = model })
+		end
+	end
+	reserve(center, math.max(w, d) * 0.75)
 	return cf
 end
 
@@ -502,10 +610,12 @@ local function buildToriiHill(parent, rng)
 	local tiers = { { 44, TOP + 8 }, { 36, TOP + 16 }, { 28, TOP + 24 }, { 20, TOP + 32 }, { 13, topY } }
 	for i, tier in ipairs(tiers) do
 		local r, y = tier[1], tier[2]
-		disk(folder, "Terrace" .. i, Vector3.new(c.X, (TOP + y) / 2, c.Z), r, y - TOP, (i % 2 == 0) and Color3.fromRGB(150, 110, 80) or Color3.fromRGB(128, 94, 70))
-		disk(folder, "TerraceGrass" .. i, Vector3.new(c.X, y + 0.2, c.Z), r + 0.3, 0.4, P.GRASS)
-		local snow = disk(folder, "TerraceSnow" .. i, Vector3.new(c.X, y + 0.45, c.Z), r - 1, 0.1, P.SNOW_CAP)
-		snow.CanCollide = false
+		-- Patch 13: stepped voxel terraces: a dirt body, a studded grass band, snow dusting the middle
+		K.voxelDisk(folder, "Terrace" .. i, c, r, TOP, y - 0.2, (i % 2 == 0) and Color3.fromRGB(150, 110, 80) or Color3.fromRGB(128, 94, 70), 4)
+		for _, strip in ipairs(K.voxelDisk(folder, "TerraceGrass" .. i, c, r, y - 0.2, y + 0.4, P.GRASS, 4)) do
+			CollectionService:AddTag(strip, "TideboundGrass")
+		end
+		K.voxelDisk(folder, "TerraceSnow" .. i, c, math.max(4, r - 6), y + 0.4, y + 0.7, P.SNOW_CAP, 4)
 		if i < #tiers then
 			local nextR = tiers[i + 1][1]
 			for _ = 1, 3 + (5 - i) do
@@ -614,7 +724,7 @@ local function buildFarms(parent, rng)
 	-- crop fields: tilled rows of soil with green (or golden) crops
 	for _, field in ipairs({ { v(-72, -135), 0.15, Color3.fromRGB(90, 190, 70) }, { v(-128, -70), -0.25, Color3.fromRGB(230, 196, 70) }, { v(-60, -102), 0.1, Color3.fromRGB(120, 200, 90) } }) do
 		local cf = CFrame.new(at(field[1], TOP + 0.15)) * CFrame.Angles(0, field[2], 0)
-		decor({ Name = "Field", Size = Vector3.new(26, 0.3, 20), CFrame = cf, Color = SOIL, Parent = folder })
+		decor({ Name = "Field", Size = Vector3.new(26, 0.3, 20), CFrame = cf, Color = SOIL, Parent = folder }).CanQuery = true
 		for row = -4, 4 do
 			decor({ Name = "Furrow", Size = Vector3.new(24, 0.5, 1), CFrame = cf * CFrame.new(0, 0.25, row * 2.2), Color = SOIL:Lerp(Color3.new(0, 0, 0), 0.15), Parent = folder })
 			for col = -5, 5 do
@@ -884,17 +994,20 @@ local function build(root)
 		part({ Name = "SignPost", Size = Vector3.new(0.8, 5, 0.8), CFrame = sign.CFrame * CFrame.new(x, -4, 0.2), Color = WOOD_DARK, Parent = root })
 	end
 
-	-- gentle confetti of blossom petals over the whole town
-	local petals = decor({ Name = "Blossoms", Size = Vector3.new(400, 1, 400), CFrame = CFrame.new(0, 70, 0), Transparency = 1, Parent = root })
-	K.particles(petals, {
-		Color = ColorSequence.new(Color3.fromRGB(255, 200, 220), Color3.fromRGB(255, 240, 246)),
-		Rate = 30,
-		Lifetime = NumberRange.new(12, 16),
-		Speed = NumberRange.new(2, 4),
-		Size = NumberSequence.new(0.3),
+	-- big soft snowflakes drifting over the whole town (the references' winter town)
+	local snow = decor({ Name = "Snowfall", Size = Vector3.new(440, 1, 440), CFrame = CFrame.new(0, 80, 0), Transparency = 1, Parent = root })
+	K.particles(snow, {
+		Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(220, 236, 255)),
+		LightEmission = 0.3,
+		Rate = 140,
+		Lifetime = NumberRange.new(14, 18),
+		Speed = NumberRange.new(3, 5),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(0.5, 0.7), NumberSequenceKeypoint.new(1, 0.4) }),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.9, 0.2), NumberSequenceKeypoint.new(1, 1) }),
 		Rotation = NumberRange.new(0, 360),
-		RotSpeed = NumberRange.new(-80, 80),
+		RotSpeed = NumberRange.new(-60, 60),
 		EmissionDirection = Enum.NormalId.Bottom,
+		SpreadAngle = Vector2.new(15, 15),
 		Drag = 0.4,
 		WindAffectsDrag = true,
 	})

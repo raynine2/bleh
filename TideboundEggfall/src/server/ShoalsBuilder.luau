@@ -20,7 +20,7 @@ local L = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild("Isle
 
 local ShoalsBuilder = {}
 
-local VERSION = 2
+local VERSION = 3
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -170,33 +170,21 @@ local function islandLand(parent, island, rng)
 	local body = ring == 1 and CLIFF_RING1 or ring == 2 and CLIFF or CLIFF_STORM
 	local beachColor = ring == 3 and BEACH_DARK or BEACH
 	local top = ring == 1 and P.POND_GRASS or ring == 3 and STORM_TOP or V.GRASS_A
-	disk(parent, island.name .. "Shelf", Vector3.new(pos.X, (FLOOR + WATER_Y + 0.7) / 2, pos.Z), r + 6, WATER_Y + 0.7 - FLOOR, beachColor, Enum.Material.Sand)
-	if island.feature == "lagoon" then
-		-- a ring of land around a round lagoon (Puffer Lagoon): segments, so the middle is open water
-		local inner = r * 0.45
-		local segments = 22
-		local length = r - inner
-		local mid = (r + inner) / 2
-		local shelf = parent:FindFirstChild(island.name .. "Shelf")
-		if shelf then
-			shelf:Destroy()
-		end
-		for i = 1, segments do
-			local a = i / segments * math.pi * 2
-			local c = pos + Vector3.new(math.cos(a) * mid, 0, math.sin(a) * mid)
-			local w = r * 2 * math.pi / segments + 2
-			local look = CFrame.lookAt(at(c, 0), at(pos, 0))
-			part({ Name = "LagoonRing", Size = Vector3.new(w + 3, TOP - 0.5 - FLOOR, length + 1), CFrame = look + Vector3.new(0, (TOP - 0.5 + FLOOR) / 2, 0), Color = body, Parent = parent })
-			part({ Name = "LagoonBeach", Size = Vector3.new(w + 4, WATER_Y + 0.7 - FLOOR, length + 10), CFrame = look + Vector3.new(0, (WATER_Y + 0.7 + FLOOR) / 2, 0), Color = beachColor, Material = Enum.Material.Sand, Parent = parent })
-			part({ Name = "LagoonGrass", Size = Vector3.new(w, 0.6, length), CFrame = look + Vector3.new(0, TOP - 0.3, 0), Color = top, Parent = parent })
-		end
-		return
-	end
-	disk(parent, island.name, Vector3.new(pos.X, (FLOOR + TOP - 0.5) / 2, pos.Z), r, TOP - 0.5 - FLOOR, body)
-	if ring == 2 then
+	-- Patch 13: stepped voxel land with studs on top: the sand shelf, the cliff body, then the top (grass the
+	-- foliage grows on in the Shallows and the Coral Maze's checkered tiles, dark slate on the Outer Reef).
+	-- Puffer Lagoon is a ring round open water.
+	local inner = island.feature == "lagoon" and r * 0.45 or nil
+	K.voxelDisk(parent, island.name .. "Shelf", pos, r + 6, FLOOR, WATER_Y + 0.7, beachColor, 4, inner and inner - 4 or nil)
+	if ring == 2 and not inner then
+		K.voxelDisk(parent, island.name, pos, r, FLOOR, TOP - 0.5, body, 4)
 		D.checkerDisk(parent, pos, r - 0.5, 6, TOP - 0.5)
 	else
-		disk(parent, island.name .. "Top", Vector3.new(pos.X, TOP - 0.25, pos.Z), r, 0.5, top, ring == 3 and Enum.Material.Slate or Enum.Material.Grass)
+		K.voxelDisk(parent, island.name, pos, r, FLOOR, TOP - 0.6, body, 4, inner)
+		for _, strip in ipairs(K.voxelDisk(parent, island.name .. "Top", pos, r, TOP - 0.6, TOP, top, 4, inner)) do
+			if ring ~= 3 then
+				CollectionService:AddTag(strip, "TideboundGrass")
+			end
+		end
 	end
 	-- shore rocks around the rim
 	for _ = 1, math.floor(r / 3) do
@@ -252,7 +240,7 @@ local function decorate(parent, island, rng)
 			local base = at(p, TOP)
 			if ring == 1 then
 				if rng:NextNumber() < 0.6 then
-					K.canopyTree(parent, base, rng)
+					K.voxelTree(parent, base, rng, 1.25)
 				else
 					K.voxelTree(parent, base, rng, 1.1)
 				end
@@ -862,7 +850,7 @@ function FEATURES.twin(parent, island, rng)
 	for _ = 1, 2 do
 		local p = landPoint(island, rng, 6, 6)
 		if p then
-			K.canopyTree(parent, at(p, TOP), rng)
+			K.voxelTree(parent, at(p, TOP), rng, 1.3)
 			reserve(p, 4)
 		end
 	end

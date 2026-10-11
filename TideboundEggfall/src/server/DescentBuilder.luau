@@ -17,7 +17,7 @@ local Config = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild(
 
 local DescentBuilder = {}
 
-local VERSION = 2
+local VERSION = 3
 
 local K = WorldBuilder.kit
 local P = K.color
@@ -98,7 +98,9 @@ local function checkerDisk(parent, center, radius, tile, y)
 		for iz = -n, n do
 			local x, z = ix * tile, iz * tile
 			if x * x + z * z <= (radius - tile * 0.5) ^ 2 then
-				part({ Name = "GrassTile", Size = Vector3.new(tile, 0.5, tile), CFrame = CFrame.new(center.X + x, y + 0.25, center.Z + z), Color = ((ix + iz) % 2 == 0) and GRASS_A or GRASS_B, Parent = parent })
+				-- Patch 13: studded, and tagged so TideboundFoliage grows voxel grass on it
+				local tileP = studded({ Name = "GrassTile", Size = Vector3.new(tile, 0.5, tile), CFrame = CFrame.new(center.X + x, y + 0.25, center.Z + z), Color = ((ix + iz) % 2 == 0) and GRASS_A or GRASS_B, Parent = parent })
+				CollectionService:AddTag(tileP, "TideboundGrass")
 			end
 		end
 	end

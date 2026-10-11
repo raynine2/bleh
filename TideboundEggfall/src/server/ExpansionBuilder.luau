@@ -13,7 +13,7 @@ local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("Tidebo
 
 local ExpansionBuilder = {}
 
-local VERSION = 4
+local VERSION = 5
 
 local K = WorldBuilder.kit
 local P = K.color
@@ -154,7 +154,8 @@ local function buildHarbor(root)
 	for i = 0, segments - 1 do
 		local angle = i * 360 / segments
 		local mid = onRing(angle, lagoonR + length / 2)
-		part({ Name = "HarborGround", Size = Vector3.new(groundR * 2 * math.pi / segments + 2, 8, length), CFrame = facing(mid - Vector3.new(0, 4, 0), HUB - Vector3.new(0, 4, 0)), Color = P.SNOW_GROUND, Parent = harbor })
+		local ground = part({ Name = "HarborGround", Size = Vector3.new(groundR * 2 * math.pi / segments + 2, 8, length), CFrame = facing(mid - Vector3.new(0, 4, 0), HUB - Vector3.new(0, 4, 0)), Color = P.SNOW_GROUND, Material = Enum.Material.Plastic, Parent = harbor })
+		ground.TopSurface = Enum.SurfaceType.Studs -- Patch 13: studded snow, like the references
 	end
 	workspace.Terrain:FillCylinder(CFrame.new(HARBOR.X, TOP - 4.5, HARBOR.Z), 9, lagoonR + 2, Enum.Material.Water)
 	disk(harbor, "LagoonFloor", Vector3.new(HARBOR.X, 0.25, HARBOR.Z), lagoonR + 3, 0.5, Color3.fromRGB(196, 220, 170), Enum.Material.Sand)
@@ -355,7 +356,7 @@ local function buildPlot(root, index, origin)
 		return origin * CFrame.new(v.X, v.Y, v.Z)
 	end
 
-	part({ Name = "PlotGround", Size = Vector3.new(PlotLayout.SIZE, 8, PlotLayout.SIZE), CFrame = origin * CFrame.new(0, -4, 0), Color = P.SNOW_GROUND, Parent = plot })
+	part({ Name = "PlotGround", Size = Vector3.new(PlotLayout.SIZE, 8, PlotLayout.SIZE), CFrame = origin * CFrame.new(0, -4, 0), Color = P.SNOW_GROUND, Material = Enum.Material.Plastic, TopSurface = Enum.SurfaceType.Studs, Parent = plot })
 
 	-- low REF 1 terraces around the sides and back, leaving the front open to the hub
 	for _, edge in ipairs({ { -1, 0 }, { 1, 0 }, { 0, 1 } }) do
