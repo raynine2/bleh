@@ -63,6 +63,17 @@ function CreatureModels.build(tierIndex, mutationId, cframe, scale)
 		e.SpreadAngle = Vector2.new(180, 180)
 		e.Parent = body
 	end
+	-- only the body is anchored; everything else is welded to it so moving the body moves the creature
+	for _, p in ipairs(model:GetChildren()) do
+		if p ~= body and p:IsA("BasePart") then
+			p.Anchored = false
+			p.Massless = true
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = body
+			weld.Part1 = p
+			weld.Parent = p
+		end
+	end
 	model.PrimaryPart = body
 	model:SetAttribute("Tier", tierIndex)
 	model:SetAttribute("Mutation", mutationId or "None")

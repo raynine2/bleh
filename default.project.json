@@ -1,10 +1,12 @@
 {
   "name": "TideboundEggfall",
+  "servePort": 34872,
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
       "Tidebound": {
-        "$path": "TideboundEggfall/src/shared"
+        "$path": "TideboundEggfall/src/shared",
+        "$ignoreUnknownInstances": true
       }
     },
     "ServerScriptService": {
@@ -14,7 +16,8 @@
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "$path": "TideboundEggfall/src/client"
+        "$path": "TideboundEggfall/src/client",
+        "$ignoreUnknownInstances": true
       }
     }
   }
