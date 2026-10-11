@@ -11,8 +11,8 @@
 --   CrimsonCrow  CRIMSON ILLUSION  a crimson spiral eye opens; a storm of crows; everything nearby is frozen
 --   Jackpot      JACKPOT RUSH      the reels spin; on a jackpot you're healed and untouchable for a while
 --   ThiefTome    STOLEN PAGE       the book flips to a stolen page and casts another rod's ability
---   SunRubber    SUN GOD BOUNCE    drums, laughter, white steam, then a giant bouncing fist
---   Boundless    BOUNDLESS VOID    the world falls into an endless void; it collapses into a violet blast
+--   SunRubber    SUN GOD BOUNCE    drums, cartoon clouds and white flames, then a giant stretching rubber fist
+--   Boundless    BOUNDLESS VOID    a dome of endless void; red and blue merge into a violet core that's fired
 -- Each: when it lands (`impact`, seconds after the start), where (`forward` studs ahead, `radius`), what it does
 -- (`damage`, `stun` seconds, `knock`, `pull`), the cooldown, colours, and a pose in TideboundMotion's keys. The
 -- server applies the hit (Mobs.area); TideboundSkills plays the cinematic and the effects; Motion poses you.
@@ -215,37 +215,45 @@ RodSkills.list = {
 		name = "SUN GOD BOUNCE",
 		sub = "Sun Rubber Rod",
 		cooldown = 14,
-		cut = 1.4,
-		impact = 1.65,
-		length = 2.4,
+		cut = 1.6,
+		impact = 1.95,
+		length = 2.8,
 		forward = 11,
 		radius = 13,
 		damage = 4,
 		knock = 30,
-		colors = { Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 220, 110) },
+		colors = { Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 214, 90) },
 		pose = function(u, t)
-			-- laughing and bouncing to the drums, arms wide; then the giant punch
-			local beat = math.abs(math.sin(t * 7))
-			local p = mix(stance(), { rootUp = -0.4 + 0.5 * beat, waistX = 0.45, neckX = -0.45, shRX = 1.8, shRZ = 1.3, elRX = 0.6, shLX = 1.8, shLZ = -1.3, elLX = 0.6, kneeRX = -0.9 * beat, kneeLX = -0.9 * beat }, 1)
-			return mix(p, { rootUp = -0.5, rootX = -0.25, waistX = -0.3, neckX = 0.3, waistY = 0.5, shRX = 1.6, shRZ = 0, elRX = 0, shLX = -0.5, shLZ = -0.4, elLX = 0.6, hipLX = 0.9, kneeLX = -1.0, hipRX = -0.3, kneeRX = -0.3 }, smooth((u - 1.5) / 0.1))
+			-- laughing and bouncing to the drums, arms wide
+			local beat = math.abs(math.sin(u * math.pi / 0.3))
+			local p = mix(stance(), { rootUp = -0.5 + 0.7 * beat, waistX = 0.5, neckX = -0.5, shRX = 1.9, shRZ = 1.35, elRX = 0.5, shLX = 1.9, shLZ = -1.35, elLX = 0.5, kneeRX = -1.0 * (1 - beat), kneeLX = -1.0 * (1 - beat), hipRX = 0.5 * (1 - beat), hipLX = 0.5 * (1 - beat) }, 1)
+			-- the wind-up: the right arm flung far back, leaning away
+			mix(p, { rootUp = -0.3, rootX = 0.2, waistY = -0.9, waistX = 0.3, neckX = -0.1, shRX = -1.2, shRZ = 0.6, elRX = 0, shLX = 1.4, shLZ = -0.3, elLX = 0.4, hipRX = -0.2, kneeRX = -0.3, hipLX = 0.7, kneeLX = -0.8 }, smooth((u - 1.3) / 0.15))
+			-- the punch: everything thrown forward
+			return mix(p, { rootUp = -0.6, rootX = -0.3, waistY = 0.7, waistX = -0.35, neckX = 0.35, shRX = 1.6, shRZ = 0, elRX = 0, shLX = -0.6, shLZ = -0.4, elLX = 0.6, hipLX = 1.0, kneeLX = -1.1, hipRX = -0.4, kneeRX = -0.3 }, smooth((u - 1.75) / 0.08))
 		end,
 	},
 	Boundless = {
 		name = "BOUNDLESS VOID",
 		sub = "Boundless Rod",
 		cooldown = 25,
-		cut = 1.8,
-		impact = 2.05,
-		length = 3.0,
-		forward = 0,
-		radius = 30,
+		cut = 2.2,
+		impact = 2.5,
+		length = 3.4,
+		forward = 10,
+		radius = 26,
 		damage = 6,
 		stun = 4,
 		colors = { Color3.fromRGB(110, 190, 255), Color3.fromRGB(190, 110, 255) },
 		pose = function(u)
-			-- one hand up before the face, two fingers crossed; calm. Then the hand opens to the void.
+			-- 1: one hand up before the face, two fingers crossed, calm
 			local p = mix(stance(), { shRX = 1.9, shRZ = -0.4, elRX = 2.0, shLX = 0.05, shLZ = -0.1, elLX = 0.2, neckX = 0.05, rootUp = -0.1, hipRX = 0.1, kneeRX = -0.2 }, 1)
-			return mix(p, { shRX = 1.7, shRZ = 0.8, elRX = 0.3, shLX = 1.0, shLZ = -0.8, elLX = 0.3, waistX = 0.15, neckX = -0.1 }, smooth((u - 1.95) / 0.15))
+			-- 2: both arms open out to the sides (red in one hand, blue in the other)
+			mix(p, { shRX = 1.5, shRZ = 1.25, elRX = 0.2, shLX = 1.5, shLZ = -1.25, elLX = 0.2, waistX = 0.15, neckX = -0.1 }, smooth((u - 1.2) / 0.2))
+			-- 3: hands brought together in front, the two meeting
+			mix(p, { shRX = 1.55, shRZ = -0.35, elRX = 0.6, shLX = 1.55, shLZ = 0.35, elLX = 0.6, waistX = -0.1, neckX = 0.15 }, smooth((u - 1.75) / 0.25))
+			-- 4: one hand thrust forward to fire it
+			return mix(p, { rootX = -0.15, waistY = 0.45, waistX = -0.25, shRX = 1.6, shRZ = 0, elRX = 0, shLX = 0.3, shLZ = -0.5, elLX = 0.7, hipLX = 0.7, kneeLX = -0.8 }, smooth((u - 2.25) / 0.08))
 		end,
 	},
 }

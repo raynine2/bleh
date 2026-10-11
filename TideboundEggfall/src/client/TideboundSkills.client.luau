@@ -4,6 +4,8 @@
 -- cinematic first (the camera takes over, letterbox bars, a colour grade, the ability's name across the bottom
 -- and its own screen art: the crimson eye, the reels, the void, the black hole), and a pill showing the cooldown.
 -- Effects stay clean: a few big readable shapes, smooth tweens, light and particles used sparingly.
+-- Patch 22: Boundless Void and Sun God Bounce remade entirely in the world (no flat screen art): orbs, rings,
+-- trails, particles and moving parts, each with its own camera path.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -486,131 +488,583 @@ FX.Jackpot = { -- coins burst out; on a jackpot, a gold rain and a golden aura f
 	end,
 }
 
-FX.SunRubber = { -- white steam and drum beats, then a giant bouncing fist
+-- Patch 22: shared pieces for the remade ultimates ----------------------------------------------------------------
+
+-- a ring of glowing segments; place(cf, radius, spin) puts it flat in cf's XZ plane
+function K.ringParts(count, color, thickness, transparency)
+	local ring = { parts = {}, thickness = thickness }
+	for i = 1, count do
+		ring.parts[i] = K.part(nil, Vector3.new(0.5, thickness, thickness), CFrame.new(), color, nil, transparency or 0)
+	end
+	function ring.place(cf, radius, spin)
+		local n = #ring.parts
+		local arc = TAU * radius / n
+		for i, p in ipairs(ring.parts) do
+			local a = i / n * TAU + (spin or 0)
+			p.Size = Vector3.new(math.max(arc * 1.08, 0.05), ring.thickness, ring.thickness)
+			p.CFrame = cf * CFrame.Angles(0, a, 0) * CFrame.new(0, 0, -radius)
+		end
+	end
+	return ring
+end
+
+function K.trail(part, colors, lifetime, width)
+	local a0 = Instance.new("Attachment")
+	a0.Position = Vector3.new(0, width or 0.4, 0)
+	a0.Parent = part
+	local a1 = Instance.new("Attachment")
+	a1.Position = Vector3.new(0, -(width or 0.4), 0)
+	a1.Parent = part
+	local trail = Instance.new("Trail")
+	trail.Attachment0, trail.Attachment1 = a0, a1
+	trail.Lifetime = lifetime or 0.3
+	trail.LightEmission = 1
+	trail.FaceCamera = true
+	trail.Color = ColorSequence.new(colors[1], colors[2] or colors[1])
+	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.05), NumberSequenceKeypoint.new(1, 1) })
+	trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
+	trail.Parent = part
+	return trail
+end
+
+function K.light(part, color, range, brightness)
+	local l = Instance.new("PointLight")
+	l.Color = color
+	l.Range = range or 12
+	l.Brightness = brightness or 2
+	l.Parent = part
+	return l
+end
+
+function K.emitter(parent, props)
+	local e = Instance.new("ParticleEmitter")
+	for key, value in pairs(props) do
+		e[key] = value
+	end
+	e.Parent = parent
+	return e
+end
+
+-- a point on the curve from a to c bending toward b
+function K.bezier(a, b, c, s)
+	local ab, bc = a:Lerp(b, s), b:Lerp(c, s)
+	return ab:Lerp(bc, s)
+end
+
+-- a camera path from keyframes { time, from (root space), look-at (root space), fov }, eased between them
+function K.keyCam(root, u, keys)
+	local cf = root.CFrame
+	local k1, k2 = keys[1], keys[#keys]
+	for i = 1, #keys - 1 do
+		if u >= keys[i][1] and u <= keys[i + 1][1] then
+			k1, k2 = keys[i], keys[i + 1]
+			break
+		end
+	end
+	local span = math.max(k2[1] - k1[1], 0.001)
+	local s = math.clamp((u - k1[1]) / span, 0, 1)
+	s = s * s * (3 - 2 * s)
+	local from = (cf * CFrame.new(k1[2]:Lerp(k2[2], s))).Position
+	local at = (cf * CFrame.new(k1[3]:Lerp(k2[3], s))).Position
+	return CFrame.lookAt(from, at), k1[4] + (k2[4] - k1[4]) * s
+end
+
+local function limb(character, names)
+	for _, name in ipairs(names) do
+		local p = character:FindFirstChild(name)
+		if p then
+			return p
+		end
+	end
+	return nil
+end
+
+FX.SunRubber = { -- the drums of liberation: clouds, white flames and a sun; then a giant stretching rubber fist
 	start = function(e)
 		local d = e.data
+		local head = e.character:FindFirstChild("Head")
 		local torso = e.character:FindFirstChild("UpperTorso") or e.root
-		local steam = Instance.new("ParticleEmitter")
-		steam.Texture = SMOKE
-		steam.Color = ColorSequence.new(WHITE)
-		steam.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.5), NumberSequenceKeypoint.new(1, 3.5) })
-		steam.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1) })
-		steam.Lifetime = NumberRange.new(0.7, 1.2)
-		steam.Speed = NumberRange.new(2, 4)
-		steam.SpreadAngle = Vector2.new(180, 180)
-		steam.Rate = 30
-		steam.Parent = torso
-		table.insert(e.cleanup, steam)
+		-- a white glow over the whole body that pulses with each beat
 		d.glow = Instance.new("Highlight")
 		d.glow.FillColor = WHITE
-		d.glow.FillTransparency = 0.6
-		d.glow.OutlineColor = Color3.fromRGB(255, 240, 180)
+		d.glow.FillTransparency = 0.7
+		d.glow.OutlineColor = Color3.fromRGB(255, 244, 200)
+		d.glow.OutlineTransparency = 0.1
 		d.glow.Adornee = e.character
 		d.glow.Parent = folder
 		table.insert(e.cleanup, d.glow)
+		-- white flames licking up off the head
+		if head then
+			table.insert(e.cleanup, K.emitter(head, {
+				Texture = "rbxasset://textures/particles/fire_main.dds",
+				Color = ColorSequence.new(WHITE, Color3.fromRGB(255, 240, 190)),
+				LightEmission = 0.7,
+				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.1), NumberSequenceKeypoint.new(1, 0) }),
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) }),
+				Lifetime = NumberRange.new(0.4, 0.7),
+				Speed = NumberRange.new(2, 4),
+				Acceleration = Vector3.new(0, 8, 0),
+				SpreadAngle = Vector2.new(25, 25),
+				Rate = 45,
+				EmissionDirection = Enum.NormalId.Top,
+			}))
+		end
+		-- soft white steam rising off the body
+		table.insert(e.cleanup, K.emitter(torso, {
+			Texture = SMOKE,
+			Color = ColorSequence.new(WHITE),
+			Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.2), NumberSequenceKeypoint.new(1, 3) }),
+			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) }),
+			Lifetime = NumberRange.new(0.8, 1.3),
+			Speed = NumberRange.new(1, 2.5),
+			Acceleration = Vector3.new(0, 3, 0),
+			SpreadAngle = Vector2.new(180, 180),
+			Rate = 18,
+		}))
+		-- cartoon clouds that circle you
+		d.clouds = {}
+		for i = 1, 7 do
+			local cluster = {}
+			for k = 1, 3 do
+				local puff = K.part(Enum.PartType.Ball, Vector3.one * (1.3 + k * 0.35), CFrame.new(e.root.Position), WHITE, Enum.Material.SmoothPlastic, 0.05)
+				table.insert(cluster, { part = puff, offset = Vector3.new((k - 2) * 0.9, (k == 2) and 0.35 or 0, 0) })
+				table.insert(e.cleanup, puff)
+			end
+			d.clouds[i] = cluster
+		end
+		-- a golden sun turning behind you
+		d.sun = K.part(Enum.PartType.Cylinder, Vector3.new(0.3, 0.2, 0.2), CFrame.new(e.root.Position), Color3.fromRGB(255, 214, 90), nil, 0.1)
+		K.light(d.sun, Color3.fromRGB(255, 220, 120), 16, 2)
+		table.insert(e.cleanup, d.sun)
+		d.rays = {}
+		for i = 1, 12 do
+			local ray = K.part(nil, Vector3.new(0.35, 0.1, 0.1), CFrame.new(e.root.Position), (i % 2 == 0) and Color3.fromRGB(255, 240, 170) or Color3.fromRGB(255, 200, 70), nil, 0.15)
+			d.rays[i] = ray
+			table.insert(e.cleanup, ray)
+		end
 	end,
 	step = function(e, u, skill)
 		local d = e.data
+		local cf = e.root.CFrame
+		-- 1. the drums: a beat every 0.3 s, each one a ring and a pulse of light
 		d.beats = d.beats or 0
-		local due = math.min(3, math.floor(u / 0.35))
+		local due = u < 1.3 and math.min(4, math.floor((u - 0.15) / 0.3) + 1) or d.beats
 		while d.beats < due do
 			d.beats += 1
-			K.ring(K.ground(e.root.Position) + Vector3.new(0, 0.3, 0), WHITE, 6 + d.beats * 2, 0.4, 0.5)
-			Audio.play("SkillDrum", e.root, 0.9 + d.beats * 0.05)
+			local chest = e.root.Position + Vector3.new(0, 0.5, 0)
+			K.ring(chest, WHITE, 8, 0.45, 0.35)
+			K.swell(chest, WHITE, 2, 10, 0.35, 0.7)
+			K.smoke(K.ground(e.root.Position) + Vector3.new(0, 0.3, 0), 5, WHITE, 1.5, 8)
+			d.glow.FillTransparency = 0.25
+			K.tween(d.glow, 0.25, { FillTransparency = 0.7 })
+			Audio.play("SkillDrum", e.root, 0.95 + d.beats * 0.04)
 		end
-		if not d.fist and u > skill.impact - 0.18 then
-			d.fist = {}
-			local hand = e.character:FindFirstChild("RightHand") or e.character:FindFirstChild("Right Arm") or e.root
-			d.hand = hand
-			d.fist.ball = K.part(Enum.PartType.Ball, Vector3.one * 1, CFrame.new(hand.Position), WHITE, Enum.Material.SmoothPlastic, 0)
-			d.fist.arm = K.part(Enum.PartType.Cylinder, Vector3.new(1, 0.8, 0.8), CFrame.new(hand.Position), Color3.fromRGB(250, 248, 240), Enum.Material.SmoothPlastic, 0)
-			table.insert(e.cleanup, d.fist.ball)
-			table.insert(e.cleanup, d.fist.arm)
-			d.fistAt = u
+		-- the clouds circle and rise, then puff away
+		local cloudFade = math.clamp((u - 1.3) / 0.25, 0, 1)
+		for i, cluster in ipairs(d.clouds) do
+			local a = u * 1.7 + i * TAU / #d.clouds
+			local center = e.root.Position + Vector3.new(math.cos(a) * 4.6, -0.5 + math.sin(u * 2 + i) * 0.8 + u * 0.8, math.sin(a) * 4.6)
+			local face = CFrame.lookAt(center, e.root.Position)
+			for _, puff in ipairs(cluster) do
+				puff.part.CFrame = face * CFrame.new(puff.offset)
+				puff.part.Transparency = 0.05 + 0.95 * cloudFade
+			end
 		end
-		if d.fist and not d.landed then
-			local s = math.clamp((u - d.fistAt) / 0.18, 0, 1)
-			local from = d.hand.Position
-			local to = K.target(e, skill.forward) + Vector3.new(0, 3, 0)
-			local pos = from:Lerp(to, s)
-			local size = 1 + 6 * s
-			d.fist.ball.Size = Vector3.one * size
-			d.fist.ball.CFrame = CFrame.new(pos)
-			local len = (pos - from).Magnitude
-			d.fist.arm.Size = Vector3.new(math.max(len, 0.5), 0.8 + 1.5 * s, 0.8 + 1.5 * s)
-			d.fist.arm.CFrame = CFrame.lookAt((from + pos) / 2, pos) * CFrame.Angles(0, math.rad(90), 0)
-			if s >= 1 then
-				d.landed = true
-				local at = K.target(e, skill.forward)
-				for i = 0, 2 do
-					task.delay(i * 0.1, function()
-						K.ring(at + Vector3.new(0, 0.3, 0), i == 1 and skill.colors[2] or WHITE, skill.radius * (0.6 + i * 0.3), 0.45, 0.6)
-					end)
+		-- the sun behind you, rays turning
+		local sunGrow = math.clamp(u / 0.3, 0, 1) * (1 - math.clamp((u - 1.4) / 0.3, 0, 1))
+		local sunCf = cf * CFrame.new(0, 3.2, 2.6)
+		d.sun.Size = Vector3.new(0.3, 4.2 * sunGrow + 0.01, 4.2 * sunGrow + 0.01)
+		d.sun.CFrame = sunCf * CFrame.Angles(0, math.rad(90), 0)
+		for i, ray in ipairs(d.rays) do
+			local a = u * 0.8 + i * TAU / #d.rays
+			ray.Size = Vector3.new(0.35, (1.6 + 0.4 * math.sin(u * 6 + i)) * sunGrow + 0.01, 0.1)
+			ray.CFrame = sunCf * CFrame.Angles(0, 0, a) * CFrame.new(0, (2.1 + 0.9) * sunGrow, 0.05)
+		end
+		-- 2. the arm: a rubbery tube from your shoulder to a fist, flung back, then whipped forward
+		local shoulderPart = limb(e.character, { "RightUpperArm", "Right Arm" })
+		local shoulder = shoulderPart and shoulderPart.Position or (cf * CFrame.new(1.2, 1.5, 0)).Position
+		if not d.arm and u > 1.28 then
+			d.arm = {}
+			for i = 1, 16 do
+				local ball = K.part(Enum.PartType.Ball, Vector3.one * 1.05, CFrame.new(shoulder), Color3.fromRGB(252, 250, 244), Enum.Material.SmoothPlastic, 0)
+				d.arm[i] = ball
+				table.insert(e.cleanup, ball)
+			end
+			d.fist = {
+				palm = K.part(Enum.PartType.Ball, Vector3.one, CFrame.new(shoulder), Color3.fromRGB(255, 255, 250), Enum.Material.SmoothPlastic, 0),
+				knuckles = {},
+				thumb = K.part(Enum.PartType.Ball, Vector3.one, CFrame.new(shoulder), Color3.fromRGB(248, 246, 238), Enum.Material.SmoothPlastic, 0),
+			}
+			for k = 1, 4 do
+				d.fist.knuckles[k] = K.part(Enum.PartType.Ball, Vector3.one, CFrame.new(shoulder), Color3.fromRGB(250, 248, 240), Enum.Material.SmoothPlastic, 0)
+				table.insert(e.cleanup, d.fist.knuckles[k])
+			end
+			table.insert(e.cleanup, d.fist.palm)
+			table.insert(e.cleanup, d.fist.thumb)
+			K.trail(d.fist.palm, { WHITE, skill.colors[2] }, 0.25, 1.2)
+		end
+		if d.arm then
+			local target = K.target(e, skill.forward) + Vector3.new(0, 3, 0)
+			local back = (cf * CFrame.new(1.8, 3.2, 10)).Position
+			local fistPos, fistSize, mid
+			if u < 1.75 then
+				local s = math.clamp((u - 1.3) / 0.45, 0, 1)
+				fistPos = shoulder:Lerp(back, 1 - (1 - s) ^ 2)
+				fistSize = 1.4 + 0.6 * s
+				mid = (cf * CFrame.new(2.8, 4.5, 2 + 3 * s)).Position
+			elseif u < skill.impact then
+				local s = math.clamp((u - 1.75) / (skill.impact - 1.75), 0, 1)
+				local e2 = s * s
+				local over = (cf * CFrame.new(3, 9, -skill.forward * 0.4)).Position
+				fistPos = K.bezier(back, over, target, e2)
+				fistSize = 2 + 5 * e2
+				mid = (cf * CFrame.new(2.5, 6, -skill.forward * 0.2)).Position
+				if rng:NextNumber() < 0.8 then
+					local dir = (target - back).Unit
+					local streak = K.part(nil, Vector3.new(0.12, 0.12, rng:NextNumber(3, 6)), CFrame.lookAt(fistPos + Vector3.new(rng:NextNumber(-2, 2), rng:NextNumber(-2, 2), rng:NextNumber(-2, 2)), fistPos + dir), WHITE, nil, 0.3)
+					K.fade(streak, 0.2, 0, 1.3)
 				end
-				K.smoke(at + Vector3.new(0, 0.5, 0), 18, WHITE, 3, 14)
-				K.word(at + Vector3.new(0, 6, 0), "BOING!!", { Color3.fromRGB(255, 255, 255), skill.colors[2] }, 1.4)
-				Audio.play("SkillCrash", e.root, 0.7)
-				Audio.play("SkillDrum", e.root, 0.6)
-				if e.isMe then
-					FishingFeel.shake(0.35, 0.3)
+			else
+				-- snapping back like rubber, with a wobble
+				local s = math.clamp((u - skill.impact) / 0.5, 0, 1)
+				local ease = 1 - (1 - s) ^ 3 + math.sin(s * math.pi * 3) * 0.12 * (1 - s)
+				fistPos = target:Lerp(shoulder, ease)
+				fistSize = 7 - 6 * s
+				mid = (cf * CFrame.new(2.6, 5 * (1 - s) + 1.5, -skill.forward * 0.3 * (1 - s))).Position
+				if s >= 1 and not d.gone then
+					d.gone = true
+					K.smoke(shoulder, 6, WHITE, 1.2, 5)
+					for _, ball in ipairs(d.arm) do
+						ball.Transparency = 1
+					end
+					for _, p in ipairs({ d.fist.palm, d.fist.thumb, table.unpack(d.fist.knuckles) }) do
+						p.Transparency = 1
+					end
 				end
-				-- the fist bounces back like rubber
-				K.tween(d.fist.ball, 0.25, { Size = Vector3.one * 0.5, CFrame = CFrame.new(from), Transparency = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0.12)
-				K.tween(d.fist.arm, 0.25, { Size = Vector3.new(0.3, 0.3, 0.3), CFrame = CFrame.new(from), Transparency = 1 }, Enum.EasingStyle.Back, Enum.EasingDirection.In, 0.12)
+			end
+			-- the tube follows the curve from the shoulder to the fist, thickening toward the fist
+			for i, ball in ipairs(d.arm) do
+				local s = i / (#d.arm + 1)
+				ball.CFrame = CFrame.new(K.bezier(shoulder, mid, fistPos, s))
+				ball.Size = Vector3.one * (0.9 + 0.5 * s + fistSize * 0.06)
+			end
+			-- the fist: a palm, four knuckles across the front, a thumb
+			local facing = CFrame.lookAt(fistPos, fistPos + (fistPos - mid).Unit)
+			d.fist.palm.Size = Vector3.one * fistSize
+			d.fist.palm.CFrame = facing
+			for k, knuckle in ipairs(d.fist.knuckles) do
+				knuckle.Size = Vector3.one * fistSize * 0.42
+				knuckle.CFrame = facing * CFrame.new((k - 2.5) * fistSize * 0.22, fistSize * 0.18, -fistSize * 0.42)
+			end
+			d.fist.thumb.Size = Vector3.new(fistSize * 0.3, fistSize * 0.3, fistSize * 0.5)
+			d.fist.thumb.CFrame = facing * CFrame.new(-fistSize * 0.45, -fistSize * 0.1, -fistSize * 0.2)
+		end
+		-- 3. the slam: a starburst, a dome of light, and rings that bounce like rubber
+		if not d.landed and u > skill.impact then
+			d.landed = true
+			local at = K.target(e, skill.forward)
+			Fx.burst(at + Vector3.new(0, 1, 0), { WHITE, skill.colors[2], Color3.fromRGB(255, 250, 220) }, 12, 16)
+			K.swell(at + Vector3.new(0, 1, 0), WHITE, 3, 18, 0.45, 0.35)
+			for i = 0, 2 do
+				local ring = K.part(Enum.PartType.Cylinder, Vector3.new(0.4, 2, 2), CFrame.new(at + Vector3.new(0, 0.3 + i * 0.1, 0)) * CFrame.Angles(0, 0, math.rad(90)), i == 1 and skill.colors[2] or WHITE, nil, 0.15)
+				local size = skill.radius * (1.2 + i * 0.55)
+				K.tween(ring, 0.7, { Size = Vector3.new(0.4, size, size) }, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out, i * 0.06)
+				K.tween(ring, 0.35, { Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0.55 + i * 0.06)
+				Debris:AddItem(ring, 1.1)
+			end
+			K.smoke(at + Vector3.new(0, 0.5, 0), 22, WHITE, 3, 16)
+			Fx.cubes(at + Vector3.new(0, 1, 0), { Color3.fromRGB(235, 240, 250), Color3.fromRGB(190, 196, 214), skill.colors[2] }, { spread = 12, size = 0.8, life = 0.7, count = 22, up = 1, material = Enum.Material.SmoothPlastic })
+			K.sparks(at + Vector3.new(0, 1, 0), 30, skill.colors[2], 26)
+			K.word(at + Vector3.new(0, 7, 0), "BOING!!", { WHITE, skill.colors[2] }, 1.4)
+			Audio.play("SkillCrash", e.root, 0.6)
+			Audio.play("SkillDrum", e.root, 0.55)
+			if e.isMe then
+				FishingFeel.shake(0.4, 0.35)
+				MotionBus.kick = { at = os.clock(), amount = 8, length = 0.4 }
 			end
 		end
 	end,
 }
 
-FX.Boundless = { -- a dome of endless void closes over everyone nearby, then collapses into a violet blast
+FX.Boundless = { -- a dome of endless void; red and blue merge into a violet core that's fired and detonates
+	start = function(e)
+		local d = e.data
+		d.floor = K.ground(e.root.Position).Y
+		-- a sigil of turning rings on the ground
+		d.sigils = { K.ringParts(28, Color3.fromRGB(120, 200, 255), 0.18, 0.1), K.ringParts(36, Color3.fromRGB(200, 230, 255), 0.12, 0.25) }
+		for _, ring in ipairs(d.sigils) do
+			for _, p in ipairs(ring.parts) do
+				table.insert(e.cleanup, p)
+			end
+		end
+		-- wisps of blue light spiralling up around you
+		d.wisps = {}
+		for i = 1, 6 do
+			local w = K.part(Enum.PartType.Ball, Vector3.one * 0.5, CFrame.new(e.root.Position), Color3.fromRGB(150, 210, 255), nil, 0)
+			K.trail(w, { Color3.fromRGB(180, 230, 255), Color3.fromRGB(60, 120, 255) }, 0.35, 0.25)
+			d.wisps[i] = w
+			table.insert(e.cleanup, w)
+		end
+		Audio.play("SkillCast", e.root, 0.5)
+	end,
 	step = function(e, u, skill)
 		local d = e.data
+		local cf = e.root.CFrame
 		local center = e.root.Position
-		if not d.dome and u > 0.45 then
-			d.dome = K.part(Enum.PartType.Ball, Vector3.one * 4, CFrame.new(center), Color3.fromRGB(30, 60, 160), Enum.Material.ForceField, 0)
-			K.tween(d.dome, 0.5, { Size = Vector3.one * skill.radius * 2 }, Enum.EasingStyle.Quart)
-			table.insert(e.cleanup, d.dome)
-			d.inner = K.part(Enum.PartType.Ball, Vector3.one * 3, CFrame.new(center), Color3.fromRGB(10, 14, 40), Enum.Material.Glass, 0.55)
-			K.tween(d.inner, 0.5, { Size = Vector3.one * skill.radius * 1.9 }, Enum.EasingStyle.Quart)
-			table.insert(e.cleanup, d.inner)
-			K.ring(K.ground(center) + Vector3.new(0, 0.2, 0), skill.colors[1], skill.radius, 0.6, 0.6)
-			Audio.play("SkillCast", e.root, 0.5)
+		local floorCf = CFrame.new(center.X, d.floor + 0.15, center.Z)
+		local R = skill.radius
+		-- 1. the sigil and the wisps (fading as the dome rises)
+		local sig = math.clamp(u / 0.35, 0, 1) * (1 - math.clamp((u - 1.4) / 0.3, 0, 1))
+		d.sigils[1].place(floorCf, 4.2 * sig + 0.01, u * 1.5)
+		d.sigils[2].place(floorCf, 6.4 * sig + 0.01, -u * 1.1)
+		for k, ring in ipairs(d.sigils) do
+			for _, p in ipairs(ring.parts) do
+				p.Transparency = sig < 0.03 and 1 or (k == 1 and 0.1 or 0.25)
+			end
 		end
-		if d.dome and u < skill.impact and rng:NextNumber() < 0.5 then
-			-- specks of starlight drifting inside the void
-			local a, b = rng:NextNumber(0, TAU), rng:NextNumber(-0.2, 1)
-			local p = center + Vector3.new(math.cos(a) * math.cos(b), math.sin(b), math.sin(a) * math.cos(b)) * rng:NextNumber(4, skill.radius * 0.9)
-			local speck = K.part(Enum.PartType.Ball, Vector3.one * rng:NextNumber(0.2, 0.5), CFrame.new(p), (rng:NextNumber() < 0.7) and WHITE or skill.colors[1], nil, 0)
-			K.fade(speck, 0.8, 0)
+		for i, w in ipairs(d.wisps) do
+			local a = u * 5 + i * TAU / #d.wisps
+			local h = ((u * 0.8 + i / #d.wisps) % 1) * 5 - 2.5
+			w.CFrame = CFrame.new(center + Vector3.new(math.cos(a) * 2.6, h, math.sin(a) * 2.6))
+			w.Transparency = math.clamp((u - 0.9) / 0.3, 0, 1)
 		end
-		if d.dome and not d.collapsed and u > skill.impact - 0.25 then
-			d.collapsed = true
-			K.tween(d.dome, 0.25, { Size = Vector3.one * 2, Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-			K.tween(d.inner, 0.25, { Size = Vector3.one * 2, Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		-- 2. the void: a shimmering dome closes over everything, full of drifting stars and racing light
+		if not d.dome and u > 0.85 then
+			d.dome = K.part(Enum.PartType.Ball, Vector3.one * 2, CFrame.new(center), Color3.fromRGB(80, 140, 255), Enum.Material.ForceField, 0)
+			d.inner = K.part(Enum.PartType.Ball, Vector3.one * 2, CFrame.new(center), Color3.fromRGB(8, 12, 36), Enum.Material.Glass, 0.45)
+			K.tween(d.dome, 0.6, { Size = Vector3.one * R * 2 }, Enum.EasingStyle.Quart)
+			K.tween(d.inner, 0.6, { Size = Vector3.one * R * 1.96 }, Enum.EasingStyle.Quart)
+			d.stars = K.part(Enum.PartType.Ball, Vector3.one * R * 1.8, CFrame.new(center), WHITE, nil, 1)
+			K.emitter(d.stars, {
+				Shape = Enum.ParticleEmitterShape.Sphere,
+				ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume,
+				Color = ColorSequence.new(WHITE, Color3.fromRGB(170, 210, 255)),
+				LightEmission = 1,
+				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.3, 0.25), NumberSequenceKeypoint.new(1, 0) }),
+				Lifetime = NumberRange.new(1, 1.8),
+				Speed = NumberRange.new(0, 0.5),
+				Rate = 260,
+			})
+			d.streaks = K.part(nil, Vector3.new(R * 1.6, R * 0.8, R * 1.6), CFrame.new(center + Vector3.new(0, R * 0.2, 0)), WHITE, nil, 1)
+			K.emitter(d.streaks, {
+				Shape = Enum.ParticleEmitterShape.Box,
+				ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume,
+				EmissionDirection = Enum.NormalId.Right,
+				Orientation = Enum.ParticleOrientation.VelocityParallel,
+				Color = ColorSequence.new(WHITE, Color3.fromRGB(150, 200, 255)),
+				LightEmission = 1,
+				Size = NumberSequence.new(0.12),
+				Squash = NumberSequence.new(4),
+				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.2), NumberSequenceKeypoint.new(1, 1) }),
+				Lifetime = NumberRange.new(0.4, 0.7),
+				Speed = NumberRange.new(60, 100),
+				SpreadAngle = Vector2.new(0, 4),
+				Rate = 70,
+			})
+			d.orbits = { K.ringParts(48, Color3.fromRGB(140, 200, 255), 0.25, 0.2), K.ringParts(48, Color3.fromRGB(200, 160, 255), 0.18, 0.3), K.ringParts(48, WHITE, 0.12, 0.4) }
+			for _, inst in ipairs({ d.dome, d.inner, d.stars, d.streaks }) do
+				table.insert(e.cleanup, inst)
+			end
+			for _, ring in ipairs(d.orbits) do
+				for _, p in ipairs(ring.parts) do
+					table.insert(e.cleanup, p)
+				end
+			end
+			K.ring(floorCf.Position, skill.colors[1], R, 0.6, 0.6)
+			K.sparks(center, 30, skill.colors[1], 30)
+			Audio.play("SkillZap", e.root, 0.4)
 		end
-		if not d.blast and u > skill.impact then
-			d.blast = true
-			local at = center + Vector3.new(0, 2, 0)
-			K.swell(at, Color3.fromRGB(255, 255, 255), 2, 14, 0.35, 0)
-			K.swell(at, skill.colors[2], 3, skill.radius * 1.6, 0.8, 0.25)
-			K.swell(at, Color3.fromRGB(255, 150, 255), 2, skill.radius, 0.6, 0.15)
+		if d.dome and not d.collapsed then
+			local grow = 1 - (1 - math.clamp((u - 0.85) / 0.6, 0, 1)) ^ 3
+			local tilts = { CFrame.Angles(0, 0, 0.35), CFrame.Angles(0.5, 0, -0.25), CFrame.Angles(-0.3, 0, 0.6) }
+			for i, ring in ipairs(d.orbits) do
+				ring.place(CFrame.new(center) * tilts[i], R * (0.94 - i * 0.07) * grow + 0.01, u * (0.6 + i * 0.25) * ((i % 2 == 0) and -1 or 1))
+			end
+			-- inside the void the world goes dark (on your screen, if you're in it)
+			local camera = workspace.CurrentCamera
+			local inside = camera and (camera.CFrame.Position - center).Magnitude < R * grow
+			if inside and not d.grade then
+				d.grade = Instance.new("ColorCorrectionEffect")
+				d.grade.Name = "TideboundVoidGrade"
+				d.grade.Parent = Lighting
+				K.tween(d.grade, 0.35, { Brightness = -0.12, Contrast = 0.2, Saturation = -0.2, TintColor = Color3.fromRGB(190, 210, 255) })
+				table.insert(e.cleanup, d.grade)
+			end
+		end
+		-- 3. red in one hand, blue in the other; they spiral together and merge
+		local leftHand = limb(e.character, { "LeftHand", "Left Arm" })
+		local rightHand = limb(e.character, { "RightHand", "Right Arm" })
+		local front = (cf * CFrame.new(0, 1.6, -3.2)).Position
+		if not d.orbs and u > 1.25 then
+			d.orbs = {}
+			for i, color in ipairs({ Color3.fromRGB(255, 60, 70), Color3.fromRGB(70, 140, 255) }) do
+				local orb = K.part(Enum.PartType.Ball, Vector3.one * 0.3, CFrame.new(center), color, nil, 0)
+				K.tween(orb, 0.3, { Size = Vector3.one * 1.3 }, Enum.EasingStyle.Back)
+				K.light(orb, color, 12, 3)
+				K.trail(orb, { color, WHITE }, 0.25, 0.5)
+				table.insert(e.cleanup, K.emitter(orb, { Color = ColorSequence.new(color, WHITE), LightEmission = 1, Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) }), Lifetime = NumberRange.new(0.25, 0.45), Speed = NumberRange.new(2, 5), SpreadAngle = Vector2.new(180, 180), Rate = 40 }))
+				d.orbs[i] = orb
+				table.insert(e.cleanup, orb)
+			end
+		end
+		if d.orbs and not d.core then
+			for i, orb in ipairs(d.orbs) do
+				local hand = (i == 1) and leftHand or rightHand
+				local handPos = hand and hand.Position or center
+				local a = u * 9 + i * math.pi
+				if u < 1.75 then
+					orb.CFrame = CFrame.new(handPos + Vector3.new(math.cos(a) * 0.4, 0.3 + math.sin(a) * 0.4, 0))
+				else
+					local s = math.clamp((u - 1.75) / 0.4, 0, 1)
+					local r = 1.8 * (1 - s)
+					local spiral = front + cf:VectorToWorldSpace(Vector3.new(math.cos(u * 16 + i * math.pi) * r, math.sin(u * 16 + i * math.pi) * r, 0))
+					orb.CFrame = CFrame.new(handPos:Lerp(spiral, math.clamp(s * 3, 0, 1)))
+				end
+			end
+		end
+		if d.orbs and not d.core and u > 2.15 then
+			-- the merge: a black core in a white ring, wrapped in violet, light shooting out of it
+			for _, orb in ipairs(d.orbs) do
+				orb.Transparency = 1
+			end
+			K.swell(front, WHITE, 1, 9, 0.25, 0)
+			d.core = K.part(Enum.PartType.Ball, Vector3.one * 2.2, CFrame.new(front), Color3.fromRGB(4, 2, 8), Enum.Material.SmoothPlastic, 0)
+			d.aura = K.part(Enum.PartType.Ball, Vector3.one * 3.6, CFrame.new(front), Color3.fromRGB(190, 90, 255), nil, 0.4)
+			K.light(d.aura, Color3.fromRGB(200, 120, 255), 22, 4)
+			K.trail(d.aura, { Color3.fromRGB(220, 150, 255), Color3.fromRGB(80, 40, 160) }, 0.4, 1.4)
+			d.halo = K.ringParts(26, WHITE, 0.32, 0)
+			for _, inst in ipairs({ d.core, d.aura }) do
+				table.insert(e.cleanup, inst)
+			end
+			for _, p in ipairs(d.halo.parts) do
+				table.insert(e.cleanup, p)
+			end
+			local RAYS = { Color3.fromRGB(255, 80, 130), Color3.fromRGB(90, 150, 255), Color3.fromRGB(220, 100, 255), WHITE }
+			local camera = workspace.CurrentCamera
+			local toCam = camera and (camera.CFrame.Position - front).Unit or cf.LookVector
+			local plane = CFrame.lookAt(front, front + toCam)
+			for i = 1, 22 do
+				local a = i / 22 * TAU + rng:NextNumber(-0.1, 0.1)
+				local dir = plane:VectorToWorldSpace(Vector3.new(math.cos(a), math.sin(a), 0))
+				local len = rng:NextNumber(8, 16)
+				local ray = K.part(nil, Vector3.new(0.14, 0.14, 1), CFrame.lookAt(front + dir * 2, front + dir * 3), RAYS[(i % #RAYS) + 1], nil, 0.05)
+				K.tween(ray, 0.3, { Size = Vector3.new(0.1, 0.1, len), CFrame = CFrame.lookAt(front + dir * (2 + len / 2), front + dir * (3 + len)) }, Enum.EasingStyle.Quart)
+				K.fade(ray, 0.25, 0.25)
+			end
+			Audio.play("SkillZap", e.root, 0.35)
+		end
+		if d.core and not d.fired then
+			local pos = front
+			if u > 2.25 then
+				-- fired: it rushes forward, scorching a line in the ground
+				local s = math.clamp((u - 2.25) / (skill.impact - 2.25), 0, 1)
+				local target = K.target(e, skill.forward) + Vector3.new(0, 2, 0)
+				pos = front:Lerp(target, s * s)
+				if os.clock() > (d.scorchAt or 0) then
+					d.scorchAt = os.clock() + 0.02
+					local below = K.ground(pos)
+					local scorch = K.part(nil, Vector3.new(2.2, 0.08, 2.2), CFrame.new(below + Vector3.new(0, 0.05, 0)), Color3.fromRGB(70, 30, 110), nil, 0.2)
+					K.tween(scorch, 1.2, { Transparency = 1, Color = Color3.fromRGB(20, 10, 30) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0.4)
+					Debris:AddItem(scorch, 1.7)
+				end
+			end
+			local pulse = 1 + 0.08 * math.sin(u * 40)
+			d.core.CFrame = CFrame.new(pos)
+			d.aura.CFrame = CFrame.new(pos)
+			d.aura.Size = Vector3.one * 3.6 * pulse
+			local camera = workspace.CurrentCamera
+			local toCam = camera and (camera.CFrame.Position - pos).Unit or cf.LookVector
+			d.halo.place(CFrame.lookAt(pos, pos + toCam) * CFrame.Angles(math.rad(90), 0, 0), 1.55 * pulse, u * 3)
+			if os.clock() > (d.arcAt or 0) then
+				d.arcAt = os.clock() + 0.06
+				local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-1, 1), rng:NextNumber(-1, 1)).Unit
+				K.bolt(pos, pos + dir * rng:NextNumber(2.5, 4.5), Color3.fromRGB(230, 170, 255), 0.18)
+			end
+		end
+		-- 4. the blast: a white flash, a violet sphere, a pillar of light, rings, lightning; the void shatters
+		if not d.fired and u > skill.impact then
+			d.fired = true
+			local at = K.target(e, skill.forward) + Vector3.new(0, 2, 0)
+			for _, inst in ipairs({ d.core, d.aura }) do
+				if inst then
+					inst.Transparency = 1
+				end
+			end
+			if d.halo then
+				for _, p in ipairs(d.halo.parts) do
+					p.Transparency = 1
+				end
+			end
+			K.swell(at, WHITE, 2, 18, 0.3, 0)
+			K.swell(at, skill.colors[2], 3, R * 1.4, 0.9, 0.25)
+			K.swell(at, Color3.fromRGB(255, 160, 255), 2, R * 0.9, 0.6, 0.1)
+			K.swell(at, Color3.fromRGB(120, 60, 200), 2, R * 1.2, 1, 0.5, Enum.Material.ForceField)
+			local pillar = K.part(Enum.PartType.Cylinder, Vector3.new(80, 2, 2), CFrame.new(at + Vector3.new(0, 38, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(220, 160, 255), nil, 0.15)
+			K.tween(pillar, 0.5, { Size = Vector3.new(80, 16, 16) }, Enum.EasingStyle.Quart)
+			K.fade(pillar, 0.6, 0.25)
+			local ground = K.ground(at)
 			for i = 0, 3 do
-				task.delay(i * 0.08, function()
-					K.ring(K.ground(center) + Vector3.new(0, 0.3, 0), (i % 2 == 0) and skill.colors[2] or WHITE, skill.radius * (0.5 + i * 0.25), 0.6, 0.6)
+				task.delay(i * 0.07, function()
+					K.ring(ground + Vector3.new(0, 0.3, 0), (i % 2 == 0) and skill.colors[2] or WHITE, R * (0.45 + i * 0.25), 0.7, 0.7)
 				end)
 			end
-			for _ = 1, 8 do
-				local a = rng:NextNumber(0, TAU)
-				K.bolt(at, at + Vector3.new(math.cos(a) * 14, rng:NextNumber(-3, 8), math.sin(a) * 14), Color3.fromRGB(230, 170, 255), 0.35)
+			for _ = 1, 10 do
+				local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-0.2, 1), rng:NextNumber(-1, 1)).Unit
+				K.bolt(at, at + dir * rng:NextNumber(10, 18), Color3.fromRGB(230, 170, 255), 0.35)
 			end
-			K.sparks(at, 40, skill.colors[2], 34)
-			Audio.play("SkillCrash", e.root, 0.5)
-			Audio.play("SkillZap", e.root, 0.5)
+			K.sparks(at, 50, skill.colors[2], 36)
+			K.sparks(at, 30, WHITE, 28)
+			K.smoke(ground + Vector3.new(0, 0.5, 0), 20, Color3.fromRGB(150, 100, 220), 4, 18)
+			Fx.cubes(at, { skill.colors[2], WHITE, Color3.fromRGB(90, 60, 160) }, { spread = 18, size = 0.8, life = 0.9, count = 26, up = 1 })
+			Audio.play("SkillCrash", e.root, 0.45)
+			Audio.play("SkillZap", e.root, 0.4)
 			if e.isMe then
-				FishingFeel.shake(0.6, 0.45)
+				FishingFeel.shake(0.7, 0.5)
+				MotionBus.kick = { at = os.clock(), amount = 12, length = 0.5 }
+			end
+			-- the void shatters: the rings fly apart, the dome fades, the light comes back
+			d.collapsed = true
+			if d.orbits then
+				for _, ring in ipairs(d.orbits) do
+					for _, p in ipairs(ring.parts) do
+						local out = (p.Position - center)
+						out = out.Magnitude > 0.1 and out.Unit or Vector3.new(0, 1, 0)
+						K.tween(p, 0.6, { CFrame = p.CFrame + out * rng:NextNumber(6, 14), Transparency = 1 }, Enum.EasingStyle.Quart)
+					end
+				end
+			end
+			for _, inst in ipairs({ d.dome, d.inner }) do
+				if inst then
+					K.tween(inst, 0.5, { Transparency = 1, Size = inst.Size * 1.08 })
+				end
+			end
+			for _, holder in ipairs({ d.stars, d.streaks }) do
+				local emitterInst = holder and holder:FindFirstChildOfClass("ParticleEmitter")
+				if emitterInst then
+					emitterInst.Enabled = false
+				end
+			end
+			if d.grade then
+				K.tween(d.grade, 0.5, { Brightness = 0, Contrast = 0, Saturation = 0, TintColor = WHITE })
 			end
 		end
 	end,
+}
+
+-- Patch 22: camera paths for the remade ultimates (root space: -Z is in front of you)
+local CAMERA = {
+	Boundless = {
+		{ 0, Vector3.new(1.4, 1.9, -4.6), Vector3.new(0, 1.7, 0), 52 }, -- close on the hand sign
+		{ 0.85, Vector3.new(1.0, 1.8, -3.9), Vector3.new(0, 1.7, 0), 46 },
+		{ 1.35, Vector3.new(0, 16, 26), Vector3.new(0, 1, 0), 70 }, -- pulled up high as the void closes over everything
+		{ 1.7, Vector3.new(7, 3, -5), Vector3.new(0, 1.7, -2.5), 58 }, -- the side, for red and blue
+		{ 2.2, Vector3.new(5, 2.6, -7.5), Vector3.new(0, 1.7, -3.2), 54 }, -- on the violet core
+	},
+	SunRubber = {
+		{ 0, Vector3.new(2.2, 0.6, -7.5), Vector3.new(0, 2.4, 0), 62 }, -- low, looking up as you laugh to the drums
+		{ 1.25, Vector3.new(-2.4, 0.9, -6.5), Vector3.new(0, 2.6, 0), 58 },
+		{ 1.6, Vector3.new(4.5, 3.4, 6.5), Vector3.new(0, 2, -9), 66 }, -- over the shoulder as the arm flies back
+	},
 }
 
 -- the Thief's Tome: the book opens, a page tears out with the stolen ability's name, then that ability plays
@@ -878,85 +1332,6 @@ ART.Jackpot = function(skill, roll)
 	end
 end
 
-ART.Boundless = function(skill)
-	-- the void: deep blue, streaks of light racing past, splashes of white, a huge eye-like ring; then the
-	-- black hole: a black disc in a white ring with lines of light radiating out
-	local void = frame({ Parent = UI.art, Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(10, 22, 60), BackgroundTransparency = 1, ZIndex = 10 })
-	local grad = Instance.new("UIGradient")
-	grad.Color = ColorSequence.new(Color3.fromRGB(40, 70, 140), Color3.fromRGB(6, 10, 30))
-	grad.Rotation = 20
-	grad.Parent = void
-	local streaks = {}
-	for i = 1, 22 do
-		local s = frame({ Parent = void, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(rng:NextNumber(-0.2, 1), rng:NextNumber(0.1, 0.9)), Size = UDim2.new(rng:NextNumber(0.06, 0.2), 0, 0, 2), BackgroundColor3 = WHITE, BackgroundTransparency = 0.4, ZIndex = 11 })
-		streaks[i] = { frame = s, speed = rng:NextNumber(0.6, 1.6) }
-	end
-	for _ = 1, 14 do
-		local blot = frame({ Parent = void, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(rng:NextNumber(0.05, 0.45), rng:NextNumber(0.1, 0.8)), Size = UDim2.fromScale(rng:NextNumber(0.02, 0.07), rng:NextNumber(0.03, 0.1)), Rotation = rng:NextNumber(0, 360), BackgroundColor3 = Color3.fromRGB(235, 240, 250), BackgroundTransparency = 0.15, ZIndex = 11 })
-		corner(blot, UDim.new(0.4, 0))
-	end
-	local eyeRing = frame({ Parent = void, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.85, 0.45), Size = UDim2.fromScale(0.9, 0.9), SizeConstraint = Enum.SizeConstraint.RelativeYY, BackgroundTransparency = 1, ZIndex = 11 })
-	corner(eyeRing)
-	local eyeStroke = Instance.new("UIStroke")
-	eyeStroke.Thickness = 40
-	eyeStroke.Color = Color3.fromRGB(20, 40, 110)
-	eyeStroke.Transparency = 0.2
-	eyeStroke.Parent = eyeRing
-	-- the black hole
-	local hole = frame({ Parent = UI.art, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.48), Size = UDim2.fromScale(0, 0), SizeConstraint = Enum.SizeConstraint.RelativeYY, BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 14 })
-	corner(hole)
-	local holeStroke = Instance.new("UIStroke")
-	holeStroke.Thickness = 14
-	holeStroke.Color = WHITE
-	holeStroke.Parent = hole
-	local rays = {}
-	local RAY_COLORS = { Color3.fromRGB(255, 70, 120), Color3.fromRGB(90, 140, 255), Color3.fromRGB(220, 90, 255), WHITE }
-	for i = 1, 28 do
-		local r = frame({ Parent = UI.art, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.fromScale(0.5, 0.48), Size = UDim2.new(0, 0, 0, rng:NextInteger(2, 5)), Rotation = i / 28 * 360 + rng:NextNumber(-4, 4), BackgroundColor3 = RAY_COLORS[(i % #RAY_COLORS) + 1], BackgroundTransparency = 1, ZIndex = 13 })
-		rays[i] = { frame = r, len = rng:NextNumber(0.5, 0.9) }
-	end
-	UI.art.Visible = true
-	return function(u)
-		-- 0.4 .. 1.2: the void
-		local inVoid = u > 0.4 and u < 1.25
-		void.BackgroundTransparency = inVoid and 0 or 1
-		void.Visible = inVoid
-		for _, s in ipairs(streaks) do
-			local x = (s.frame.Position.X.Scale + s.speed * 0.016) % 1.2 - 0.2
-			s.frame.Position = UDim2.fromScale(x, s.frame.Position.Y.Scale)
-		end
-		-- 1.2 .. 1.8: the black hole grows, rays shoot out
-		local h = math.clamp((u - 1.2) / 0.4, 0, 1)
-		local size = 0.45 * (1 - (1 - h) ^ 3)
-		hole.Size = UDim2.fromScale(size, size)
-		hole.Visible = h > 0
-		for _, r in ipairs(rays) do
-			r.frame.Size = UDim2.new(r.len * h, 0, 0, r.frame.Size.Y.Offset)
-			r.frame.BackgroundTransparency = h > 0 and 0.15 or 1
-		end
-		if u > 1.25 and u < 1.3 then
-			UI.flash.BackgroundColor3 = WHITE
-			UI.flash.BackgroundTransparency = 0.2
-			K.tween(UI.flash, 0.25, { BackgroundTransparency = 1 })
-		end
-	end
-end
-
-ART.SunRubber = function()
-	-- white flashes on each drum beat, the screen bouncing
-	UI.art.Visible = true
-	local beats = 0
-	return function(u)
-		local due = math.min(3, math.floor(u / 0.35))
-		while beats < due do
-			beats += 1
-			UI.flash.BackgroundColor3 = WHITE
-			UI.flash.BackgroundTransparency = 0.45
-			K.tween(UI.flash, 0.25, { BackgroundTransparency = 1 })
-		end
-	end
-end
-
 ART.ThiefTome = function(skill, roll, alt)
 	-- a parchment card with the stolen ability's name
 	local stolen = alt and RodSkills.list[alt]
@@ -1047,7 +1422,12 @@ local function playCinematic(skill, rod, alt, roll, start)
 		if not root.Parent then
 			return
 		end
-		local cf, fov = cameraFor(root, u, skill.cut)
+		local cf, fov
+		if CAMERA[rod] then
+			cf, fov = K.keyCam(root, u, CAMERA[rod])
+		else
+			cf, fov = cameraFor(root, u, skill.cut)
+		end
 		local shake = u > skill.cut * 0.6 and 0.08 or 0
 		camera.CFrame = cf * CFrame.new((math.random() - 0.5) * shake, (math.random() - 0.5) * shake, 0)
 		camera.FieldOfView = fov
