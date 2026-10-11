@@ -409,10 +409,20 @@ local function watchTag(tagName, added, removed)
 end
 watchTag("TideboundBob", function(model)
 	if model:IsA("Model") and typeof(model:GetAttribute("Home")) == "CFrame" then
-		bobbing[model] = { home = model:GetAttribute("Home"), seed = model:GetAttribute("Seed") or 0 }
+		bobbing[model] = { home = model:GetAttribute("Home"), seed = model:GetAttribute("Seed") or 0, range = model:GetAttribute("BobRange") or DRAW_RANGE * 1.3 }
 	end
 end, function(model)
 	bobbing[model] = nil
+end)
+
+-- Patch 17: the horizon's pirate ships and shark fins sail slow laps round their Center (HorizonBuilder)
+local sailing = {}
+watchTag("TideboundSail", function(model)
+	if model:IsA("Model") and typeof(model:GetAttribute("Center")) == "Vector3" then
+		sailing[model] = { center = model:GetAttribute("Center"), radius = model:GetAttribute("Radius") or 100, speed = model:GetAttribute("Speed") or 8, phase = model:GetAttribute("Phase") or 0 }
+	end
+end, function(model)
+	sailing[model] = nil
 end)
 
 local npcs = {}
@@ -635,9 +645,19 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
+	-- Patch 17: ships and fins on the horizon sail round and round, rolling on the swell
+	for model, sh in pairs(sailing) do
+		if model.Parent then
+			local a = sh.phase + t * sh.speed / sh.radius
+			local pos = sh.center + Vector3.new(math.cos(a) * sh.radius, math.sin(t * 1.1 + sh.phase) * 0.5, math.sin(a) * sh.radius)
+			local dir = Vector3.new(-math.sin(a), 0, math.cos(a))
+			model:PivotTo(CFrame.lookAt(pos, pos + dir) * CFrame.Angles(math.sin(t * 0.8 + sh.phase) * 0.03, 0, 0.05 + math.sin(t * 0.9 + sh.phase) * 0.04))
+		end
+	end
+
 	-- boats bob at their moorings
 	for model, b in pairs(bobbing) do
-		if model.Parent and (b.home.Position - cam).Magnitude < DRAW_RANGE * 1.3 then
+		if model.Parent and (b.home.Position - cam).Magnitude < b.range then
 			local s = b.seed
 			model:PivotTo(b.home * CFrame.new(0, math.sin(t * 1.1 + s) * 0.25, 0) * CFrame.Angles(math.sin(t * 0.8 + s) * 0.04, 0, math.sin(t * 1.0 + s * 2) * 0.06))
 		end
