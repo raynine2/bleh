@@ -135,6 +135,7 @@ local function newRun()
 		lastHurt = 0, -- Patch 10: out-of-combat healing waits Config.Isles.regenDelay after this
 		regen = 0, -- fractional health healed so far
 		swipeAt = 0,
+		swipeStep = 0, -- Patch 17: where you are in the 3-hit combo
 	}
 end
 
@@ -733,28 +734,46 @@ Mobs.init({
 local swipeTokens = {} -- [Player] = the latest swing, so only it puts the rod back
 SwipeEvent.OnServerEvent:Connect(function(player)
 	local run, root = runs[player], rootOf(player)
-	if not run or not root or now() - run.swipeAt < Config.Swipe.cooldown * 0.8 then
+	if not run or not root then
+		return
+	end
+	local S = Config.Swipe
+	local last = S.combo[run.swipeStep]
+	local since = now() - run.swipeAt
+	if since < math.max(S.cooldown, last and last.wait or 0) * 0.8 then
 		return
 	end
 	if run.session or now() < math.max(run.revealUntil, run.travelUntil, run.stunUntil) then
 		return
 	end
+	-- Patch 17: carry the combo on if this swing follows the last one quickly enough, else start again at Bonk
+	local step = (last and run.swipeStep < #S.combo and since <= last.wait + S.window) and run.swipeStep + 1 or 1
+	local hit = S.combo[step]
 	local token = now()
 	run.swipeAt = token
+	run.swipeStep = step
+	mark(player, "SwingStep", step) -- set before SwingAt, so clients read the right move when SwingAt changes
 	mark(player, "SwingAt", token) -- every client's TideboundMotion and TideboundRod play the swing
 	-- the rod jumps from your back to your hand for the swing, then goes back
 	Rods.hold(player, true)
 	swipeTokens[player] = token
-	task.delay(0.7, function()
+	task.delay(hit.hold, function()
 		local current = runs[player]
 		if swipeTokens[player] == token and not (current and current.session) then
 			swipeTokens[player] = nil
 			Rods.hold(player, false)
 		end
 	end)
-	if not Config.safeZone(root.Position) then
-		Mobs.swipe(player, root)
-	end
+	-- the hit lands when the animation connects
+	task.delay(hit.delay, function()
+		local current, at = runs[player], rootOf(player)
+		if current ~= run or not at or now() < run.stunUntil then
+			return
+		end
+		if not Config.safeZone(at.Position) then
+			Mobs.swipe(player, at, step)
+		end
+	end)
 end)
 Players.PlayerRemoving:Connect(function(player)
 	swipeTokens[player] = nil

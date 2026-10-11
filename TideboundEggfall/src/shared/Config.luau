@@ -227,7 +227,22 @@ Config.Mobs = {
 }
 
 -- Patch 10: the rod swipe (left click or F on land, outside a cast). Elites and guardians shrug it off.
-Config.Swipe = { cooldown = 0.55, range = 9, cone = 0.3, damage = 1, knock = 10 }
+-- Patch 17: a 3-hit combo. Swing again within `window` seconds of a hit's `wait` to carry on: Bonk (an overhead
+-- chop), Whirl (a spin that hits all round you) and the Big Fish Slap (a leap and a slam with a giant fish).
+-- Each hit lands `delay` seconds after the click, when the animation connects; the slam needs a breather after.
+Config.Swipe = {
+	cooldown = 0.32, -- the quickest any swing can follow another
+	window = 0.75,
+	range = 9,
+	cone = 0.3,
+	damage = 1,
+	knock = 10,
+	combo = {
+		{ name = "Bonk", wait = 0.34, delay = 0.12, range = 9, cone = 0.3, damage = 1, knock = 7, hold = 0.6 },
+		{ name = "Whirl", wait = 0.4, delay = 0.17, range = 8.5, cone = -1, damage = 1, knock = 9, hold = 0.65 },
+		{ name = "Big Fish Slap", wait = 0.85, delay = 0.36, range = 11, cone = 0.1, damage = 2, knock = 20, hold = 1.0 },
+	},
+}
 
 -- Patch 10: Open Isles survival. Stand by a Tide Cache to heal; out of combat you slowly heal anywhere.
 Config.Isles = { cacheHeal = 4, cacheRadius = 12, regenDelay = 12, regenPerSecond = 0.35 }

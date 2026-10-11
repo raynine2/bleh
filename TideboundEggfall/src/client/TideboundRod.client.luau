@@ -961,43 +961,257 @@ local function ambient(model, clock)
 	end
 end
 
--- Patch 10: the rod swing everyone sees (the server sets SwingAt): a white arc slashes across in front of you.
+-- Patch 17: the rod combo everyone sees (the server sets SwingStep, then SwingAt). Hit 1, Bonk: a white chop arc
+-- and a cartoon bonk. Hit 2, Whirl: a rainbow ring all the way round you. Hit 3, the Big Fish Slap: a giant
+-- googly-eyed fish pops into your hands and gets slammed into the ground: spikes, shock rings, stars, confetti.
 local SLASH = { Color3.fromRGB(255, 255, 255), Color3.fromRGB(170, 240, 255) }
-local function slash(rec)
+local GOLD = { Color3.fromRGB(255, 240, 120), Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 180, 60) }
+local WORDS = {
+	{ "BONK!", "BONKA!", "WHAP!", "BOINK!", "TUNG!", "BOP!" },
+	{ "WHEEE!", "SPINNY!", "WHIRL-O!", "BRRRR!", "SKRRT!", "ZOOM!" },
+	{ "FISH SLAP!", "TUNG TUNG SLAP!", "SLAPPUCCINO!", "MEGA BONK!", "SPLAT-O-RAMA!", "TRALALA SLAP!" },
+}
+local WORD_COLORS = {
+	{ Color3.fromRGB(255, 255, 255), Color3.fromRGB(120, 220, 255) },
+	{ Color3.fromRGB(255, 160, 250), Color3.fromRGB(120, 140, 255) },
+	{ Color3.fromRGB(255, 250, 120), Color3.fromRGB(255, 90, 60) },
+}
+local comboRng = Random.new()
+
+local function neonSeg(size, color, cf, transparency)
+	local seg = Instance.new("Part")
+	seg.Name = "Slash"
+	seg.Anchored = true
+	seg.CanCollide = false
+	seg.CanQuery = false
+	seg.CanTouch = false
+	seg.CastShadow = false
+	seg.Material = Enum.Material.Neon
+	seg.Color = color
+	seg.Transparency = transparency or 0.15
+	seg.Size = size
+	seg.CFrame = cf
+	seg.Parent = fx
+	return seg
+end
+
+local function fadeSeg(seg, life)
+	TweenService:Create(seg, TweenInfo.new(life, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1, Size = seg.Size * Vector3.new(1, 0.2, 1.4) }):Play()
+	Debris:AddItem(seg, life + 0.05)
+end
+
+-- Where the ground is under `at` (ignoring people and effects), or a guess.
+local groundParams = RaycastParams.new()
+groundParams.FilterType = Enum.RaycastFilterType.Exclude
+local function groundBelow(at, fallback)
+	local list = { fx, Fx.folder() }
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(list, p.Character)
+		end
+	end
+	for _, name in ipairs({ "TideboundMobs", "TideboundFoliage", "TideboundLife" }) do
+		local f = workspace:FindFirstChild(name)
+		if f then
+			table.insert(list, f)
+		end
+	end
+	groundParams.FilterDescendantsInstances = list
+	local hit = workspace:Raycast(at + Vector3.new(0, 4, 0), Vector3.new(0, -14, 0), groundParams)
+	return hit and hit.Position or fallback
+end
+
+-- The giant fish for the slam: a few parts posed every frame off your hand, held by the tail.
+local FISH_PARTS = {
+	-- name, size, offset from the grip (fish hangs along -Y), colour, ellipsoid?
+	{ "Body", Vector3.new(1.9, 3.4, 1.5), CFrame.new(0, -2.3, 0), Color3.fromRGB(255, 150, 60), true },
+	{ "Belly", Vector3.new(1.5, 2.6, 0.9), CFrame.new(0, -2.4, -0.35), Color3.fromRGB(255, 225, 170), true },
+	{ "TailL", Vector3.new(1.4, 0.8, 0.25), CFrame.new(-0.45, -0.35, 0) * CFrame.Angles(0, 0, math.rad(35)), Color3.fromRGB(255, 110, 50), false },
+	{ "TailR", Vector3.new(1.4, 0.8, 0.25), CFrame.new(0.45, -0.35, 0) * CFrame.Angles(0, 0, math.rad(-35)), Color3.fromRGB(255, 110, 50), false },
+	{ "Fin", Vector3.new(0.25, 1.2, 0.9), CFrame.new(0, -2.0, 0.85), Color3.fromRGB(255, 110, 50), false },
+	{ "Lips", Vector3.new(0.9, 0.55, 0.7), CFrame.new(0, -4.0, -0.25), Color3.fromRGB(255, 120, 170), true },
+	{ "EyeL", Vector3.new(0.95, 0.95, 0.95), CFrame.new(-0.72, -3.2, -0.25), Color3.fromRGB(255, 255, 255), true },
+	{ "EyeR", Vector3.new(0.95, 0.95, 0.95), CFrame.new(0.72, -3.2, -0.25), Color3.fromRGB(255, 255, 255), true },
+	{ "PupilL", Vector3.new(0.45, 0.45, 0.45), CFrame.new(-1.08, -3.25, -0.3), Color3.fromRGB(20, 20, 30), true },
+	{ "PupilR", Vector3.new(0.45, 0.45, 0.45), CFrame.new(1.08, -3.25, -0.3), Color3.fromRGB(20, 20, 30), true },
+}
+
+local function giantFish(rec, start, root)
+	local character = rec.character
+	local hand = character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm")
+	if not hand then
+		return
+	end
+	local parts = {}
+	for _, def in ipairs(FISH_PARTS) do
+		local p = neonSeg(def[2] * 0.05, def[4], hand.CFrame, 0)
+		p.Name = "GiantFish" .. def[1]
+		p.Material = Enum.Material.SmoothPlastic
+		if def[5] then
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = p
+		end
+		table.insert(parts, { part = p, def = def })
+	end
+	Fx.cubes(hand.Position, { Color3.new(1, 1, 1), Color3.fromRGB(255, 200, 120) }, { spread = 3, size = 0.5, life = 0.35, count = 10 })
+	Audio.play("FishPop", root, comboRng:NextNumber(0.9, 1.1))
+	local connection
+	connection = RunService.RenderStepped:Connect(function()
+		local u = os.clock() - start
+		if u > 0.95 or not hand.Parent then
+			connection:Disconnect()
+			for _, item in ipairs(parts) do
+				item.part:Destroy()
+			end
+			return
+		end
+		-- pop in (overshoot), squash on the slam, then shrink away
+		local grow = u < 0.12 and math.sin(math.clamp(u / 0.12, 0, 1) * math.pi * 0.62) / math.sin(math.pi * 0.62) * 1.15 or 1
+		if u > 0.8 then
+			grow = math.max(0.02, 1 - (u - 0.8) / 0.12)
+		end
+		local squashY, squashX, flop = 1, 1, 0
+		if u > 0.36 then
+			local e = math.exp(-(u - 0.36) * 8)
+			squashY = 1 - 0.35 * e * math.cos((u - 0.36) * 30)
+			squashX = 1 + 0.3 * e * math.cos((u - 0.36) * 30)
+			flop = 0.4 * e * math.sin((u - 0.36) * 26)
+		elseif u > 0.12 then
+			flop = 0.15 * math.sin(u * 30) -- wiggling, it does not want to be here
+		end
+		local grip = hand.CFrame * CFrame.new(0, -0.6, 0) * CFrame.Angles(flop, 0, 0)
+		local look = u * 18
+		for _, item in ipairs(parts) do
+			local def = item.def
+			local off = def[3]
+			local pos = off.Position * Vector3.new(squashX, squashY, squashX) * grow
+			if def[1] == "PupilL" or def[1] == "PupilR" then
+				-- googly eyes rolling around
+				pos += Vector3.new(0, math.sin(look) * 0.18, math.cos(look) * 0.18) * grow
+			end
+			item.part.Size = def[2] * Vector3.new(squashX, squashY, squashX) * grow
+			item.part.CFrame = grip * CFrame.new(pos) * (off - off.Position)
+		end
+	end)
+end
+
+local function bonk(rec, root, isMe)
+	Audio.play("SwingWhoosh", root, comboRng:NextNumber(0.9, 1.1))
+	task.delay(0.05, function()
+		if not root.Parent then
+			return
+		end
+		-- a chop arc from over the shoulder down to the ground in front, a little to the right
+		local base = root.CFrame * CFrame.new(0.8, 0.4, 0)
+		local count = 10
+		for i = 1, count do
+			local a = math.rad(110 - (i - 1) / (count - 1) * 160)
+			local at = base * CFrame.new(0, math.sin(a) * 4.5, -math.cos(a) * 4.5)
+			local tangent = base:VectorToWorldSpace(Vector3.new(0, -math.cos(a), -math.sin(a)))
+			local seg = neonSeg(Vector3.new(0.5 + 0.7 * math.sin(i / count * math.pi), 0.25, 1.5), SLASH[(i % 2) + 1], CFrame.lookAt(at.Position, at.Position + tangent))
+			fadeSeg(seg, 0.26)
+		end
+	end)
+	task.delay(0.12, function()
+		if not root.Parent then
+			return
+		end
+		local at = (root.CFrame * CFrame.new(0.6, -1.2, -4.5)).Position
+		Fx.burst(at, GOLD, 4, 9, root.CFrame.LookVector * -1)
+		Fx.stars(at, 4)
+		Fx.cubes(at, { Color3.new(1, 1, 1), Color3.fromRGB(170, 240, 255) }, { spread = 3.5, size = 0.4, life = 0.35, count = 8 })
+		Fx.word(at + Vector3.new(0, 2.5, 0), WORDS[1][comboRng:NextInteger(1, #WORDS[1])], WORD_COLORS[1], 0.75)
+		Audio.play("SwingBonk", root, comboRng:NextNumber(0.9, 1.15))
+		if isMe then
+			FishingFeel.shake(0.07, 0.1)
+		end
+	end)
+end
+
+local function whirl(rec, root, isMe)
+	Audio.play("SwingSpin", root, comboRng:NextNumber(0.9, 1.1))
+	-- a rainbow ring traced all the way round you as you spin
+	local count = 20
+	for i = 1, count do
+		task.delay(0.03 + (i - 1) / count * 0.28, function()
+			if not root.Parent then
+				return
+			end
+			local a = -(i - 1) / count * math.pi * 2
+			local base = root.CFrame * CFrame.new(0, 0.3, 0)
+			local at = base * CFrame.new(math.sin(a) * 5, 0.4 * math.sin(i / count * math.pi), -math.cos(a) * 5)
+			local tangent = base:VectorToWorldSpace(Vector3.new(-math.cos(a), 0, -math.sin(a)))
+			local seg = neonSeg(Vector3.new(0.3, 0.55, 1.75), Color3.fromHSV((i / count + os.clock() * 0.3) % 1, 0.55, 1), CFrame.lookAt(at.Position, at.Position + tangent))
+			fadeSeg(seg, 0.32)
+		end)
+	end
+	task.delay(0.17, function()
+		if not root.Parent then
+			return
+		end
+		local feet = root.Position - Vector3.new(0, 2.8, 0)
+		Fx.ring(feet, Color3.fromRGB(170, 240, 255), 8, 0.4, 0.3)
+		Fx.ring(feet + Vector3.new(0, 0.2, 0), Color3.fromRGB(255, 170, 250), 5.5, 0.35, 0.3)
+		Fx.cubes(feet + Vector3.new(0, 1, 0), { Color3.new(1, 1, 1), Color3.fromRGB(255, 180, 250), Color3.fromRGB(150, 220, 255) }, { spread = 7, size = 0.4, life = 0.45, count = 14, up = 0.25 })
+		Fx.word(root.Position + Vector3.new(0, 4, 0), WORDS[2][comboRng:NextInteger(1, #WORDS[2])], WORD_COLORS[2], 0.8)
+		Audio.play("SwingDing", root, comboRng:NextNumber(0.9, 1.2))
+		if isMe then
+			FishingFeel.shake(0.1, 0.12)
+		end
+	end)
+end
+
+local function fishSlap(rec, root, isMe, start)
+	giantFish(rec, start, root)
+	task.delay(math.max(0, 0.36 - (os.clock() - start)), function()
+		if not root.Parent then
+			return
+		end
+		local guess = (root.CFrame * CFrame.new(0, -3, -5.5)).Position
+		local at = groundBelow(guess, guess) + Vector3.new(0, 0.2, 0)
+		Fx.burst(at + Vector3.new(0, 0.6, 0), GOLD, 9, 14)
+		Fx.ring(at, Color3.fromRGB(255, 255, 255), 14, 0.5, 0.4)
+		Fx.ring(at + Vector3.new(0, 0.15, 0), Color3.fromRGB(255, 210, 80), 9, 0.4, 0.5)
+		task.delay(0.1, function()
+			Fx.ring(at, Color3.fromRGB(255, 120, 80), 18, 0.55, 0.25)
+		end)
+		Fx.cubes(at, { Color3.fromRGB(240, 245, 255), Color3.fromRGB(190, 200, 220), Color3.fromRGB(255, 220, 120) }, { spread = 9, size = 0.8, life = 0.6, count = 22, up = 1 })
+		Fx.bolts(at + Vector3.new(0, 1, 0), 5)
+		Fx.stars(at + Vector3.new(0, 1, 0), 8)
+		Fx.confetti(at + Vector3.new(0, 1, 0), 28, 6)
+		Fx.word(at + Vector3.new(0, 5, 0), WORDS[3][comboRng:NextInteger(1, #WORDS[3])], WORD_COLORS[3], 1.35)
+		Audio.play("FishSlap", root, comboRng:NextNumber(0.9, 1.1))
+		Audio.play("SlamBoom", root)
+		Audio.play("SlamDing", root, comboRng:NextNumber(0.95, 1.1))
+		if isMe then
+			FishingFeel.shake(0.4, 0.32)
+			-- a punch of the camera's zoom
+			local camera = workspace.CurrentCamera
+			if camera then
+				local fov = camera.FieldOfView
+				camera.FieldOfView = fov + 7
+				TweenService:Create(camera, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = fov }):Play()
+			end
+		end
+	end)
+end
+
+local function slash(rec, age)
 	local root = rec.character:FindFirstChild("HumanoidRootPart")
 	if not root then
 		return
 	end
-	Audio.play("CastWindup", root)
-	task.delay(0.1, function()
-		if not root.Parent then
-			return
-		end
-		local base = root.CFrame * CFrame.new(0, 0.6, 0)
-		local count = 9
-		for i = 1, count do
-			local a = math.rad(70 - (i - 1) / (count - 1) * 140)
-			local at = base * CFrame.new(math.sin(a) * 5.5, math.sin(a) * 1.4, -math.cos(a) * 5.5)
-			local seg = Instance.new("Part")
-			seg.Name = "Slash"
-			seg.Anchored = true
-			seg.CanCollide = false
-			seg.CanQuery = false
-			seg.CanTouch = false
-			seg.CastShadow = false
-			seg.Material = Enum.Material.Neon
-			seg.Color = SLASH[(i % 2) + 1]
-			seg.Transparency = 0.15
-			seg.Size = Vector3.new(0.25, 0.5 + 0.6 * math.sin(i / count * math.pi), 1.6)
-			seg.CFrame = CFrame.lookAt(at.Position, at.Position + base:VectorToWorldSpace(Vector3.new(-math.cos(a), 0, -math.sin(a))))
-			seg.Parent = fx
-			TweenService:Create(seg, TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1, Size = seg.Size * Vector3.new(1, 0.2, 1.4) }):Play()
-			Debris:AddItem(seg, 0.35)
-		end
-		if rec.player == player then
-			FishingFeel.shake(0.06, 0.08)
-		end
-	end)
+	local step = rec.character:GetAttribute("SwingStep") or 1
+	local isMe = rec.player == player
+	local start = os.clock() - math.max(age, 0)
+	if step == 2 then
+		whirl(rec, root, isMe)
+	elseif step == 3 then
+		fishSlap(rec, root, isMe, start)
+	else
+		bonk(rec, root, isMe)
+	end
 end
 
 RunService.RenderStepped:Connect(function()
@@ -1007,7 +1221,7 @@ RunService.RenderStepped:Connect(function()
 		if swingAt ~= rec.swingAt then
 			rec.swingAt = swingAt
 			if swingAt and serverNow - swingAt < 0.4 then
-				slash(rec)
+				slash(rec, serverNow - swingAt)
 			end
 		end
 		if rec.phase and rec.phase ~= "" and rec.rod and rec.rod.Parent then
@@ -1040,16 +1254,100 @@ end)
 
 -- Patch 10: swipe your rod at mobs with a click, F, or the SWIPE touch button, any time you aren't fishing.
 -- The server checks every hit (Mobs.swipe) and sets SwingAt, which plays the swing above for everyone.
+-- Patch 17: keep clicking for the 3-hit combo (Config.Swipe.combo). A click a little early is remembered and
+-- swings the moment it can, so mashing flows; three pips under your character show where you are.
 do
 	local ContextActionService = game:GetService("ContextActionService")
 	local UserInputService = game:GetService("UserInputService")
+	local S = Config.Swipe
 	local swipeEvent = nil
 	task.spawn(function()
 		swipeEvent = Shared:WaitForChild("Remotes"):WaitForChild("Swipe")
 	end)
-	local lastSwipe = 0
+
+	-- the combo pips
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "TideboundCombo"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.Parent = player:WaitForChild("PlayerGui")
+	local holder = Instance.new("Frame")
+	holder.AnchorPoint = Vector2.new(0.5, 0.5)
+	holder.Position = UDim2.new(0.5, 0, 0.64, 0)
+	holder.Size = UDim2.fromOffset(160, 44)
+	holder.BackgroundTransparency = 1
+	holder.Visible = false
+	holder.Parent = gui
+	local moveLabel = Instance.new("TextLabel")
+	moveLabel.BackgroundTransparency = 1
+	moveLabel.Size = UDim2.new(1, 0, 0, 22)
+	moveLabel.Font = Enum.Font.LuckiestGuy
+	moveLabel.TextScaled = true
+	moveLabel.TextColor3 = Color3.new(1, 1, 1)
+	moveLabel.Parent = holder
+	local moveStroke = Instance.new("UIStroke")
+	moveStroke.Thickness = 2
+	moveStroke.Color = Color3.fromRGB(30, 16, 40)
+	moveStroke.Parent = moveLabel
+	local PIP_COLORS = { Color3.fromRGB(150, 230, 255), Color3.fromRGB(255, 150, 250), Color3.fromRGB(255, 200, 60) }
+	local pips = {}
+	for i = 1, #S.combo do
+		local pip = Instance.new("Frame")
+		pip.AnchorPoint = Vector2.new(0.5, 0.5)
+		pip.Position = UDim2.new(0.5, (i - (#S.combo + 1) / 2) * 26, 0, 34)
+		pip.Size = UDim2.fromOffset(16, 16)
+		pip.BackgroundColor3 = Color3.fromRGB(40, 44, 60)
+		pip.BackgroundTransparency = 0.35
+		pip.Rotation = 45
+		pip.Parent = holder
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 4)
+		corner.Parent = pip
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 2
+		stroke.Color = Color3.new(1, 1, 1)
+		stroke.Transparency = 0.3
+		stroke.Parent = pip
+		pips[i] = pip
+	end
+	local showToken = 0
+	local function showCombo(step)
+		showToken += 1
+		local token = showToken
+		holder.Visible = true
+		moveLabel.Text = S.combo[step].name:upper() .. (step == #S.combo and "!!" or "!")
+		moveLabel.TextColor3 = PIP_COLORS[step]
+		moveLabel.Rotation = (step % 2 == 0) and 4 or -4
+		for i, pip in ipairs(pips) do
+			local lit = i <= step
+			pip.BackgroundColor3 = lit and PIP_COLORS[i] or Color3.fromRGB(40, 44, 60)
+			pip.BackgroundTransparency = lit and 0 or 0.35
+			if i == step then
+				pip.Size = UDim2.fromOffset(26, 26)
+				TweenService:Create(pip, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(16, 16) }):Play()
+			end
+		end
+		holder.Size = UDim2.fromOffset(190, 52)
+		TweenService:Create(holder, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(160, 44) }):Play()
+		task.delay(S.combo[step].wait + S.window, function()
+			if showToken == token then
+				holder.Visible = false
+			end
+		end)
+	end
+
+	local step, lastSwipe, buffered = 0, -10, -10
+	local function ready(now)
+		local last = S.combo[step]
+		return now - lastSwipe >= math.max(S.cooldown, last and last.wait or 0)
+	end
 	local function swipe()
-		if not swipeEvent or FishingFeel.phase ~= "" or MotionBus.cutscene or os.clock() - lastSwipe < Config.Swipe.cooldown then
+		local now = os.clock()
+		if not ready(now) then
+			buffered = now -- swing as soon as it can
+			return
+		end
+		if not swipeEvent or FishingFeel.phase ~= "" or MotionBus.cutscene then
 			return
 		end
 		local character = player.Character
@@ -1057,9 +1355,21 @@ do
 		if not humanoid or humanoid.Health <= 0 then
 			return
 		end
-		lastSwipe = os.clock()
+		-- the same rule as the server: carry on within the window, else start again
+		local last = S.combo[step]
+		step = (last and step < #S.combo and now - lastSwipe <= last.wait + S.window) and step + 1 or 1
+		lastSwipe = now
+		buffered = -10
+		showCombo(step)
 		swipeEvent:FireServer()
 	end
+	RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		if now - buffered < 0.3 and ready(now) then
+			buffered = -10
+			swipe()
+		end
+	end)
 	UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then
 			return

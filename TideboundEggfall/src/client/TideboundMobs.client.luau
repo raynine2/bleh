@@ -26,6 +26,7 @@ local HIDE_RANGE = 330
 local RED = Color3.fromRGB(255, 52, 52)
 local YELLOW = Color3.fromRGB(255, 220, 60)
 local WHITE = Color3.new(1, 1, 1)
+local HIT_WORDS = { { "HIT!", "OOF!", "BONK!" }, { "SPUN!", "WHEE!", "DIZZY!" }, { "SLAPPED!", "FLATTENED!", "OUCHIE!!" } } -- Patch 17
 
 local folder = Instance.new("Folder")
 folder.Name = "TideboundMobs"
@@ -545,10 +546,15 @@ RunService.RenderStepped:Connect(function(dt)
 					rec.seenHit = hitAt
 					if hitAt and now() - hitAt < 1 then
 						local body = rec.pieces[1].part
-						Fx.flashModel(rec.model, WHITE, 0.25)
-						Fx.cubes(body.Position, { WHITE, YELLOW, COLORS[rec.kind][1] }, { spread = 4, size = 0.4, life = 0.4, count = 10 })
-						Fx.number(body, "HIT!", YELLOW)
-						Audio.play("HitThud", body)
+						-- Patch 17: the combo's slam (HitStep 3) lands a much bigger hit
+						local step = inst:GetAttribute("HitStep") or 1
+						Fx.flashModel(rec.model, WHITE, step == 3 and 0.4 or 0.25)
+						Fx.cubes(body.Position, { WHITE, YELLOW, COLORS[rec.kind][1] }, { spread = step == 3 and 7 or 4, size = step == 3 and 0.6 or 0.4, life = 0.4, count = step == 3 and 18 or 10 })
+						Fx.number(body, HIT_WORDS[step][math.random(1, #HIT_WORDS[step])], step == 3 and Color3.fromRGB(255, 120, 60) or YELLOW)
+						if step == 3 then
+							Fx.stars(body.Position + Vector3.new(0, 1.5, 0), 5)
+						end
+						Audio.play("HitThud", body, step == 3 and 0.8 or math.random(95, 125) / 100)
 					end
 				end
 				local spawnAt = inst:GetAttribute("SpawnAt")

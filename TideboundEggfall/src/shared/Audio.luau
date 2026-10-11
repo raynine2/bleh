@@ -8,6 +8,10 @@ local SoundService = game:GetService("SoundService")
 
 local WATER = "rbxasset://sounds/impact_water.mp3"
 local THUD = "rbxasset://sounds/action_jump_land.mp3"
+local SLASH = "rbxasset://sounds/swordslash.wav"
+local LUNGE = "rbxasset://sounds/swordlunge.wav"
+local UNSHEATH = "rbxasset://sounds/unsheath.wav"
+local PING = "rbxasset://sounds/electronicpingshort.wav"
 
 local Audio = {
 	cues = {
@@ -48,11 +52,21 @@ local Audio = {
 		Roar = { id = "", volume = 0.9, note = "A guardian wakes up" },
 		Sting = { id = "", volume = 0.7, note = "A title card lands (new area, extraction)" },
 		Tally = { id = "", volume = 0.5, note = "One tick per line of the extraction tally" },
+		-- Patch 17: the 3-hit rod combo (TideboundRod). Built-in sounds, pitched up to sound cartoony.
+		SwingWhoosh = { id = SLASH, volume = 0.55, pitch = 1.25, note = "Hit 1 (Bonk): the chop whooshes down" },
+		SwingBonk = { id = THUD, volume = 0.9, pitch = 1.9, note = "Hit 1 lands: a cartoon bonk" },
+		SwingSpin = { id = LUNGE, volume = 0.6, pitch = 1.35, note = "Hit 2 (Whirl): the spin" },
+		SwingDing = { id = PING, volume = 0.35, pitch = 1.6, note = "Hit 2 lands: a little ding" },
+		FishPop = { id = UNSHEATH, volume = 0.6, pitch = 0.75, note = "Hit 3: the giant fish pops into your hands" },
+		FishSlap = { id = WATER, volume = 1, pitch = 1.7, note = "Hit 3 lands: a wet fish slap" },
+		SlamBoom = { id = THUD, volume = 1, pitch = 0.45, note = "Hit 3 lands: the ground shakes" },
+		SlamDing = { id = PING, volume = 0.45, pitch = 0.9, note = "Hit 3 lands: stars ring" },
 	},
 }
 
 -- Plays a cue at a part or attachment (3D), or on the listener when `parent` is nil. Returns the Sound.
-function Audio.play(name, parent)
+-- `pitch` multiplies the cue's own pitch (for a little random variety).
+function Audio.play(name, parent, pitch: number?)
 	local cue = Audio.cues[name]
 	if not cue or cue.id == "" then
 		return nil
@@ -61,7 +75,7 @@ function Audio.play(name, parent)
 	sound.Name = "Cue_" .. name
 	sound.SoundId = cue.id
 	sound.Volume = cue.volume or 0.6
-	sound.PlaybackSpeed = cue.pitch or 1
+	sound.PlaybackSpeed = (cue.pitch or 1) * (pitch or 1)
 	sound.RollOffMaxDistance = 120
 	sound.Parent = parent or SoundService
 	sound:Play()

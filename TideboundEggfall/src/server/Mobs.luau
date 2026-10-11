@@ -531,8 +531,9 @@ function Mobs.init(dependencies)
 end
 
 -- A rod swipe from `player`: every living mob in front of them within reach takes a hit and is knocked back.
-function Mobs.swipe(player, root)
-	local S = Config.Swipe
+-- `step` is the combo hit (Config.Swipe.combo): the Whirl hits all round, the Big Fish Slap hits twice as hard.
+function Mobs.swipe(player, root, step)
+	local S = Config.Swipe.combo[step or 1] or Config.Swipe
 	local look = flat(root.CFrame.LookVector).Unit
 	local hits = 0
 	for _, mob in ipairs(mobs) do
@@ -544,6 +545,7 @@ function Mobs.swipe(player, root)
 				hits += 1
 				mob.hp -= S.damage
 				send(mob, "Hp", mob.hp)
+				mob.inst:SetAttribute("HitStep", step or 1) -- Patch 17: the client plays a bigger hit for the slam
 				mob.inst:SetAttribute("HitAt", now())
 				mob.target = player
 				lastAggro[player] = os.clock()

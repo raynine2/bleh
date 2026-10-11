@@ -392,6 +392,50 @@ local function swingPose(u)
 	}, chop)
 end
 
+-- Patch 17: hit 2 of the combo, the Whirl: a figure-skater spin on one leg, rod held straight out.
+-- Returns the pose and the spin (radians to add to the root's turn; back to 0 once the full turn is done).
+local function whirlPose(u)
+	local s = smooth((u - 0.03) / 0.3)
+	local spin = s >= 1 and 0 or -math.pi * 2 * (1 - (1 - s) ^ 2)
+	return {
+		waistX = -0.1,
+		waistY = 0.35,
+		neckX = -0.2,
+		shRX = 1.55,
+		shRZ = 1.25,
+		elRX = 0.1,
+		shLX = 0.4,
+		shLZ = -1.35,
+		elLX = 0.2,
+		hipLX = 0.95,
+		hipLZ = -0.25,
+		kneeLX = -1.6,
+		hipRX = 0.05,
+		kneeRX = -0.15,
+		rootUp = 0.35 * math.sin(math.clamp(u / 0.34, 0, 1) * math.pi),
+		rootZ = 0.12,
+	},
+		spin
+end
+
+-- Patch 17: hit 3, the Big Fish Slap: crouch, leap with the giant fish raised over your head, then slam it down
+-- into a wide squat. (The leap is in the pose only: your character stays on the ground.)
+local function slamPose(u)
+	local crouchP = { waistX = 0.05, neckX = 0.2, shRX = 1.2, shRZ = 0.2, elRX = 1.4, shLX = 1.2, shLZ = -0.2, elLX = 1.4, hipRX = 0.9, kneeRX = -1.6, ankRX = 0.6, hipLX = 0.9, kneeLX = -1.6, ankLX = 0.6, rootUp = -0.9 }
+	local leap = { waistX = 0.45, neckX = 0.35, shRX = 3.05, shRZ = 0.25, elRX = 0.35, shLX = 3.05, shLZ = -0.25, elLX = 0.35, hipRX = 0.8, kneeRX = -1.5, hipLX = 0.2, kneeLX = -0.9, rootUp = 1.7, rootX = 0.15 }
+	local slam = { waistX = -0.75, neckX = 0.45, shRX = 0.35, shRZ = -0.1, elRX = 0.1, shLX = 0.35, shLZ = 0.1, elLX = 0.1, hipRX = 0.9, hipRZ = 0.45, kneeRX = -1.3, ankRX = 0.4, hipLX = 0.9, hipLZ = -0.45, kneeLX = -1.3, ankLX = 0.4, rootUp = -1.0, rootX = -0.25 }
+	local p = table.clone(crouchP)
+	mix(p, leap, smooth((u - 0.08) / 0.16))
+	mix(p, slam, smooth((u - 0.29) / 0.07))
+	-- a little wobble once it lands, like jelly
+	if u > 0.36 then
+		local wob = math.exp(-(u - 0.36) * 9) * math.sin((u - 0.36) * 40)
+		p.rootUp += 0.18 * wob
+		p.waistX += 0.12 * wob
+	end
+	return p
+end
+
 -- Patch 10: flying off a geyser: arms flung up, a tucked front flip at the top of the arc, then legs down to land.
 local function launchPose(s)
 	local p = { shRX = 2.8, shRZ = 0.55, elRX = 0.3, shLX = 2.8, shLZ = -0.55, elLX = 0.3, waistX = 0.2, neckX = 0.25, hipRX = -0.15, hipLX = 0.25, kneeRX = -0.35, kneeLX = -0.6 }
@@ -983,13 +1027,25 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 	-- Patch 10: the rod swing every client sees (SwingAt from the server)
 	local swingAt = character:GetAttribute("SwingAt")
 	if swingAt then
+		-- Patch 17: which hit of the combo (1 Bonk, 2 Whirl, 3 Big Fish Slap)
+		local step = character:GetAttribute("SwingStep") or 1
 		local u = serverNow - swingAt
-		local w = envelope(u, 0.5, 0.04, 0.22)
+		local length = step == 3 and 0.85 or step == 2 and 0.55 or 0.5
+		local w = envelope(u, length, 0.04, step == 3 and 0.25 or 0.2)
 		if w > 0 then
-			-- the arms always swing; the lunge only while standing, so you can swing on the run
-			local swing = swingPose(u)
+			local swing, spin = nil, 0
+			if step == 2 then
+				swing, spin = whirlPose(u)
+			elseif step == 3 then
+				swing = slamPose(u)
+			else
+				swing = swingPose(u)
+			end
+			-- the arms always swing; the legs only while standing, so you can swing on the run (the slam
+			-- plants you either way)
 			mix(pose, swing, w, UPPER)
-			mix(pose, swing, w * (1 - 0.85 * math.clamp(rec.move, 0, 1)), LOWER)
+			mix(pose, swing, w * (step == 3 and 1 or (1 - 0.85 * math.clamp(rec.move, 0, 1))), LOWER)
+			pose.rootY = (pose.rootY or 0) + spin
 		end
 	end
 
