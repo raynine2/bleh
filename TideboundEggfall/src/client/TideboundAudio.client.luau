@@ -51,6 +51,7 @@ do
 	end
 end
 Audio.buses = buses -- Audio.play routes its cues to SFX through this
+Audio.preload() -- trimmed cues need their clips loaded to start at their cut point
 
 local userVolume = {
 	Music = function()
