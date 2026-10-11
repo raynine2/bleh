@@ -112,7 +112,7 @@ Config.Extraction = {
 -- Delta Section 9 + Master Patch 2: risk, loss and tension
 Config.Risk = {
 	maxHealth = 100, -- Master Patch 2: guardians deal 25-60 per hit
-	hitInvulnerable = 1.5,
+	hitInvulnerable = 1.1, -- Patch 10: a little shorter, so a camp of mobs is a real threat
 	knockback = 60,
 	carrySlowPerEgg = 2, -- each carried egg costs WalkSpeed (an awake companion carries one for you)
 	minWalkSpeed = 10,
@@ -218,11 +218,11 @@ Config.Mobs = {
 	heatDamage = 0.5,
 	drop = { chance = 0.3, bait = "Brineworm", count = 1 },
 	kinds = {
-		crab = { name = "Snapper Crab", hp = 3, speed = 12, aggro = 26, leash = 44, reach = 5, tell = 0.5, damage = 8, cooldown = 1.6 },
-		puffer = { name = "Spike Puffer", hp = 2, speed = 6, aggro = 24, trigger = 12, tell = 0.8, radius = 8, damage = 12, cooldown = 3 },
-		gull = { name = "Raider Gull", hp = 1, speed = 22, diveSpeed = 64, aggro = 42, tell = 0.8, reach = 4.5, damage = 6, cooldown = 4, height = 18 },
-		shark = { name = "Reef Shark", hp = 4, speed = 14, chaseSpeed = 26, aggro = 46, reach = 5, tell = 0.4, damage = 15, cooldown = 2 },
-		golem = { name = "Coral Golem", hp = 8, speed = 7, aggro = 30, trigger = 9, tell = 1.0, radius = 10, damage = 18, cooldown = 3.2 },
+		crab = { name = "Snapper Crab", hp = 3, speed = 14, aggro = 30, leash = 48, reach = 5, tell = 0.5, damage = 10, cooldown = 1.4 },
+		puffer = { name = "Spike Puffer", hp = 2, speed = 7, aggro = 26, trigger = 12, tell = 0.8, radius = 8, damage = 12, cooldown = 2.8 },
+		gull = { name = "Raider Gull", hp = 1, speed = 24, diveSpeed = 66, aggro = 44, tell = 0.8, reach = 4.5, damage = 8, cooldown = 3.5, height = 18 },
+		shark = { name = "Reef Shark", hp = 4, speed = 14, chaseSpeed = 26, aggro = 48, reach = 5, tell = 0.45, damage = 15, cooldown = 2 },
+		golem = { name = "Coral Golem", hp = 8, speed = 8, aggro = 32, trigger = 10, tell = 1.0, radius = 10, damage = 20, cooldown = 3 },
 	},
 }
 
@@ -327,6 +327,15 @@ Config.Fishing = {
 	gainPerSecond = 0.4,
 	lossPerSecond = 0.15, -- divided by rod Resilience
 	startProgress = 0.35,
+	-- Patch 10: more to play with and less to fail
+	assist = 1.4, -- while the fish is in the bar, the bar drifts toward it
+	sweetSpot = 0.45, -- the middle 45% of the bar reels faster
+	sweetMult = 1.5,
+	treasureEvery = { 3, 5.5 }, -- seconds between treasure pearls on the reel track
+	treasureLife = 2.6,
+	treasureGain = 0.12, -- cover the pearl with the bar for +12% progress
+	tiredSeconds = 1.3, -- the fish slows down after each milestone
+	tiredMult = 0.5,
 }
 
 -- Master Patch 6: the fish reveal. Seconds per phase; the tier climb holds `step` on every tier it passes.

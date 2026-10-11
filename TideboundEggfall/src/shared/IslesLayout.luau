@@ -46,7 +46,7 @@ L.Town = {
 		PN1 = v(120, 34), PN2 = v(120, 92), -- north pier
 		PS1 = v(110, -34), PS2 = v(110, -92), -- south pier
 		M1 = v(0, 62), M2 = v(0, 100), M3 = v(-40, 120), M4 = v(40, 120), M5 = v(0, 150), M6 = v(60, 165), M7 = v(-60, 165),
-		H1 = v(-62, 0), H2 = v(-92, 10), -- the foot of Torii Hill
+		H1 = v(-62, 0), H2 = v(-84, 12), -- the foot of Torii Hill
 		F1 = v(-50, -55), F2 = v(-85, -90), F3 = v(-125, -115), F4 = v(-100, -155),
 		B1 = v(0, -70), B2 = v(20, -115), B3 = v(70, -150), B4 = v(-30, -150),
 		L1 = v(95, 100), L2 = v(132, 128),
@@ -68,11 +68,11 @@ L.Town = {
 		{ at = v(-118, 52), face = v(-118, 80) }, -- Torii Hill's koi pond
 	},
 	vendors = {
-		{ at = v(-30, 105), face = v(0, 105) }, { at = v(30, 105), face = v(0, 105) },
-		{ at = v(-30, 140), face = v(0, 140) }, { at = v(30, 140), face = v(0, 140) },
+		{ at = v(-30, 100), face = v(0, 100) }, { at = v(30, 100), face = v(0, 100) },
+		{ at = v(-30, 145), face = v(0, 145) }, { at = v(30, 145), face = v(0, 145) },
 		{ at = v(150, 22), face = v(150, 0) }, { at = v(90, -22), face = v(90, 0) },
 	},
-	chickens = { center = v(-110, -120), radius = 26 },
+	chickens = { center = v(-110, -120), radius = 20 },
 	villagers = 26, -- how many walk the street graph
 }
 
@@ -149,14 +149,14 @@ L.links = {
 
 -- Geyser jump pads (TideboundTravel launches you): each pair works both ways. Pads sit on the island's land.
 L.jumpPads = {
-	{ v(352, 30), v(624, 58) }, -- Landing Reef <-> Twin Reefs
-	{ v(386, 438), v(664, 646) }, -- Turtle Bay <-> North Atoll
-	{ v(384, -462), v(754, -688) }, -- Kelp Shallows <-> South Atoll
-	{ v(1154, 128), v(1302, 30) }, -- Gull Rock <-> Giant Clam Atoll
-	{ v(1360, 30), v(1596, 8) }, -- Giant Clam Atoll <-> Warden's Rock
-	{ v(1410, 480), v(1716, 486) }, -- Lighthouse Isle <-> Storm Spire
-	{ v(1436, -404), v(1670, -528) }, -- Maelstrom Isle <-> Bone Reef
-	{ v(1664, 22), v(1806, 188) }, -- Warden's Rock <-> Far Reach
+	{ v(343, 21), v(629, 58) }, -- Landing Reef <-> Twin Reefs
+	{ v(379, 433), v(670, 649) }, -- Turtle Bay <-> North Atoll
+	{ v(379, -459), v(759, -690) }, -- Kelp Shallows <-> South Atoll
+	{ v(1149, 131), v(1306, 28) }, -- Gull Rock <-> Giant Clam Atoll
+	{ v(1354, 28), v(1600, 7) }, -- Giant Clam Atoll <-> Warden's Rock
+	{ v(1404, 478), v(1721, 487) }, -- Lighthouse Isle <-> Storm Spire
+	{ v(1430, -401), v(1675, -530) }, -- Maelstrom Isle <-> Bone Reef
+	{ v(1656, 17), v(1815, 192) }, -- Warden's Rock <-> Far Reach
 }
 
 -- Gameplay objects -------------------------------------------------------------------------------------------
@@ -202,10 +202,10 @@ L.beacons = {
 	v(672, -58), -- Twin Reef South
 	v(884, 304), -- Shipwreck Bay
 	v(1132, -270), -- Puffer Lagoon
-	v(1360, 450), -- Lighthouse Isle
-	v(1396, -366), -- Maelstrom Isle
-	v(1756, 476), -- Storm Spire
-	v(1724, -520), -- Bone Reef
+	v(1362, 452), -- Lighthouse Isle
+	v(1398, -370), -- Maelstrom Isle
+	v(1754, 477), -- Storm Spire
+	v(1721, -523), -- Bone Reef
 }
 
 -- Tide Caches: bank your fish (safe Pearls), and stand by one to heal (Config.Isles.cacheHeal).
@@ -217,7 +217,7 @@ L.tideCaches = {
 
 -- Stinging Anemone Beds (Master Patch 3 Table C): 8 x 8 pads on paths and shores.
 L.anemoneBeds = {
-	v(470, -170), v(452, 170), v(640, 44), v(620, -360), v(876, -40), v(920, 10),
+	v(470, -170), v(452, 170), v(640, 44), v(620, -360), v(884, -58), v(920, 10),
 	v(810, -410), v(1090, -270), v(1126, 160), v(1340, 0), v(1612, -20), v(1690, -560),
 	v(1100, 520), v(1380, 450),
 }

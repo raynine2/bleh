@@ -50,13 +50,38 @@ local function isJoint(j)
 	return j ~= nil and (j:IsA("AnimationConstraint") or j:IsA("Motor6D"))
 end
 
+-- The limb a joint moves: a Motor6D's Part1, or the part holding an AnimationConstraint's Attachment1.
+local function childPart(j)
+	if j:IsA("Motor6D") then
+		return j.Part1
+	end
+	local a1 = j.Attachment1
+	return a1 and a1.Parent
+end
+
+-- Patch 10: joints are found by name first and, failing that, by the limb they move, so rigs whose joints
+-- were renamed or moved (the avatar joint upgrade, some packages) still get every motion.
 local function findJoints(character)
 	local set = {}
+	local all = nil
 	for _, spec in ipairs(JOINTS) do
 		local p = character:FindFirstChild(spec[2])
-		local j = p and p:FindFirstChild(spec[3])
-		if not isJoint(j) then
+		if not p then
 			return nil -- R6, a custom rig, or limbs still streaming in
+		end
+		local j = p:FindFirstChild(spec[3])
+		if not isJoint(j) then
+			j = nil
+			all = all or character:GetDescendants()
+			for _, d in ipairs(all) do
+				if isJoint(d) and childPart(d) == p then
+					j = d
+					break
+				end
+			end
+			if not j then
+				return nil
+			end
 		end
 		set[spec[1]] = j
 	end
@@ -807,8 +832,16 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 		return
 	end
 	if not rec.joints then
+		if os.clock() < (rec.jointTry or 0) then
+			return
+		end
+		rec.jointTry = os.clock() + 0.5
 		rec.joints = findJoints(character)
 		if not rec.joints then
+			if p == player and humanoid.RigType == Enum.HumanoidRigType.R6 and not rec.warnedRig then
+				rec.warnedRig = true
+				warn("[TideboundMotion] Your avatar is R6, so the custom idle, run and fishing animations are off. Set Game Settings > Avatar > Avatar Type to R15.")
+			end
 			return
 		end
 	end

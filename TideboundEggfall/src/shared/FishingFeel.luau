@@ -11,6 +11,7 @@ local FishingFeel = {
 	tension = 0, -- 0 to 1 while reeling: 0 when the fish sits in your bar, 1 when it pulls away
 	progress = 0, -- 0 to 1 while reeling (Patch 10: TideboundRod bursts at each milestone)
 	milestone = 0, -- how many of the reel's milestones (50%, 75%, 90%) you've passed
+	sweet = false, -- the fish sits in the bar's sweet spot (Patch 10: gold sparkles off the line)
 	kickUntil = 0, -- os.clock(): the +4 FOV kick on the cast release
 	frozen = false, -- the reveal holds you still
 	shake = function(_amount: number, _seconds: number) end, -- set by the main client

@@ -24,6 +24,7 @@ local HazardEvent = Remotes:WaitForChild("Hazard")
 local CueEvent = Remotes:WaitForChild("Cue")
 local Animations = require(Shared:WaitForChild("Animations"))
 local FishingFeel = require(Shared:WaitForChild("FishingFeel")) -- Master Patch 5: TideboundRod reads it
+local Fx = require(Shared:WaitForChild("Fx"))
 
 local DISPLAY = Enum.Font.FredokaOne
 local BODY = Enum.Font.BuilderSansBold
@@ -509,23 +510,46 @@ new("UISizeConstraint", { MaxSize = Vector2.new(520, 128), Parent = fishFrame })
 local fishTitle = label({ Font = DISPLAY, Position = UDim2.new(0, 14, 0, 8), Size = UDim2.new(1, -28, 0, 24), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, Parent = fishFrame })
 local reelTrack = new("Frame", { Position = UDim2.new(0, 14, 0, 40), Size = UDim2.new(1, -28, 0, 36), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = fishFrame }, { corner(6), stroke(TILE.blue.outline, 2), gloss(TILE.blue.top, TILE.blue.bottom) })
 local reelBar = new("Frame", { Size = UDim2.new(0.22, 0, 1, 0), BackgroundColor3 = WHITE, BackgroundTransparency = 0.4, Parent = reelTrack }, { corner(6), stroke(WHITE, 2) })
+-- Patch 10: the sweet spot in the middle of the bar reels faster; a treasure pearl sometimes floats by
+local sweetSpot = new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 3), Size = UDim2.new(Config.Fishing.sweetSpot, 0, 1, -6), BackgroundColor3 = Color3.fromRGB(255, 236, 140), BackgroundTransparency = 0.55, ZIndex = 2, Parent = reelBar }, { corner(4) })
+local treasure = label({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 26, 0, 26), Text = "✦", TextSize = 24, TextColor3 = Color3.fromRGB(255, 214, 70), TextXAlignment = Enum.TextXAlignment.Center, Visible = false, ZIndex = 4, Parent = reelTrack }, { textStroke(2) })
+local comboLabel = label({ Font = DISPLAY, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8), Size = UDim2.new(0, 120, 0, 24), TextSize = 18, TextColor3 = Color3.fromRGB(255, 220, 90), TextXAlignment = Enum.TextXAlignment.Right, Text = "", Parent = nil })
 local fishIcon = label({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 30, 0, 30), Text = "🐟", TextSize = 24, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 3, Parent = reelTrack })
 local progressTrack = new("Frame", { Position = UDim2.new(0, 14, 0, 86), Size = UDim2.new(1, -28, 0, 10), BackgroundColor3 = Color3.fromRGB(40, 40, 44), Parent = fishFrame }, { corner(4) })
 local progressFill = new("Frame", { Size = UDim2.new(0.3, 0, 1, 0), BackgroundColor3 = WHITE, Parent = progressTrack }, { corner(4), gloss(TILE.gold.top, TILE.gold.bottom) })
 local fishHint = label({ Position = UDim2.new(0, 14, 0, 102), Size = UDim2.new(1, -28, 0, 18), TextSize = 13, TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Center, Parent = fishFrame }, { textStroke(1) })
+comboLabel.Parent = fishFrame
 
-local touches = 0
-UserInputService.TouchStarted:Connect(function()
-	touches += 1
+-- Patch 10: only touches the game didn't take (the thumbstick and buttons) count as holding the reel
+local touches = {}
+UserInputService.TouchStarted:Connect(function(input, processed)
+	if not processed then
+		touches[input] = true
+	end
 end)
-UserInputService.TouchEnded:Connect(function()
-	touches = math.max(0, touches - 1)
+UserInputService.TouchEnded:Connect(function(input)
+	touches[input] = nil
 end)
 
 local function isHolding()
 	return UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-		or touches > 0
+		or next(touches) ~= nil
 		or UserInputService:IsGamepadButtonDown(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonR2)
+end
+
+-- Little bubbles that rise through the reel track while you fight a fish.
+local function trackBubble(x, color)
+	local b = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(x, 0, 1, 0), Size = UDim2.new(0, 6, 0, 6), BackgroundColor3 = color or WHITE, BackgroundTransparency = 0.3, ZIndex = 2, Parent = reelTrack }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	TweenService:Create(b, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(x + (math.random() - 0.5) * 0.04, 0, 0, 0), BackgroundTransparency = 1, Size = UDim2.new(0, 10, 0, 10) }):Play()
+	task.delay(0.85, function()
+		b:Destroy()
+	end)
+end
+
+local function punch(frame, amount)
+	local scale = frame:FindFirstChild("Pop") or new("UIScale", { Name = "Pop", Parent = frame })
+	scale.Scale = 1 + amount
+	TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 end
 
 -- Placeholder animation hooks (Delta Section 10): plays Person B's animation when its id is filled in.
@@ -559,6 +583,7 @@ local function runMinigame(cast)
 		return
 	end
 	fishing = true
+	local castStarted = os.clock()
 	local f = Config.Fishing
 	fishFrame.Visible = true
 	reelTrack.Visible, progressTrack.Visible = false, false
@@ -576,9 +601,7 @@ local function runMinigame(cast)
 	fishTitle.Text = "BITE! Reel it in!"
 	fishTitle.TextColor3 = C.gold
 	-- Patch 10: the bite pops the panel
-	local pop = fishFrame:FindFirstChild("Pop") or new("UIScale", { Name = "Pop", Parent = fishFrame })
-	pop.Scale = 1.12
-	TweenService:Create(pop, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	punch(fishFrame, 0.12)
 	task.wait(0.3)
 	FishingFeel.set("reel")
 	fishHint.Text = "Hold click (or touch) to push the bar right. Keep the fish inside it."
@@ -597,10 +620,24 @@ local function runMinigame(cast)
 	local milestones = { 0.5, 0.75, 0.9 }
 	local cheers = { "Halfway! Keep it there!", "Almost! Don't let go!", "One more pull!" }
 	FishingFeel.progress, FishingFeel.milestone = progress, 0
+	-- Patch 10: the sweet spot, treasure pearls, a gentle assist and a fish that tires at each milestone
+	local tiredUntil = 0
+	local treasureAt, treasureUntil = nil, 0
+	local nextTreasure = os.clock() + rng:NextNumber(f.treasureEvery[1], f.treasureEvery[2])
+	local sweetTime = 0
+	local nextBubble = 0
+	local spot = cast.spot
+	treasure.Visible = false
+	comboLabel.Text = ""
 
 	while true do
 		local dt = RunService.RenderStepped:Wait()
 		barVel += (isHolding() and f.reelAccel or -f.reelAccel) * dt
+		-- while the fish is in the bar the bar leans toward it a little, so small slips don't cost you
+		local barCenter = barPos + barWidth / 2
+		if math.abs(fishPos - barCenter) < barWidth / 2 + f.edgeGrace then
+			barVel += (fishPos - barCenter) * f.assist * dt
+		end
 		barVel = math.clamp(barVel * (1 - math.min(1, f.barDamping * dt)), -f.barMaxSpeed, f.barMaxSpeed)
 		barPos += barVel * dt
 		if barPos < 0 then
@@ -613,11 +650,15 @@ local function runMinigame(cast)
 			fishTarget = math.clamp(fishPos + rng:NextNumber(-f.fishJump, f.fishJump), 0.05, 0.95)
 			retarget = rng:NextNumber(0.6, math.max(0.9, 2.2 - cast.difficulty * 0.15))
 		end
-		fishPos += math.clamp(fishTarget - fishPos, -fishSpeed * dt, fishSpeed * dt)
+		local speedNow = os.clock() < tiredUntil and fishSpeed * f.tiredMult or fishSpeed
+		fishPos += math.clamp(fishTarget - fishPos, -speedNow * dt, speedNow * dt)
 		local inside = fishPos >= barPos - f.edgeGrace and fishPos <= barPos + barWidth + f.edgeGrace
+		local sweet = inside and math.abs(fishPos - (barPos + barWidth / 2)) <= barWidth * f.sweetSpot / 2
 		if inside then
-			progress += f.gainPerSecond * dt
+			progress += f.gainPerSecond * (sweet and f.sweetMult or 1) * dt
+			sweetTime = sweet and sweetTime + dt or 0
 		else
+			sweetTime = 0
 			progress -= f.lossPerSecond / cast.resilience * dt
 			perfect = false
 		end
@@ -635,15 +676,63 @@ local function runMinigame(cast)
 		fishIcon.Position = UDim2.new(fishPos, 0, 0.5, math.sin(clock * 17) * (2 + 4 * FishingFeel.tension))
 		fishIcon.Rotation = math.sin(clock * 11) * (10 + 25 * FishingFeel.tension)
 		progressFill.Size = UDim2.new(math.clamp(progress, 0, 1), 0, 1, 0)
+		FishingFeel.sweet = sweet
+		sweetSpot.BackgroundTransparency = sweet and (0.15 + 0.15 * math.sin(clock * 14)) or 0.55
+		comboLabel.Text = sweetTime > 0.4 and ("SWEET x%.1f"):format(f.sweetMult) or ""
+		if clock >= nextBubble then
+			nextBubble = clock + (inside and 0.08 or 0.25)
+			trackBubble(fishPos, sweet and Color3.fromRGB(255, 236, 140) or (inside and Color3.fromRGB(200, 255, 220) or Color3.fromRGB(255, 190, 190)))
+		end
+		-- a treasure pearl floats up somewhere on the track: cover it with the bar to grab a burst of progress
+		if not treasureAt and clock >= nextTreasure then
+			treasureAt = rng:NextNumber(0.08, 0.92)
+			treasureUntil = clock + f.treasureLife
+			treasure.Position = UDim2.new(treasureAt, 0, 0.5, 0)
+			treasure.Visible = true
+			treasure.TextTransparency = 0
+		end
+		if treasureAt then
+			treasure.Rotation = clock * 120
+			treasure.TextSize = 22 + 4 * math.sin(clock * 10)
+			if treasureAt >= barPos and treasureAt <= barPos + barWidth then
+				progress += f.treasureGain
+				treasureAt = nil
+				treasure.Visible = false
+				nextTreasure = clock + rng:NextNumber(f.treasureEvery[1], f.treasureEvery[2])
+				fishTitle.Text = ("TREASURE! +%d%%"):format(math.floor(f.treasureGain * 100))
+				fishTitle.TextColor3 = C.gold
+				punch(fishFrame, 0.08)
+				for _ = 1, 6 do
+					trackBubble(rng:NextNumber(barPos, barPos + barWidth), Color3.fromRGB(255, 214, 70))
+				end
+				if spot then
+					Fx.cubes(spot + Vector3.new(0, 1, 0), { Color3.fromRGB(255, 214, 70), Color3.fromRGB(255, 255, 255) }, { spread = 5, size = 0.45, life = 0.6, up = 1, count = 14 })
+					Fx.stars(spot + Vector3.new(0, 2, 0), 3)
+				end
+			elseif clock >= treasureUntil then
+				treasureAt = nil
+				treasure.Visible = false
+				nextTreasure = clock + rng:NextNumber(f.treasureEvery[1], f.treasureEvery[2])
+			end
+		end
 		local nextMilestone = milestones[FishingFeel.milestone + 1]
 		if nextMilestone and progress >= nextMilestone then
-			-- TideboundRod bursts at the bobber; the progress bar flashes gold
+			-- TideboundRod bursts at the bobber; the progress bar flashes gold and the fish tires for a moment
 			FishingFeel.milestone += 1
+			tiredUntil = clock + f.tiredSeconds
 			progressTrack.BackgroundColor3 = Color3.fromRGB(255, 220, 90)
 			TweenService:Create(progressTrack, TweenInfo.new(0.4), { BackgroundColor3 = Color3.fromRGB(40, 40, 44) }):Play()
 			fishTitle.Text = cheers[FishingFeel.milestone]
+			fishTitle.TextColor3 = C.gold
+			punch(fishFrame, 0.06)
 		end
-		fishHint.Text = perfect and "PERFECT so far! The fish hasn't slipped once." or "Hold click (or touch) to push the bar right. Keep the fish inside it."
+		if os.clock() < tiredUntil then
+			fishHint.Text = "The fish is tiring! Reel now!"
+		elseif sweet then
+			fishHint.Text = "Sweet spot! Keep the fish in the gold stripe to reel faster."
+		else
+			fishHint.Text = perfect and "PERFECT so far! The fish hasn't slipped once." or "Hold to push the bar right, let go to drift left. Grab the ✦ for a bonus!"
+		end
 		peak = math.max(peak, progress)
 		if progress >= 1 then
 			caught = true
@@ -657,7 +746,20 @@ local function runMinigame(cast)
 	fishTitle.TextColor3 = caught and C.good or C.bad
 	fishTitle.Text = caught and (perfect and "PERFECT CATCH!" or "CAUGHT!") or "It got away..."
 	reelTrack.Visible, progressTrack.Visible = false, false
+	treasure.Visible = false
+	comboLabel.Text = ""
 	fishHint.Text = ""
+	FishingFeel.sweet = false
+	if caught then
+		punch(fishFrame, 0.15)
+		-- the server checks a catch can't be quicker than the bite plus a moment; hold the fish until then
+		local earliest = math.max(cast.biteWait, 0.9) + f.minReelSeconds + 0.2
+		local waitFor = earliest - (os.clock() - castStarted)
+		if waitFor > 0 then
+			fishHint.Text = "Landing it..."
+			task.wait(waitFor)
+		end
+	end
 	if not caught then
 		FishingFeel.set("break")
 	end

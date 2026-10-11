@@ -782,6 +782,11 @@ local function updateCast(rec, look, rodId, spot, tipPos)
 					Fx.ring(spot, Color3.fromRGB(255, 220, 90), 5 + rec.milestone * 2, 0.5, 0.25)
 					Audio.play("TickTick", rec.bobber.PrimaryPart)
 				end
+				-- Patch 10: holding the fish in the sweet spot throws gold sparkles off the line
+				if rec.player == player and FishingFeel.sweet and clock >= (rec.nextSweet or 0) then
+					rec.nextSweet = clock + 0.12
+					Fx.cubes(position + Vector3.new(0, 0.8, 0), { Color3.fromRGB(255, 220, 90), Color3.fromRGB(255, 255, 255) }, { spread = 2.5, size = 0.3, life = 0.45, up = 1, count = 3 })
+				end
 			end
 		end
 	end
