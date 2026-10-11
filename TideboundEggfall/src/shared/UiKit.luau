@@ -221,24 +221,47 @@ function UiKit.duration(seconds)
 	return ("%dm %ds"):format(m, seconds % 60)
 end
 
--- Opens a window with a pop (scale 0.9 -> 1, fade in), closes with the reverse. Windows are CanvasGroups.
+-- Opens a window: Position slides up from +0.06 Y (Back Out 0.3 s) while the CanvasGroup fades in; closing slides down
+-- (Quad In 0.16 s) and fades, then hides. Only Position and GroupTransparency move: tweening Size or a UIScale of a
+-- window full of text re-fits every label each frame. A BlurEffect in Lighting follows the open state.
+local Lighting = game:GetService("Lighting")
+local blur = Lighting:FindFirstChild("TideboundMenusBlur") or Instance.new("BlurEffect")
+blur.Name = "TideboundMenusBlur"
+blur.Size = 0
+blur.Parent = Lighting
+
 function UiKit.show(window, visible)
-	local scale = window:FindFirstChild("PopScale") or new("UIScale", { Name = "PopScale", Parent = window })
+	local base = window:GetAttribute("BasePos")
+	if not base then
+		base = window.Position
+		window:SetAttribute("BasePos", base)
+	end
+	local token = (window:GetAttribute("ShowToken") or 0) + 1
+	window:SetAttribute("ShowToken", token)
+	local below = UDim2.new(base.X.Scale, base.X.Offset, base.Y.Scale + 0.06, base.Y.Offset)
+	local isGroup = window:IsA("CanvasGroup")
 	if visible then
-		window.Visible = true
-		scale.Scale = 0.9
-		if window:IsA("CanvasGroup") then
+		window.Position = below
+		if isGroup then
 			window.GroupTransparency = 1
-			TweenService:Create(window, TweenInfo.new(0.18), { GroupTransparency = 0 }):Play()
 		end
-		TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		window.Visible = true
+		TweenService:Create(window, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = base }):Play()
+		if isGroup then
+			TweenService:Create(window, TweenInfo.new(0.2), { GroupTransparency = 0 }):Play()
+		end
+		TweenService:Create(blur, TweenInfo.new(0.3), { Size = 12 }):Play()
 	else
-		TweenService:Create(scale, TweenInfo.new(0.12), { Scale = 0.94 }):Play()
-		if window:IsA("CanvasGroup") then
-			TweenService:Create(window, TweenInfo.new(0.12), { GroupTransparency = 1 }):Play()
+		local info = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		TweenService:Create(window, info, { Position = below }):Play()
+		if isGroup then
+			TweenService:Create(window, info, { GroupTransparency = 1 }):Play()
 		end
-		task.delay(0.12, function()
-			window.Visible = false
+		TweenService:Create(blur, TweenInfo.new(0.16), { Size = 0 }):Play()
+		task.delay(0.16, function()
+			if window:GetAttribute("ShowToken") == token then
+				window.Visible = false
+			end
 		end)
 	end
 end

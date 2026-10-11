@@ -72,6 +72,17 @@ in Studio. But **edits to the scripts that come from `src/` are always replaced*
 
 Robux sells nothing in this slice; eggs, odds, pity, upgrades and power are all reachable by free play.
 
+## GDD Sections 7-10: audio, UI, visuals (branch feat/gdd-audio-ui-vfx)
+
+- **Canon biomes** (`shared/Biomes.luau`): Open Sea, Coral Reef, Kelp Forest, Abyssal Trench and Volcanic Isle laid over the built map (island -> biome table, Kelp below Y -150, optional `BiomeVolume` parts). Holds every per-biome number from GDD Tables 7A-D, 8C and 9B.
+- **Lighting and post** (`client/TideboundBiomeLook`): Table A global lighting, Table B atmosphere and Table C colour grade, bloom, depth of field (underwater and the sunken biomes) and sun rays blended per biome, biome clock (14:00 / 20:00), a biome title in its Table D colours. `Biomes.calibration` maps the GDD numbers to Roblox units (bloom threshold x2.5, exposure -0.6, haze x0.6); set `enabled = false` for the raw values. Set Lighting.Technology = Future by hand (scripts can't).
+- **Audio** (`shared/Soundtrack.luau`, `client/TideboundAudio`): mix buses at the GDD dB targets with the ducking rules, adaptive music (Calm, Menu, Hunt, Heist, Extract, Reveal, Boss, Wipe) with crossfades, beat-quantised stingers, ducks and hard cuts, 5 biome ambience beds with 3D detail layers, per-biome reverb and occlusion, underwater muffle, a heat / escape-clock heartbeat with a music high-cut, gacha stages, guardian vocals, rain and thunder. Library sound ids (APM / Pro Sound Effects) are stand-ins: paste your own over them.
+- **Rod and dash sounds** (`shared/Audio.luau`): layered cues cut from library clips (start, length, fades, pitch jitter) and played from a preloaded bank.
+- **Wind and weather** (`server/WindService`, `client/TideboundWeather`): the server owns GlobalWind, the per-biome vectors (Table 8C), gusts, Clear/Rain/Storm and lightning; clients lean their particles with their own biome's wind (WindAffectsDrag + the biome Drag, inside the particle budgets), draw rain, lightning, aurora, bioluminescence, heat pulse and flipbook kelp, and feel the Volcanic push and Abyssal downdraft. Test: set workspace attribute `ForceWeather` to `Storm`.
+- **VFX** (`shared/VfxLibrary.luau`, `client/TideboundVfx`): every Table 8B effect (egg auras, hatch explosion, mutation burst, extraction beam, gacha reveal, guardian roar, water impact, bait splash, lightning, sonar pulse, gravity rift...) with the 500-particle action budget, quality scaling, 150-stud LOD and the 3-flashes-a-second / Reduce Flashing limit. 2x2 flipbook textures in `assets/vfx`.
+- **LiveOps** (`shared/LiveOpsData.luau`, `server/LiveOps`): daily quests (3 a day from a pool), weekly goals, seasonal events, a 30-tier season pass (premium = cosmetics only), collection goals, cosmetics shop and wardrobe, global leaderboards (`Leaderboard_Coins`, `Leaderboard_Eggs` OrderedDataStores, every 5 min, top 100), the MemoryStore pity cache, saved settings and rate limiting. Saves now use UpdateAsync with a version check. Numbers are placeholders until GDD Sections 6/11-13 arrive.
+- **Menus** (`client/TideboundMenus`, `shared/UiKit`, `shared/UiIcons`): QUESTS, PASS, SHOP, BOARDS, ODDS (drawn only from the server's odds table) and SETTINGS in the REF 4 style with painted icons (`assets/icons`).
+
 ## Layout (Rojo)
 
 | Path | Studio location |

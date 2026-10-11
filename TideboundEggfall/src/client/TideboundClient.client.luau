@@ -312,18 +312,23 @@ local situation = nil -- "fishing" while reeling, for the camera (Delta Section 
 
 local hud = new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 14, 0, 14), Size = UDim2.new(0, 176, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = gui }, { list(8) })
 
-local function pill(order, style, letter)
+local function pill(order, style, letter, iconName)
 	local frame = neonPanel({ Size = UDim2.new(1, 0, 0, 34), LayoutOrder = order, Parent = hud }, 6)
-	local icon = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(0, 4, 0.5, -13), BackgroundColor3 = WHITE, Parent = frame }, { corner(5), gloss(TILE[style].top, TILE[style].bottom), stroke(TILE[style].outline, 1.5) })
-	label({ Text = letter, Font = DISPLAY, TextSize = 16, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = icon })
+	if iconName then
+		-- GUI revamp: a painted currency icon that pokes out of the pill's left edge
+		require(Shared:WaitForChild("UiIcons")).make(iconName, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 16, 0.5, 0), Size = UDim2.new(0, 34, 0, 34), ZIndex = 3, Parent = frame })
+	else
+		local icon = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(0, 4, 0.5, -13), BackgroundColor3 = WHITE, Parent = frame }, { corner(5), gloss(TILE[style].top, TILE[style].bottom), stroke(TILE[style].outline, 1.5) })
+		label({ Text = letter, Font = DISPLAY, TextSize = 16, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = icon })
+	end
 	return label({ Font = DISPLAY, TextSize = 18, Position = UDim2.new(0, 38, 0, 0), Size = UDim2.new(1, -44, 1, 0), Parent = frame })
 end
 
 local pills = {
-	pearls = pill(1, "blue", "P"),
-	shards = pill(2, "gold", "S"),
+	pearls = pill(1, "blue", "P", "pearl"),
+	shards = pill(2, "gold", "S", "egg"),
 	embers = pill(3, "red", "E"),
-	tideglass = pill(4, "grey", "T"),
+	tideglass = pill(4, "grey", "T", "gem"),
 }
 local infoCard = neonPanel({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = hud }, 6, true)
 padding(8).Parent = infoCard
@@ -333,25 +338,39 @@ local infoIncome = label({ Size = UDim2.new(1, 0, 0, 16), TextSize = 13, LayoutO
 
 -- Side menu: REF 4 tiles as buttons
 local sideMenu = new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 80), Size = UDim2.new(0, 74, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = gui }, { list(10) })
-local function sideButton(order, style, text, tab, emoji)
+-- GUI revamp (11 Oct): painted icons (UiIcons) instead of emoji; each icon pokes out above its tile and bobs gently
+-- (Rotation and Position only, never Size, so no text re-fits).
+local sideIcons = { list = {}, UiIcons = require(Shared:WaitForChild("UiIcons")) }
+local function sideButton(order, style, text, tab, icon)
 	local holder = new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(0, 72, 0, 72), LayoutOrder = order, AutoButtonColor = false, Parent = sideMenu })
 	local t = tile(holder, style)
 	t.frame.Size = UDim2.fromScale(1, 1)
-	if emoji then
-		t.icon:Destroy()
-		label({ Text = emoji, TextSize = 32, Size = UDim2.new(1, 0, 0, 44), Position = UDim2.new(0, 0, 0, 4), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 2, Parent = t.frame })
-	end
-	label({ Text = text, Font = DISPLAY, TextSize = 14, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 2, Parent = t.frame })
+	t.icon:Destroy()
+	local image = sideIcons.UiIcons.make(icon, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.36), Size = UDim2.fromScale(0.86, 0.86), ZIndex = 3, Parent = t.frame })
+	table.insert(sideIcons.list, { icon = image, seed = order * 1.7 })
+	label({ Text = text, Font = DISPLAY, TextSize = 14, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4, Parent = t.frame })
+	holder.MouseEnter:Connect(function()
+		TweenService:Create(image, TweenInfo.new(0.2, Enum.EasingStyle.Back), { Position = UDim2.fromScale(0.5, 0.3) }):Play()
+	end)
+	holder.MouseLeave:Connect(function()
+		TweenService:Create(image, TweenInfo.new(0.2), { Position = UDim2.fromScale(0.5, 0.36) }):Play()
+	end)
 	holder.Activated:Connect(function()
 		openMenu(tab)
 	end)
 	return holder
 end
-local eggsButton = sideButton(1, "gold", "EGGS", "ODDS", "🥚")
-sideButton(2, "blue", "SHOP", "RODS", "🎣")
-sideButton(3, "red", "BOOK", "CREATURES")
-sideButton(4, "blue", "HOME", "BASE", "🏠")
-sideButton(5, "gold", "DASH", "DASHES", "⚡") -- Patch 20
+RunService.RenderStepped:Connect(function()
+	local t = os.clock()
+	for _, entry in ipairs(sideIcons.list) do
+		entry.icon.Rotation = math.sin(t * 1.6 + entry.seed) * 4
+	end
+end)
+local eggsButton = sideButton(1, "gold", "EGGS", "ODDS", "egg")
+sideButton(2, "blue", "TACKLE", "RODS", "rod")
+sideButton(3, "red", "BOOK", "CREATURES", "book")
+sideButton(4, "blue", "HOME", "BASE", "house")
+sideButton(5, "gold", "DASH", "DASHES", "bolt") -- Patch 20
 local eggBadge = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -16, 0, -8), BackgroundColor3 = C.neon, ZIndex = 4, Parent = eggsButton }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(WHITE, 2) })
 local eggBadgeText = label({ Font = DISPLAY, TextSize = 14, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4, Parent = eggBadge })
 
