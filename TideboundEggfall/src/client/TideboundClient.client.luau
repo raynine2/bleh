@@ -1638,7 +1638,7 @@ do
 		("%s: Phase 1 when you steal your %drd egg (it guards the exit), Phase 2 at heat 75 (it chases; break sight for %d s), Phase 3 at heat 100 (faster). Every strike winds up for %.1f s: step aside."):format(G.name, G.triggerEggs, R.lockLoseSight, G.tell),
 		("Extract: hold %d s at a beacon, then choose within %d s. EXTRACT NOW, or PUSH DEEPER for +%d%% cargo, +%d heat and an angrier %s, then extract at a different beacon. No choice means extract."):format(R.beaconChannel, Config.Greed.choiceSeconds, math.round(Config.Greed.cargoPct * 100), Config.Greed.heat, G.name),
 		"Elites: dodge a Barnacle Brute's charge (it stuns you) or a Snapjaw Moray's bite, then loot their bait while they're dazed.",
-		("Each carried egg costs %d WalkSpeed unless a companion carries it. Hold Shift (or SPRINT) to run, Q (or DASH) to dash: both use stamina. Clean Extraction streak: +1 Ember per %d in a row, up to +%d."):format(R.carrySlowPerEgg, R.streakEmberEvery, R.streakEmberMax),
+		("Each carried egg costs %d WalkSpeed unless a companion carries it. Hold Shift (or SPRINT) to run, Q (or DASH) for a random dash move (rod and companion moves too): both use stamina. Clean Extraction streak: +1 Ember per %d in a row, up to +%d."):format(R.carrySlowPerEgg, R.streakEmberEvery, R.streakEmberMax),
 	}, "\n"))
 	local runStats = note(divePage, "")
 
@@ -2094,24 +2094,17 @@ do
 
 	-- Sprint: Shift on keyboard, a SPRINT toggle on touch screens
 	local sprintHeld, sprintToggle = false, false
-	-- Patch 18: stamina (Config.Stamina) and the dash: Q, the DASH button, or B on a gamepad.
-	-- Everything lives in one table: this script's main chunk is at Luau's limit of 200 locals, and a script
-	-- over it doesn't compile at all (no HUD, nothing).
+	-- Patch 18: stamina (Config.Stamina). The dash itself is TideboundDash (Patch 19), which spends from the
+	-- same MotionBus.stamina. Everything lives in one table: this script's main chunk is at Luau's limit of 200
+	-- locals, and a script over it doesn't compile at all (no HUD, nothing).
 	local mv = {
 		ST = Config.Stamina,
-		stamina = Config.Stamina.max,
-		winded = false,
-		lastDrain = 0,
+		s = MotionBus.stamina,
 		sprintBlend = 0,
-		dashStart = 0,
-		dashReadyAt = 0,
-		dashDir = Vector3.new(0, 0, -1),
-		dashMover = nil :: LinearVelocity?,
-		-- found without waiting, so a server that hasn't got it yet never holds up the rest of this script
 		dashEvent = Remotes:FindFirstChild("Dash") :: RemoteEvent?,
-		shownAt = 0,
 		warned = false,
 	}
+	mv.s.value = Config.Stamina.max
 	if not mv.dashEvent then
 		task.spawn(function()
 			mv.dashEvent = Remotes:WaitForChild("Dash") :: RemoteEvent
@@ -2134,66 +2127,9 @@ do
 	})
 	mv.icon = new("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0), Size = UDim2.new(0, 20, 0, 20), Text = "⚡", TextScaled = true, Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(255, 230, 90), Parent = mv.bar })
 
-	function mv.canMove(humanoid)
-		return state and humanoid.Health > 0 and workspace:GetServerTimeNow() >= state.stunUntil and not FishingFeel.frozen and not MotionBus.cutscene and FishingFeel.phase == "" and not humanoid.Sit
-	end
-
-	function mv.dash()
-		local ST = mv.ST
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if not humanoid or not root or not mv.canMove(humanoid) then
-			return
-		end
-		local now = os.clock()
-		if now < mv.dashReadyAt or mv.winded or mv.stamina < ST.dashCost * 0.5 then
-			if mv.winded then
-				mv.shownAt = now -- flash the bar so you can see why
-			end
-			return
-		end
-		local dir = humanoid.MoveDirection
-		if dir.Magnitude < 0.1 then
-			dir = root.CFrame.LookVector
-		end
-		dir = Vector3.new(dir.X, 0, dir.Z)
-		if dir.Magnitude < 0.01 then
-			return
-		end
-		mv.dashDir = dir.Unit
-		mv.stamina = math.max(0, mv.stamina - ST.dashCost)
-		mv.lastDrain = now
-		mv.dashStart, mv.dashReadyAt = now, now + ST.dashCooldown
-		local kind = math.random(1, 3)
-		MotionBus.dash[character] = { start = now, kind = kind }
-		MotionBus.kick = { at = now, amount = ST.dashFov, length = 0.45 }
-		mv.tell("dash", kind)
-		-- the push: a horizontal velocity that eases from the burst back down to your run (gravity still acts)
-		local attachment = root:FindFirstChild("DashAttachment") or new("Attachment", { Name = "DashAttachment", Parent = root })
-		if mv.dashMover then
-			mv.dashMover:Destroy()
-		end
-		mv.dashMover = new("LinearVelocity", {
-			Name = "DashVelocity",
-			Attachment0 = attachment,
-			RelativeTo = Enum.ActuatorRelativeTo.World,
-			ForceLimitMode = Enum.ForceLimitMode.PerAxis,
-			MaxAxesForce = Vector3.new(1, 0, 1) * 60000,
-			VectorVelocity = mv.dashDir * ST.dashSpeed,
-			Parent = root,
-		})
-		root.CFrame = CFrame.lookAt(root.Position, root.Position + mv.dashDir)
-	end
-
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then
-			return
-		end
-		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonL3 then
+		if not processed and (input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonL3) then
 			sprintHeld = true
-		elseif input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.ButtonB then
-			mv.dash()
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
@@ -2207,52 +2143,46 @@ do
 			sprintToggle = not sprintToggle
 			restyle(sprintButton, sprintToggle and "gold" or "grey")
 		end)
-		button({ Text = "DASH", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -244, 1, -40), Size = UDim2.new(0, 84, 0, 44), TextSize = 15, Parent = gui }, "grey", mv.dash)
 	end
 
 	player.CharacterAdded:Connect(function()
-		mv.stamina, mv.winded, mv.sprintBlend = mv.ST.max, false, 0
-		if mv.dashMover then
-			mv.dashMover:Destroy()
-			mv.dashMover = nil
-		end
+		mv.s.value, mv.s.winded, mv.sprintBlend = mv.ST.max, false, 0
 		mv.tell("tired", false)
 	end)
 
-	-- stamina drains while you sprint, refills after a short rest (faster standing still)
+	-- stamina drains while you sprint, refills after a short rest (faster standing still); dashes spend it too
 	function mv.update(dt, humanoid, wantSprint)
-		local ST = mv.ST
+		local ST, s = mv.ST, mv.s
 		local now = os.clock()
 		local moving = humanoid.MoveDirection.Magnitude > 0.1
-		local sprinting = wantSprint and moving and not mv.winded and mv.stamina > 0
+		local sprinting = wantSprint and moving and not s.winded and s.value > 0
 		if sprinting then
-			mv.stamina = math.max(0, mv.stamina - ST.sprintDrain * dt)
-			mv.lastDrain = now
-			if mv.stamina <= 0 then
-				mv.winded = true
-				MotionBus.tired[humanoid.Parent] = true
-				mv.tell("tired", true)
-			end
-		elseif now - mv.lastDrain > ST.regenDelay then
-			mv.stamina = math.min(ST.max, mv.stamina + ST.regen * (moving and 1 or ST.regenStill) * dt)
-			if mv.winded and mv.stamina >= ST.recoverAt then
-				mv.winded = false
-				MotionBus.tired[humanoid.Parent] = nil
-				mv.tell("tired", false)
-			end
+			s.value = math.max(0, s.value - ST.sprintDrain * dt)
+			s.lastDrain = now
+		elseif now - s.lastDrain > ST.regenDelay then
+			s.value = math.min(ST.max, s.value + ST.regen * (moving and 1 or ST.regenStill) * dt)
+		end
+		if s.value <= 0 and not s.winded then
+			s.winded = true
+			MotionBus.tired[humanoid.Parent] = true
+			mv.tell("tired", true)
+		elseif s.winded and s.value >= ST.recoverAt then
+			s.winded = false
+			MotionBus.tired[humanoid.Parent] = nil
+			mv.tell("tired", false)
 		end
 		-- the bar
-		if mv.stamina < ST.max - 0.5 then
-			mv.shownAt = now
+		if s.value < ST.max - 0.5 then
+			s.shownAt = now
 		end
-		local show = now - mv.shownAt < 1.2
+		local show = now - s.shownAt < 1.2
 		mv.bar.Visible = show
 		if show then
-			local frac = mv.stamina / ST.max
+			local frac = s.value / ST.max
 			mv.fill.Size = UDim2.new(math.max(frac, 0.04), 0, 1, 0)
-			local color = mv.winded and Color3.fromRGB(255, 80, 80) or (frac > 0.5 and Color3.fromRGB(120, 230, 120) or frac > 0.25 and Color3.fromRGB(255, 210, 70) or Color3.fromRGB(255, 120, 60))
-			mv.fill.BackgroundColor3 = mv.winded and color:Lerp(Color3.new(1, 1, 1), 0.3 + 0.3 * math.sin(now * 12)) or color
-			mv.icon.TextColor3 = mv.winded and Color3.fromRGB(255, 90, 90) or Color3.fromRGB(255, 230, 90)
+			local color = s.winded and Color3.fromRGB(255, 80, 80) or (frac > 0.5 and Color3.fromRGB(120, 230, 120) or frac > 0.25 and Color3.fromRGB(255, 210, 70) or Color3.fromRGB(255, 120, 60))
+			mv.fill.BackgroundColor3 = s.winded and color:Lerp(Color3.new(1, 1, 1), 0.3 + 0.3 * math.sin(now * 12)) or color
+			mv.icon.TextColor3 = s.winded and Color3.fromRGB(255, 90, 90) or Color3.fromRGB(255, 230, 90)
 		end
 		return sprinting
 	end
@@ -2276,16 +2206,6 @@ do
 			-- Patch 18: the sprint eases in and out instead of snapping
 			mv.sprintBlend += ((sprinting and 1 or 0) - mv.sprintBlend) * math.min(1, dt * (sprinting and mv.ST.sprintEase or mv.ST.sprintEase * 1.6))
 			local speed = state.walkSpeed + Config.Risk.sprintBonus * mv.sprintBlend
-			-- the dash push eases from the burst back down to your run
-			if mv.dashMover then
-				local u = (os.clock() - mv.dashStart) / mv.ST.dashTime
-				if u >= 1 or not mv.canMove(humanoid) then
-					mv.dashMover:Destroy()
-					mv.dashMover = nil
-				else
-					mv.dashMover.VectorVelocity = mv.dashDir * (speed + (mv.ST.dashSpeed - speed) * (1 - u) ^ 2)
-				end
-			end
 			if workspace:GetServerTimeNow() < state.stunUntil or FishingFeel.frozen or MotionBus.cutscene then
 				speed = 0
 			elseif onPatch(root, "TideboundAnemone") then

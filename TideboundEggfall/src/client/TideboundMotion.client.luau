@@ -22,6 +22,7 @@ local Animations = require(Shared:WaitForChild("Animations"))
 local MotionBus = require(Shared:WaitForChild("MotionBus"))
 local Fx = require(Shared:WaitForChild("Fx"))
 local Audio = require(Shared:WaitForChild("Audio"))
+local DashMoves = require(Shared:WaitForChild("DashMoves")) -- Patch 19: every dash move's pose
 
 local player = Players.LocalPlayer
 local rng = Random.new()
@@ -30,7 +31,6 @@ local TAU = math.pi * 2
 local SPRINT_SPEED = 19 -- above this (walk 16 + sprint 6, minus carried eggs) the run becomes a sprint
 local FX_RANGE = 90 -- footstep puffs and trails only for characters this close to the camera
 local POSE_RANGE = 260 -- characters further away keep the default animations
-local DASH_LENGTH = 0.62 -- Patch 18: the dash pose, skid included (seconds)
 
 -- Joint name, the part it sits in, and the pose keys that drive it
 local JOINTS = {
@@ -439,27 +439,6 @@ local function slamPose(u)
 	return p
 end
 
--- Patch 18: the dash, in one of three goofy styles (the server picks nothing: your client rolls DashKind).
---   1: leaning way forward, arms flung straight back, legs a blur
---   2: a penguin belly slide, arms out in front, feet fluttering
---   3: cartoon wheel legs, arms windmilling
-local function dashPose(kind, u)
-	local ph = u * 48
-	if kind == 2 then
-		local flutter = math.sin(u * 40) * 0.15
-		return { rootX = -1.42, rootUp = -2.0, rootZ = 0.08 * math.sin(u * 22), waistX = 0.15, neckX = 0.85, shRX = 3.0, shRZ = 0.25, elRX = 0.05, shLX = 3.0, shLZ = -0.25, elLX = 0.05, hipRX = -0.15 + flutter, kneeRX = -0.1, ankRX = -0.7, hipLX = -0.15 - flutter, kneeLX = -0.1, ankLX = -0.7 }
-	elseif kind == 3 then
-		return { rootX = -0.4, rootUp = 0.15 * math.sin(ph * 2), waistY = 0.15 * math.sin(ph), waistX = -0.1, neckX = 0.35, shRX = 1.4 + 1.6 * math.sin(ph * 0.6), shRZ = 0.5, elRX = 0.3, shLX = 1.4 - 1.6 * math.sin(ph * 0.6), shLZ = -0.5, elLX = 0.3, hipRX = 1.3 * math.sin(ph), kneeRX = -0.9 - 0.9 * math.cos(ph), hipLX = -1.3 * math.sin(ph), kneeLX = -0.9 + 0.9 * math.cos(ph) }
-	end
-	return { rootX = -0.8, rootUp = -0.2, waistX = -0.15, neckX = 0.6, shRX = -1.35, shRZ = 0.25, elRX = 0.05, shLX = -1.35, shLZ = -0.25, elLX = 0.05, hipRX = 1.1 * math.sin(ph), kneeRX = -0.8 - 0.7 * math.cos(ph), hipLX = -1.1 * math.sin(ph), kneeLX = -0.8 + 0.7 * math.cos(ph) }
-end
-
--- Every dash ends in the same skid: leaning back, front foot braced toe-up, arms flailing for balance.
-local function skidPose(t)
-	local flail = math.sin(t * 22)
-	return { rootX = 0.32, rootUp = -0.45, waistX = 0.18, neckX = -0.15, shRX = 0.6, shRZ = 1.25 + 0.35 * flail, elRX = 0.4, shLX = 0.6, shLZ = -(1.25 - 0.35 * flail), elLX = 0.4, hipRX = 0.85, kneeRX = -0.35, ankRX = -0.45, hipLX = -0.25, kneeLX = -1.05, ankLX = 0.3 }
-end
-
 -- Patch 18: winded (stamina empty): hands on knees, heaving for breath; on the move, a slumped jog.
 local TIRED_KEYS = { "waistX", "neckX", "shRX", "elRX", "shLX", "elLX" }
 local function tiredPose(t)
@@ -691,9 +670,7 @@ local function updateStars(rec, on, t)
 	end
 end
 
--- Patch 18: dash effects. Clean and quick: a dust cloud left hanging where you were, a ring at your feet,
--- see-through afterimages of your body along the way, and a spray of snow as you skid.
-local GHOSTS = { Color3.fromRGB(150, 230, 255), Color3.fromRGB(220, 240, 255), Color3.fromRGB(255, 200, 120) }
+-- Patch 18: a small effect part (sweat drops, the panting tongue)
 local function fxPart(shape, size, cf, color, material)
 	local g = Instance.new("Part")
 	g.Anchored = true
@@ -708,59 +685,6 @@ local function fxPart(shape, size, cf, color, material)
 	g.CFrame = cf
 	g.Parent = Fx.folder()
 	return g
-end
-
-local function afterimage(character, color)
-	for _, limb in ipairs(character:GetChildren()) do
-		if limb:IsA("BasePart") and limb.Name ~= "HumanoidRootPart" and limb.Transparency < 0.9 then
-			local g = fxPart(Enum.PartType.Block, limb.Size, limb.CFrame, color)
-			g.Transparency = 0.55
-			TweenService:Create(g, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 1, Size = limb.Size * 0.85 }):Play()
-			Debris:AddItem(g, 0.35)
-		end
-	end
-end
-
-local function dustCloud(at)
-	for i = 1, 5 do
-		local offset = Vector3.new(rng:NextNumber(-1.2, 1.2), rng:NextNumber(0, 1.4), rng:NextNumber(-1.2, 1.2))
-		local puff = fxPart(Enum.PartType.Ball, Vector3.one * 0.6, CFrame.new(at + offset), i % 2 == 0 and Color3.fromRGB(235, 240, 248) or Color3.new(1, 1, 1), Enum.Material.SmoothPlastic)
-		puff.Transparency = 0.1
-		local size = rng:NextNumber(2.4, 3.6)
-		TweenService:Create(puff, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = Vector3.one * size }):Play()
-		TweenService:Create(puff, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 0.2), { Size = Vector3.one * 0.3, Transparency = 1, CFrame = CFrame.new(at + offset * 1.4 + Vector3.new(0, 1, 0)) }):Play()
-		Debris:AddItem(puff, 0.6)
-	end
-end
-
-local function dashFx(rec, character, root, dash)
-	if not rec.near then
-		return
-	end
-	local seen = rec.dashFx
-	local feet = root.Position - Vector3.new(0, rec.hipOffset or 3, 0)
-	if not seen or seen.key ~= dash.key then
-		seen = { key = dash.key, ghosts = 0, skid = false }
-		rec.dashFx = seen
-		if dash.u < 0.2 then
-			dustCloud(feet + Vector3.new(0, 1, 0))
-			Fx.ring(feet + Vector3.new(0, 0.2, 0), Color3.new(1, 1, 1), 5, 0.3, 0.25)
-			Audio.play("DashWhoosh", root, rng:NextNumber(0.9, 1.1))
-			Audio.play("DashPop", root, rng:NextNumber(0.9, 1.15))
-		end
-	end
-	-- afterimages at 0.06, 0.12, 0.18 and 0.24 seconds
-	local due = math.floor(math.clamp(dash.u, 0, 0.25) / 0.06)
-	while seen.ghosts < due do
-		seen.ghosts += 1
-		afterimage(character, GHOSTS[dash.kind] or GHOSTS[1])
-	end
-	if not seen.skid and dash.u > 0.25 and dash.u < 0.5 then
-		seen.skid = true
-		local color = rec.floorColor or Color3.fromRGB(240, 245, 255)
-		Fx.cubes(feet + root.CFrame.LookVector * 1.2 + Vector3.new(0, 0.4, 0), { color, Color3.new(1, 1, 1) }, { spread = 3, size = 0.35, life = 0.35, count = 10, up = 0.5, material = Enum.Material.SmoothPlastic })
-		Audio.play("DashSkid", root, rng:NextNumber(0.9, 1.1))
-	end
 end
 
 -- Winded: sweat drops fly off your head, and your tongue hangs out while you stand and pant.
@@ -1197,7 +1121,8 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 		end
 	end
 
-	-- Patch 18: the dash (your own plays at once; everyone else's comes through DashAt and DashKind)
+	-- Patch 18/19: the dash (your own plays at once; everyone else's comes through DashAt and DashKind). The
+	-- moves and their poses are in DashMoves; the effects are TideboundDash's.
 	local dash = nil
 	if p == player then
 		local own = MotionBus.dash[character]
@@ -1210,11 +1135,12 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 			dash = { key = dashAt, u = serverNow - dashAt, kind = character:GetAttribute("DashKind") or 1 }
 		end
 	end
-	if dash and dash.u >= 0 and dash.u < DASH_LENGTH then
-		local dp = dashPose(dash.kind, dash.u)
-		mix(dp, skidPose(t), smooth((dash.u - 0.24) / 0.1))
-		mix(pose, dp, envelope(dash.u, DASH_LENGTH, 0.04, 0.22))
-		dashFx(rec, character, root, dash)
+	if dash and dash.u >= 0 then
+		local length = DashMoves.length(dash.kind)
+		if dash.u < length then
+			local dp = DashMoves.pose(dash.kind, dash.u, t)
+			mix(pose, dp, envelope(dash.u, length, 0.04, 0.2))
+		end
 	end
 
 	-- Patch 10: a geyser launch (TideboundTravel)

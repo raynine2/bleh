@@ -10,6 +10,8 @@
 --     see it through the DashAt / DashKind attributes the server sets)
 --   tired[character] = true while your own stamina is empty (Patch 18; others see the Tired attribute)
 --   kick = { at = os.clock(), amount = degrees, length = seconds }  -- a punch of the camera's field of view
+--   stamina = { value, winded, lastDrain, shownAt }  -- your stamina (Patch 19): TideboundClient refills it and
+--     drains it on the sprint, TideboundDash spends it on dashes
 
 local MotionBus = {}
 
@@ -20,5 +22,6 @@ MotionBus.cutscene = false
 MotionBus.dash = {}
 MotionBus.tired = {}
 MotionBus.kick = nil :: { at: number, amount: number, length: number }?
+MotionBus.stamina = { value = 100, winded = false, lastDrain = 0, shownAt = 0 }
 
 return MotionBus

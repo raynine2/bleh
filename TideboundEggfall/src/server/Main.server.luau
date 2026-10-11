@@ -44,6 +44,7 @@ local DescentBuilder = require(script.Parent:WaitForChild("DescentBuilder"))
 local TownBuilder = require(script.Parent:WaitForChild("TownBuilder"))
 local ShoalsBuilder = require(script.Parent:WaitForChild("ShoalsBuilder"))
 local Mobs = require(script.Parent:WaitForChild("Mobs"))
+local DashMoves = require(Shared:WaitForChild("DashMoves"))
 local CollectionService = game:GetService("CollectionService")
 
 -- the remotes come first, so clients never wait on the world build (or on a builder that fails)
@@ -796,27 +797,57 @@ Players.PlayerRemoving:Connect(function(player)
 	swipeTokens[player] = nil
 end)
 
--- Patch 18: a dash (the client moves itself; this only shows it to everyone) or being winded.
+-- Patch 18/19: a dash (the client moves itself; this checks the move and shows it to everyone) or being winded.
+-- Rod moves put the rod in your hand for the move; fish moves need one of your companions out.
 local lastDash = {}
-DashEvent.OnServerEvent:Connect(function(player, what, value)
+local dashTokens = {}
+DashEvent.OnServerEvent:Connect(function(player, what, value, target)
 	if what == "tired" then
 		mark(player, "Tired", value == true or nil)
 		return
 	end
-	local run = runs[player]
+	local run, root = runs[player], rootOf(player)
 	local t = now()
-	if not run or t - (lastDash[player] or 0) < Config.Stamina.dashCooldown * 0.8 then
+	local move = type(value) == "number" and DashMoves.byId[value] or nil
+	if not run or not root or not move or t - (lastDash[player] or 0) < Config.Stamina.dashCooldown * 0.8 then
 		return
 	end
 	if run.session or t < math.max(run.travelUntil, run.stunUntil) then
 		return
 	end
+	if move.fish then
+		local hasFish = false
+		for _, model in ipairs(CollectionService:GetTagged("TideboundCompanion")) do
+			if model:GetAttribute("Owner") == player.UserId then
+				hasFish = true
+				break
+			end
+		end
+		if not hasFish then
+			return
+		end
+	end
 	lastDash[player] = t
-	mark(player, "DashKind", (type(value) == "number" and value >= 1 and value <= 3) and math.floor(value) or 1)
+	-- a hook shot's target, so everyone sees the line go to the same spot (only if it's in reach)
+	local aim = typeof(target) == "Vector3" and (target - root.Position).Magnitude < (move.profile.reach or 0) + 8 and target or nil
+	mark(player, "DashTarget", aim)
+	mark(player, "DashKind", move.id)
 	mark(player, "DashAt", t)
+	if move.rod then
+		Rods.hold(player, true)
+		dashTokens[player] = t
+		task.delay(move.length + 0.15, function()
+			local current = runs[player]
+			if dashTokens[player] == t and not (current and current.session) then
+				dashTokens[player] = nil
+				Rods.hold(player, false)
+			end
+		end)
+	end
 end)
 Players.PlayerRemoving:Connect(function(player)
 	lastDash[player] = nil
+	dashTokens[player] = nil
 end)
 
 -- World actions (ProximityPrompts) -------------------------------------------

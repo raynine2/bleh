@@ -240,11 +240,9 @@ Config.Stamina = {
 	recoverAt = 35, -- winded until stamina is back up to this
 	sprintEase = 5, -- how quickly the sprint speed eases in (per second)
 	sprintFov = 6, -- extra field of view at full sprint
-	dashCost = 22,
 	dashCooldown = 0.8,
-	dashSpeed = 72,
-	dashTime = 0.26,
 	dashFov = 9,
+	-- Patch 19: each dash move's cost, speed and timing are in DashMoves.luau
 }
 
 -- Patch 17: a 3-hit combo. Swing again within `window` seconds of a hit's `wait` to carry on: Bonk (an overhead

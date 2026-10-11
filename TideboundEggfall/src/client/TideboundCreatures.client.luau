@@ -6,6 +6,11 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Tidebound")
+local MotionBus = require(Shared:WaitForChild("MotionBus"))
+local DashMoves = require(Shared:WaitForChild("DashMoves")) -- Patch 19: fish moves (surf, rocket, tail slap)
 
 local NEAR = 220 -- only animate creatures near the camera
 
@@ -72,6 +77,30 @@ local function follow(model, dt, now)
 		return
 	end
 	local slot = model:GetAttribute("Slot") or 1
+	-- Patch 19: during a fish dash move the companion goes where the move says (your own dash at once,
+	-- everyone else's from their DashAt / DashKind)
+	local character = owner.Character
+	local id, u = nil, nil
+	if owner == Players.LocalPlayer then
+		local own = MotionBus.dash[character]
+		if own then
+			id, u = own.kind, now - own.start
+		end
+	else
+		local dashAt = character:GetAttribute("DashAt")
+		if dashAt then
+			id, u = character:GetAttribute("DashKind"), workspace:GetServerTimeNow() - dashAt
+		end
+	end
+	local move = id and DashMoves.byId[id]
+	if move and move.fish and u >= 0 and u < move.length then
+		local cf = DashMoves.fish(id, slot, u, root.CFrame, now)
+		if cf then
+			followState[model] = cf
+			model:PivotTo(cf)
+			return
+		end
+	end
 	local target = root.CFrame * CFrame.new(slot == 1 and -3 or 3, 0.6 + math.sin(now * 3 + slot) * 0.3, 3.5)
 	local current = followState[model] or model:GetPivot()
 	local position = target.Position
