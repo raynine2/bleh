@@ -11,7 +11,8 @@
     },
     "ServerScriptService": {
       "Tidebound": {
-        "$path": "TideboundEggfall/src/server"
+        "$path": "TideboundEggfall/src/server",
+        "$ignoreUnknownInstances": true
       }
     },
     "StarterPlayer": {

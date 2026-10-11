@@ -2,6 +2,29 @@
 
 Cast. Steal. Hatch. Escape. Core-loop vertical slice built from Design Doc Part A, the Part A Delta, the Master Patch (Patches 1-8), the Big Update, Patch 10 (the Open Isles) and the Canon Sheet.
 
+## Working together (Team Create + Rojo): read this first
+
+Rojo makes Studio match the files in `src/`. When it syncs, **the files win**: any script in a Rojo folder that was
+edited only in Studio is overwritten. Rojo manages exactly three places:
+
+| Studio | Files |
+| --- | --- |
+| `ReplicatedStorage.Tidebound` | `src/shared` |
+| `ServerScriptService.Tidebound` | `src/server` |
+| `StarterPlayer.StarterPlayerScripts` | `src/client` |
+
+All three keep anything that isn't in the files (`$ignoreUnknownInstances`), so Rojo never deletes a new script made
+in Studio. But **edits to the scripts that come from `src/` are always replaced** on the next sync.
+
+1. **Change code in the files, never in Studio.** Clone the repo, edit in `src/` (Claude Code, VS Code...), commit,
+   push. Everyone else pulls. That includes Claude working through a Studio plugin: have it edit the files instead.
+2. **Commit before you pull:** `git add -A`, `git commit -m "..."`, `git pull`. Then a pull merges, never hides.
+3. **One person runs Rojo** in the shared Studio, and only after checking nobody has unsaved script edits there.
+4. **Studio-only work is fine outside those three places** (Workspace builds, StarterGui, your own folders). Rojo
+   never touches them; Team Create saves them with the place. A script you make in Studio inside a Rojo folder
+   survives, but save it into `src/` and commit it soon, so it's in git too.
+5. When a script is deleted from `src/`, delete it in Studio by hand too (Rojo keeps unknown instances now).
+
 ## What's in this slice
 
 - **The Open Isles (Patch 10)**: the surface map is about ten times the old Nest and Shoals, all laid out in `IslesLayout.luau` (one table the builders, the server and the client scripts share).
