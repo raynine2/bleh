@@ -26,6 +26,7 @@ local Animations = require(Shared:WaitForChild("Animations"))
 local FishingFeel = require(Shared:WaitForChild("FishingFeel")) -- Master Patch 5: TideboundRod reads it
 local Fx = require(Shared:WaitForChild("Fx"))
 local HatchScene = require(Shared:WaitForChild("HatchScene")) -- Patch 11: the hatch cutscene and the shrine's odds card
+local ClientBus = require(Shared:WaitForChild("ClientBus")) -- GDD Section 9: Menu music and UI-bus ducking follow the menu
 HatchScene.mountBoards()
 
 local DISPLAY = Enum.Font.FredokaOne
@@ -837,6 +838,7 @@ local bannerText = label({ Font = DISPLAY, TextSize = 26, Position = UDim2.new(0
 
 local function closeMenu()
 	menu.Visible = false
+	ClientBus.setMenu("Main", false)
 	TweenService:Create(blur, TweenInfo.new(0.2), { Size = 0 }):Play()
 end
 
@@ -1408,37 +1410,54 @@ do
 end
 
 do
-	-- QUESTS tab: Quill's daily quests and the season board (Delta Sections 8 and 11)
+	-- QUESTS tab: Quill's daily quests (LiveOps picks 3 a day from a pool). The full quest log, weekly goals, the
+	-- live event, collection goals and the season pass are in TideboundMenus; the button below opens it.
 	local questsPage = makePage("QUESTS")
 	section(questsPage, "DAILY QUESTS · reset at 00:00 UTC")
 	local questRows = {}
-	for _, quest in ipairs(Config.Quests) do
+	for i = 1, 3 do
 		local row = rowFrame(questsPage, 52)
-		label({ Text = quest.text, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 4), Size = UDim2.new(0.66, -12, 0, 22), TextSize = 15, Parent = row })
+		local title = label({ Font = DISPLAY, Position = UDim2.new(0, 12, 0, 4), Size = UDim2.new(0.66, -12, 0, 22), TextSize = 15, Parent = row })
 		local progressText = label({ Position = UDim2.new(0, 12, 0, 26), Size = UDim2.new(0.2, 0, 0, 20), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
 		local fill = bar(row, UDim2.new(0.2, 12, 0, 32), UDim2.new(0.46, -24, 0, 10), "gold")
-		local claim = button({ Size = UDim2.new(0.34, -10, 0, 36), Position = UDim2.new(0.66, 0, 0.5, -18), TextSize = 13, Parent = row }, "gold", function()
-			act("ClaimQuest", quest.id)
+		local entry = { row = row, title = title, progress = progressText, fill = fill }
+		entry.claim = button({ Size = UDim2.new(0.34, -10, 0, 36), Position = UDim2.new(0.66, 0, 0.5, -18), TextSize = 13, Parent = row }, "gold", function()
+			if entry.quest then
+				act("ClaimQuest", entry.quest.id)
+			end
 		end)
-		questRows[quest.id] = { progress = progressText, fill = fill, claim = claim, quest = quest }
+		questRows[i] = entry
 	end
 	local questReset = note(questsPage, "")
 	divider(questsPage)
-	section(questsPage, "SEASON TRACK · Captain Brask")
-	note(questsPage, "The free season track opens with Season 1. It will pay Pearls, cosmetics and 100 Tideglass per 10 tiers, and nothing on it changes stats.")
+	section(questsPage, "QUEST LOG · weekly goals, events, collection, season pass")
+	local logRow = rowFrame(questsPage, 52)
+	button({ Text = "OPEN QUEST LOG", Size = UDim2.new(0.5, -12, 0, 38), Position = UDim2.new(0, 8, 0.5, -19), TextSize = 15, Parent = logRow }, "blue", function()
+		closeMenu()
+		ClientBus.signal:Fire("open", "Quests")
+	end)
+	button({ Text = "SEASON PASS", Size = UDim2.new(0.5, -12, 0, 38), Position = UDim2.new(0.5, 4, 0.5, -19), TextSize = 15, Parent = logRow }, "gold", function()
+		closeMenu()
+		ClientBus.signal:Fire("open", "Pass")
+	end)
 
 	refreshers.QUESTS = function()
-		for id, row in pairs(questRows) do
-			local count = state.quests.progress[id] or 0
-			local claimed = state.quests.claimed[id]
-			row.progress.Text = ("%d / %d"):format(count, row.quest.goal)
-			row.fill.Size = UDim2.new(math.clamp(count / row.quest.goal, 0, 1), 0, 1, 0)
-			if claimed then
-				row.claim.Text = "CLAIMED"
-				restyle(row.claim, "grey")
-			else
-				row.claim.Text = ("CLAIM · %d P"):format(row.quest.reward)
-				restyle(row.claim, count >= row.quest.goal and "gold" or "grey")
+		local list = state.quests and state.quests.quests or {}
+		for i, entry in ipairs(questRows) do
+			local quest = list[i]
+			entry.quest = quest
+			entry.row.Visible = quest ~= nil
+			if quest then
+				entry.title.Text = quest.text
+				entry.progress.Text = ("%d / %d"):format(quest.progress, quest.goal)
+				entry.fill.Size = UDim2.new(math.clamp(quest.progress / quest.goal, 0, 1), 0, 1, 0)
+				if quest.claimed then
+					entry.claim.Text = "CLAIMED"
+					restyle(entry.claim, "grey")
+				else
+					entry.claim.Text = quest.reward.pearls and ("CLAIM · %d P"):format(quest.reward.pearls) or "CLAIM"
+					restyle(entry.claim, quest.progress >= quest.goal and "gold" or "grey")
+				end
 			end
 		end
 		local secondsLeft = 86400 - (os.time() % 86400)
@@ -1771,6 +1790,7 @@ openMenu = function(id)
 	selectTab(id)
 	if not menu.Visible then
 		menu.Visible = true
+		ClientBus.setMenu("Main", true)
 		menuScale.Scale = 0.88
 		TweenService:Create(menuScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 		TweenService:Create(blur, TweenInfo.new(0.22), { Size = 16 }):Play()
@@ -2103,61 +2123,8 @@ hatch = function()
 	end
 end
 
--- Zone lighting: snowy pink haze over the Nest (REF 1), bright turquoise over the Shoals (REF 2) ---
-
-local ZONES = {
-	-- Patch 14: copied from the references. The town is the winter town (pale blue haze, cool soft light, glowing
-	-- windows); the Shoals are the green hub (clear air, saturated greens and blues, crisp light).
-	-- Patch 15: dimmed a lot (lower exposure and ambient, bloom only on real light sources)
-	Nest = {
-		atmosphere = { Density = 0.32, Offset = 0.25, Color = Color3.fromRGB(150, 176, 214), Decay = Color3.fromRGB(92, 120, 176), Glare = 0, Haze = 1 },
-		grade = { Saturation = 0.2, Contrast = 0.14, Brightness = -0.1, TintColor = Color3.fromRGB(232, 240, 255) },
-		bloom = { Intensity = 0.25, Size = 22, Threshold = 2.2 },
-		lighting = { Ambient = Color3.fromRGB(92, 102, 128), OutdoorAmbient = Color3.fromRGB(108, 120, 150), Brightness = 1.5, ExposureCompensation = -0.65, ColorShift_Top = Color3.fromRGB(200, 214, 240) },
-	},
-	Shoals = {
-		atmosphere = { Density = 0.26, Offset = 0.15, Color = Color3.fromRGB(160, 196, 226), Decay = Color3.fromRGB(100, 150, 200), Glare = 0, Haze = 0.6 },
-		grade = { Saturation = 0.28, Contrast = 0.14, Brightness = -0.08, TintColor = Color3.fromRGB(246, 250, 255) },
-		bloom = { Intensity = 0.25, Size = 22, Threshold = 2.2 },
-		lighting = { Ambient = Color3.fromRGB(96, 106, 126), OutdoorAmbient = Color3.fromRGB(116, 126, 148), Brightness = 1.7, ExposureCompensation = -0.55, ColorShift_Top = Color3.fromRGB(240, 230, 214) },
-	},
-	-- Patch 10: the Outer Reef (the Open Isles' third ring), a grey storm over dark rock
-	Storm = {
-		atmosphere = { Density = 0.42, Color = Color3.fromRGB(150, 160, 178), Decay = Color3.fromRGB(88, 98, 120), Haze = 2.4 },
-		grade = { Saturation = -0.04, Contrast = 0.08, Brightness = -0.08, TintColor = Color3.fromRGB(226, 234, 246) },
-		bloom = { Intensity = 0.35, Size = 24, Threshold = 1.6 },
-		lighting = { Ambient = Color3.fromRGB(108, 112, 128), OutdoorAmbient = Color3.fromRGB(118, 122, 140), Brightness = 1.9, ExposureCompensation = -0.15, ColorShift_Top = Color3.fromRGB(200, 210, 230) },
-	},
-	-- Big Update: Kelp Cathedral, a dim teal cavern where everything that glows really glows
-	Kelp = {
-		atmosphere = { Density = 0.45, Color = Color3.fromRGB(46, 120, 110), Decay = Color3.fromRGB(18, 60, 70), Haze = 2.2 },
-		grade = { Saturation = 0.3, Contrast = 0.1, Brightness = 0, TintColor = Color3.fromRGB(214, 255, 240) },
-		bloom = { Intensity = 1, Size = 30, Threshold = 1.1 },
-		lighting = { Ambient = Color3.fromRGB(64, 104, 108), OutdoorAmbient = Color3.fromRGB(70, 120, 120), Brightness = 1.6, ExposureCompensation = 0, ColorShift_Top = Color3.fromRGB(150, 255, 230) },
-	},
-}
-local currentZone = nil
-local function applyZone(name)
-	if currentZone == name then
-		return
-	end
-	currentZone = name
-	local zone = ZONES[name]
-	local info = TweenInfo.new(2)
-	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-	if atmosphere then
-		TweenService:Create(atmosphere, info, zone.atmosphere):Play()
-	end
-	local grade = Lighting:FindFirstChild("TideboundGrade")
-	if grade then
-		TweenService:Create(grade, info, zone.grade):Play()
-	end
-	local bloom = Lighting:FindFirstChild("TideboundBloom")
-	if bloom then
-		TweenService:Create(bloom, info, type(zone.bloom) == "table" and zone.bloom or { Intensity = zone.bloom }):Play()
-	end
-	TweenService:Create(Lighting, info, zone.lighting):Play()
-end
+-- Zone lighting moved to TideboundBiomeLook (GDD Section 7: lighting, atmosphere and post-processing per canon
+-- biome). This script no longer touches Lighting's atmosphere, grade or bloom.
 
 local refreshGreed -- set in the block below
 do
@@ -2178,8 +2145,13 @@ do
 	end
 	local flash = new("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 40, Parent = gui })
 	local function screenFlash(color, from)
+		-- GDD Section 8 Rules 3 and 5: at most 3 full-screen flashes a second, 80% weaker with Reduce Flashing
+		local strength = ClientBus.flashAllowed()
+		if strength <= 0 then
+			return
+		end
 		flash.BackgroundColor3 = color
-		flash.BackgroundTransparency = from or 0.4
+		flash.BackgroundTransparency = 1 - (1 - (from or 0.4)) * strength
 		TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
 	end
 
@@ -2976,20 +2948,11 @@ task.spawn(function()
 	end
 end)
 
--- Beacon countdown between server pushes, and the zone lighting check
+-- Beacon countdown between server pushes
 task.spawn(function()
 	while true do
 		task.wait(0.5)
 		refreshHUD()
 		refreshGreed()
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if root then
-			local zone = Config.zoneOf(root.Position)
-			if zone == "Shoals" and root.Position.X > 1240 then
-				zone = "Storm" -- the Outer Reef ring of the Open Isles
-			end
-			applyZone(zone)
-		end
 	end
 end)
