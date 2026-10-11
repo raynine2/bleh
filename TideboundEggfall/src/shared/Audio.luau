@@ -12,6 +12,12 @@ local SLASH = "rbxasset://sounds/swordslash.wav"
 local LUNGE = "rbxasset://sounds/swordlunge.wav"
 local UNSHEATH = "rbxasset://sounds/unsheath.wav"
 local PING = "rbxasset://sounds/electronicpingshort.wav"
+-- GDD Section 9: licensed library sounds for the reveal and title cues (stand-ins, same as Soundtrack.luau)
+local RISER = "rbxassetid://1843490542" -- APM Critical Mass riser
+local HEART = "rbxassetid://9043365842" -- APM heartbeat 96 BPM
+local HARP = "rbxassetid://1840525370" -- APM harp glissando
+local HIT = "rbxassetid://1837950656" -- APM Brute Force Sting 3
+local COINS = "rbxassetid://9119218944" -- PSE slot machine coin payoff
 
 local Audio = {
 	cues = {
@@ -31,18 +37,18 @@ local Audio = {
 		Splash = { id = WATER, volume = 0.7, pitch = 1, note = "Land-Flip: the fish leaves the water" },
 		Fanfare = { id = "", volume = 0.6, note = "Land-Hold" },
 		-- Patch 6: the reveal
-		RevealHum = { id = "", volume = 0.5, note = "Phase 0: rising hum under the ducked music" },
-		Heartbeat = { id = "", volume = 0.6, note = "Phase 1: low tone and heartbeat" },
+		RevealHum = { id = RISER, volume = 0.5, note = "Phase 0: rising hum under the ducked music" },
+		Heartbeat = { id = HEART, volume = 0.6, note = "Phase 1: low tone and heartbeat" },
 		TierCommon = { id = "", volume = 0.6, note = "Dull thud" },
 		TierUncommon = { id = "", volume = 0.6, note = "Soft chime" },
 		TierRare = { id = "", volume = 0.6, note = "Bright chime" },
-		TierEpic = { id = "", volume = 0.7, note = "Harp sting" },
-		TierLegendary = { id = "", volume = 0.8, note = "Orchestral hit" },
+		TierEpic = { id = HARP, volume = 0.7, note = "Harp sting" },
+		TierLegendary = { id = HIT, volume = 0.8, note = "Orchestral hit" },
 		TierMythic = { id = "", volume = 0.8, note = "Choir swell" },
 		TierCelestial = { id = "", volume = 0.9, note = "Full orchestra" },
 		NearMissDrain = { id = "", volume = 0.6, note = "The climb falls back one tier" },
 		CardSlide = { id = "", volume = 0.5, note = "Phase 3: name card slides in" },
-		Celebrate = { id = "", volume = 0.8, note = "Phase 4 fanfare, Legendary and up" },
+		Celebrate = { id = COINS, volume = 0.8, note = "Phase 4 fanfare, Legendary and up" },
 		-- Big Update: the body (TideboundMotion) and the cutscenes (TideboundCutscenes)
 		HitThud = { id = THUD, volume = 0.9, pitch = 0.7, note = "You take a hit" },
 		Down = { id = "rbxasset://sounds/uuhhh.mp3", volume = 0.7, note = "You go down (a wipe)" },
@@ -50,7 +56,7 @@ local Audio = {
 		Whoosh = { id = "rbxasset://sounds/action_falling.mp3", volume = 0.6, pitch = 0.8, note = "The Maelstrom drags you down, or the light column lifts you" },
 		Plunge = { id = WATER, volume = 0.8, pitch = 0.7, note = "You hit the water at the start of a dive or descent" },
 		Roar = { id = "", volume = 0.9, note = "A guardian wakes up" },
-		Sting = { id = "", volume = 0.7, note = "A title card lands (new area, extraction)" },
+		Sting = { id = HIT, volume = 0.7, note = "A title card lands (new area, extraction)" },
 		Tally = { id = "", volume = 0.5, note = "One tick per line of the extraction tally" },
 		-- Patch 17: the 3-hit rod combo (TideboundRod). Built-in sounds, pitched up to sound cartoony.
 		SwingWhoosh = { id = SLASH, volume = 0.55, pitch = 1.25, note = "Hit 1 (Bonk): the chop whooshes down" },
@@ -97,7 +103,14 @@ function Audio.play(name, parent, pitch: number?)
 	sound.Volume = cue.volume or 0.6
 	sound.PlaybackSpeed = (cue.pitch or 1) * (pitch or 1)
 	sound.RollOffMaxDistance = 120
+	-- GDD Section 9: every cue plays on the SFX bus, and a 3D cue behind a wall is muffled (TideboundAudio sets these)
+	if Audio.buses and Audio.buses.SFX then
+		sound.SoundGroup = Audio.buses.SFX
+	end
 	sound.Parent = parent or SoundService
+	if parent and Audio.occluder then
+		Audio.occluder(sound, parent)
+	end
 	sound:Play()
 	Debris:AddItem(sound, 6)
 	return sound
