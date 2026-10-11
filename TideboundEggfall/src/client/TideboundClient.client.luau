@@ -25,6 +25,8 @@ local CueEvent = Remotes:WaitForChild("Cue")
 local Animations = require(Shared:WaitForChild("Animations"))
 local FishingFeel = require(Shared:WaitForChild("FishingFeel")) -- Master Patch 5: TideboundRod reads it
 local Fx = require(Shared:WaitForChild("Fx"))
+local HatchScene = require(Shared:WaitForChild("HatchScene")) -- Patch 11: the hatch cutscene and the shrine's odds card
+HatchScene.mountBoards()
 
 local DISPLAY = Enum.Font.FredokaOne
 local BODY = Enum.Font.BuilderSansBold
@@ -1819,7 +1821,7 @@ local revealClose = button({ Text = "NICE!", TextSize = 18, Size = UDim2.new(0.6
 	reveal.Visible = false
 end)
 
-local function showReveal(result)
+local function showReveal(result, instant)
 	local tier = Config.Tiers[result.tier]
 	local mutation
 	for _, m in ipairs(Config.Mutations) do
@@ -1834,7 +1836,8 @@ local function showReveal(result)
 	revealTier.TextColor3 = C.text
 	revealName.Text, revealMutation.Text, revealDetails.Text = "", "", ""
 	prismatic.Enabled = false
-	for _ = 1, 5 do
+	-- after the hatch scene the card just lands; on its own it shakes first
+	for _ = 1, instant and 0 or 5 do
 		revealHolder.Rotation = 8
 		task.wait(0.08)
 		revealHolder.Rotation = -8
@@ -1887,10 +1890,13 @@ hatch = function()
 				table.insert(best.others, other)
 			end
 		end
-		situation = "hatch"
+		-- Patch 11: the egg hatches in front of you, then the summary card lands
+		if menu.Visible then
+			closeMenu()
+		end
 		task.spawn(function()
-			showReveal(best)
-			situation = nil
+			HatchScene.play(best)
+			showReveal(best, true)
 		end)
 	end
 end
@@ -2118,7 +2124,7 @@ do
 			end
 		end
 		local camera = workspace.CurrentCamera
-		if camera and state then
+		if camera and state and not MotionBus.cutscene then
 			local target = Config.Camera.exploration
 			if situation == "fishing" then
 				target = Config.Camera.fishing
