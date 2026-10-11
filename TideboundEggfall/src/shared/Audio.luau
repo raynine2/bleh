@@ -81,6 +81,9 @@ local Audio = {
 		SkillCaw = { id = UNSHEATH, volume = 0.6, pitch = 1.7, note = "Crimson Illusion: the crows burst out" },
 		SkillCoins = { id = PING, volume = 0.45, pitch = 1.8, note = "Jackpot: coins and reels" },
 		SkillDrum = { id = THUD, volume = 0.9, pitch = 0.75, note = "Sun God Bounce: the drum beats" },
+		-- Patch 23: NPC dialogue
+		TalkBlip = { id = PING, volume = 0.1, pitch = 2.6, note = "A letter of NPC dialogue types out" },
+		TalkNext = { id = PING, volume = 0.3, pitch = 1.4, note = "The next line of NPC dialogue" },
 	},
 }
 

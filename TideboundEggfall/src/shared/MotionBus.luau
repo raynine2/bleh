@@ -14,6 +14,7 @@
 --     others see it through SkillRod / SkillAlt / SkillAt)
 --   stamina = { value, winded, lastDrain, shownAt }  -- your stamina (Patch 19): TideboundClient refills it and
 --     drains it on the sprint, TideboundDash spends it on dashes
+--   dialogue = true once TideboundDialogue runs; openPanel(panel) opens a menu tab (TideboundClient sets it)
 
 local MotionBus = {}
 
@@ -26,5 +27,7 @@ MotionBus.tired = {}
 MotionBus.kick = nil :: { at: number, amount: number, length: number }?
 MotionBus.skill = {}
 MotionBus.stamina = { value = 100, winded = false, lastDrain = 0, shownAt = 0 }
+MotionBus.dialogue = false -- Patch 23: TideboundDialogue is running (it shows NPC lines)
+MotionBus.openPanel = nil :: ((panel: string) -> ())?
 
 return MotionBus

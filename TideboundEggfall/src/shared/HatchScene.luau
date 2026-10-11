@@ -9,6 +9,8 @@
 -- Patch 20: a Dash Capsule ({ kind = "capsule", tier, dash, creature = the dash's name }) plays the very same
 -- scene with a voxel gacha capsule instead of the egg, dash coins on the wheel, and a spinning dash medallion
 -- with light trails orbiting it instead of the creature.
+-- Patch 23: a Tide Chest ({ kind = "chest", prize = "creature" or "dash", ... }) plays it with a treasure chest whose
+-- lid flips open at the burst; its wheel mixes creature and dash coins, and it reveals whichever you won.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -210,6 +212,94 @@ local function buildCapsule(parent, style, rng)
 	glow.Parent = pieces[4].part
 	model.Parent = parent
 	return { model = model, pieces = pieces, cracks = {}, mark = mark, light = glow }
+end
+
+-- Patch 23: the voxel Tide Chest (the chest gacha): a wooden chest with metal bands, a stepped domed lid, a gold
+-- lock and a "?" on its front, with treasure glowing inside. Same piece list as the egg, so it drops, shakes,
+-- cracks and swells the same way; at the burst its lid (the `lid` pieces) flips open instead of shattering.
+local CHEST_WOODS = { Color3.fromRGB(170, 104, 56), Color3.fromRGB(150, 84, 50), Color3.fromRGB(190, 120, 64) }
+
+local function chestStyle(rng)
+	local wood = CHEST_WOODS[rng:NextInteger(1, #CHEST_WOODS)]
+	return { shell = wood, shade = wood:Lerp(Color3.new(0, 0, 0), 0.25), spot = GOLD, mark = WHITE, metal = Color3.fromRGB(160, 166, 182) }
+end
+
+local CHEST_HINGE = CFrame.new(0, 1, 2)
+local function buildChest(parent, style, rng)
+	local model = Instance.new("Model")
+	model.Name = "HatchChest"
+	local pieces = {}
+	local function add(p, offset, lid)
+		table.insert(pieces, { part = p, size = p.Size, offset = offset, lid = lid })
+	end
+	add(newPart(model, "Shell", Vector3.new(6, 3.4, 4), style.shell), CFrame.new(0, -0.7, 0))
+	add(newPart(model, "Shell", Vector3.new(6.3, 0.5, 4.3), style.shade), CFrame.new(0, -2.25, 0))
+	add(newPart(model, "Shell", Vector3.new(6.2, 0.4, 4.2), style.shade), CFrame.new(0, 0.85, 0))
+	for _, x in ipairs({ -2.2, 2.2 }) do
+		add(newPart(model, "Band", Vector3.new(0.5, 3.5, 4.12), style.metal, Enum.Material.Metal), CFrame.new(x, -0.7, 0))
+	end
+	-- the treasure inside, seen when the lid opens
+	add(newPart(model, "Spot", Vector3.new(5.4, 0.5, 3.4), GOLD, Enum.Material.Neon), CFrame.new(0, 0.8, 0))
+	for _ = 1, rng:NextInteger(4, 6) do
+		local size = rng:NextNumber(0.5, 0.8)
+		add(newPart(model, "Spot", Vector3.new(size, size * 0.3, size), Color3.fromRGB(255, 230, 120), Enum.Material.Neon, Enum.PartType.Cylinder), CFrame.new(rng:NextNumber(-2.2, 2.2), 1.1, rng:NextNumber(-1.3, 1.3)) * CFrame.Angles(0, 0, math.rad(90)))
+	end
+	-- the lid: three stepped layers with bands, hinged at the back
+	for i, layer in ipairs({ { 4.2, 1.35 }, { 3.4, 1.95 }, { 2.2, 2.5 } }) do
+		add(newPart(model, "Lid", Vector3.new(6.1, i == 3 and 0.5 or 0.62, layer[1]), (i % 2 == 1) and style.shell or style.shade), CFrame.new(0, layer[2], 0), true)
+	end
+	for _, x in ipairs({ -2.2, 2.2 }) do
+		add(newPart(model, "Band", Vector3.new(0.5, 1.6, 4.3), style.metal, Enum.Material.Metal), CFrame.new(x, 1.85, 0), true)
+	end
+	add(newPart(model, "Shell", Vector3.new(1.3, 1.5, 0.5), GOLD, Enum.Material.Neon), CFrame.new(0, 0.9, -2.15), true)
+	local face = newPart(model, "Face", Vector3.new(2.8, 2.4, 0.2), style.shell)
+	face.Transparency = 1
+	add(face, CFrame.new(0, -0.9, -2.12))
+	local gui = new("SurfaceGui", { Face = Enum.NormalId.Front, LightInfluence = 0, Brightness = 2, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 50, Parent = face })
+	local mark = pixelText({ parent = gui, text = "?", size = UDim2.fromScale(1, 1), color = WHITE, stroke = style.shade:Lerp(Color3.new(0, 0, 0), 0.5), thickness = 6 })
+	local glow = Instance.new("PointLight")
+	glow.Range = 14
+	glow.Brightness = 0
+	glow.Color = WHITE
+	glow.Parent = pieces[1].part
+	model.Parent = parent
+	return { model = model, pieces = pieces, cracks = {}, mark = mark, light = glow }
+end
+
+-- The chest bursts open: the lid flips back on its hinge, then the whole chest fades away under the prize.
+local function openChest(egg, pivot, scale)
+	local hinge = CFrame.new(CHEST_HINGE.Position * scale)
+	local start = os.clock()
+	task.spawn(function()
+		while egg.model.Parent do
+			local s = math.clamp((os.clock() - start) / 0.28, 0, 1)
+			local angle = math.rad(115) * (1 - (1 - s) ^ 3)
+			local parts, cframes = {}, {}
+			for _, piece in ipairs(egg.pieces) do
+				local offset = CFrame.new(piece.offset.Position * scale) * piece.offset.Rotation
+				table.insert(parts, piece.part)
+				table.insert(cframes, piece.lid and (pivot * hinge * CFrame.Angles(angle, 0, 0) * hinge:Inverse() * offset) or (pivot * offset))
+			end
+			workspace:BulkMoveTo(parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
+			if s >= 1 then
+				break
+			end
+			RunService.RenderStepped:Wait()
+		end
+		task.wait(0.15)
+		for _, piece in ipairs(egg.pieces) do
+			if piece.part.Parent then
+				TweenService:Create(piece.part, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+			end
+		end
+		if egg.mark.Parent then
+			TweenService:Create(egg.mark, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+			local stroke = egg.mark:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				TweenService:Create(stroke, TweenInfo.new(0.3), { Transparency = 1 }):Play()
+			end
+		end
+	end)
 end
 
 -- Patch 20: the dash medallion shown when a capsule opens: a big spinning coin in the rarity's colour with the
@@ -493,8 +583,9 @@ function HatchScene.play(result)
 	local facing = CFrame.lookAt(eggBase, Vector3.new(root.Position.X, floorY, root.Position.Z))
 	local eggRng = Random.new()
 	local isCapsule = result.kind == "capsule"
-	local style = isCapsule and capsuleStyle(eggRng) or randomStyle(eggRng)
-	local egg = isCapsule and buildCapsule(folder, style, eggRng) or buildEgg(folder, style, eggRng)
+	local isChest = result.kind == "chest"
+	local style = isCapsule and capsuleStyle(eggRng) or isChest and chestStyle(eggRng) or randomStyle(eggRng)
+	local egg = isCapsule and buildCapsule(folder, style, eggRng) or isChest and buildChest(folder, style, eggRng) or buildEgg(folder, style, eggRng)
 	local anchor = newPart(folder, "Anchor", Vector3.new(0.2, 0.2, 0.2), WHITE)
 	anchor.Transparency = 1
 
@@ -556,7 +647,7 @@ function HatchScene.play(result)
 			local twin = coins[i - slots]
 			local t = twin and twin.tier or wheelRng:NextInteger(1, #Config.Tiers)
 			local names = Config.Tiers[t].creatures
-			local dashes = isCapsule and DashMoves.byTier[t]
+			local dashes = (isCapsule or (isChest and wheelRng:NextNumber() < 0.5)) and DashMoves.byTier[t]
 			local name = twin and twin.name or (dashes and dashes[wheelRng:NextInteger(1, #dashes)].name or names[wheelRng:NextInteger(1, #names)])
 			coins[i] = { tier = t, name = name, frame = coin(ui.strip, i, t, name) }
 		end
@@ -685,7 +776,11 @@ function HatchScene.play(result)
 
 		-- 3. BURST: flash, shell chunks, a storm of yellow sparkles, lightning and shock rings
 		local burstAt = eggPivot.Position
-		shatter(egg, burstAt)
+		if isChest then
+			openChest(egg, eggPivot, scale)
+		else
+			shatter(egg, burstAt)
+		end
 		if ringBoard then
 			ringBoard:Destroy()
 		end
@@ -750,9 +845,9 @@ function HatchScene.play(result)
 		task.wait(0.15)
 
 		-- 4. the creature: spinning in the light, rays behind it, its rarity and name in big letters
-		local creatureAt = eggBase + Vector3.new(0, 4, 0)
+		local creatureAt = eggBase + Vector3.new(0, isChest and 7 or 4, 0)
 		local creature, body, orbit = nil, nil, nil
-		local move = isCapsule and DashMoves.byId[result.dash]
+		local move = (isCapsule or result.prize == "dash") and DashMoves.byId[result.dash]
 		if move then
 			creature, body, orbit = buildMedallion(folder, move, color, creatureAt)
 		else

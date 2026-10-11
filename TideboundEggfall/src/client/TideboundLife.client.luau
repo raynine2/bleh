@@ -145,28 +145,59 @@ local SKINS = { Color3.fromRGB(255, 220, 180), Color3.fromRGB(234, 196, 160), Co
 local PANTS = { Color3.fromRGB(60, 56, 70), Color3.fromRGB(70, 90, 130), Color3.fromRGB(110, 90, 70), Color3.fromRGB(40, 40, 46) }
 local HATS = { Color3.fromRGB(230, 200, 120), Color3.fromRGB(200, 60, 60), Color3.fromRGB(60, 90, 160), Color3.fromRGB(250, 250, 250) }
 
--- A blocky townsperson. Returns { model, parts = { name = { part, offset } } } posed by `posePerson`.
+-- A blocky townsperson. Returns { model, parts = { name = { part, offset, group } } } posed by `posePerson`.
+-- Patch 23: cartoony avatars like the Catch a Brainrot reference's townsfolk: a big head with shiny eyes, a smile
+-- and rosy cheeks, hair or a hat, sleeves and shoes. A part's `group` is the limb it moves with.
+local HAIRS = { Color3.fromRGB(60, 40, 30), Color3.fromRGB(30, 26, 30), Color3.fromRGB(240, 200, 90), Color3.fromRGB(200, 90, 50), Color3.fromRGB(255, 130, 180), Color3.fromRGB(120, 170, 255), Color3.fromRGB(240, 240, 240) }
 local function makePerson(scale)
 	local model = Instance.new("Model")
 	model.Name = "Villager"
 	local shirt, skin, pants = SHIRTS[rng:NextInteger(1, #SHIRTS)], SKINS[rng:NextInteger(1, #SKINS)], PANTS[rng:NextInteger(1, #PANTS)]
 	local s = scale
 	local parts = {}
-	local function add(name, size, color, offset, shape)
-		parts[name] = { part = newPart(model, name, size * s, color, shape), offset = CFrame.new(offset * s) }
+	local count = 0
+	local function add(name, size, color, offset, group, shape)
+		count += 1
+		local key = parts[name] and (name .. count) or name
+		parts[key] = { part = newPart(model, name, size * s, color, shape), offset = CFrame.new(offset * s), group = group or name }
 	end
-	add("Body", Vector3.new(2, 2.2, 1.1), shirt, Vector3.new(0, 3.3, 0))
-	add("Head", Vector3.new(1.5, 1.5, 1.5), skin, Vector3.new(0, 5.2, 0))
-	add("LegL", Vector3.new(0.9, 2.2, 1), pants, Vector3.new(-0.5, 1.1, 0))
-	add("LegR", Vector3.new(0.9, 2.2, 1), pants, Vector3.new(0.5, 1.1, 0))
-	add("ArmL", Vector3.new(0.7, 2.1, 0.8), skin, Vector3.new(-1.4, 3.3, 0))
-	add("ArmR", Vector3.new(0.7, 2.1, 0.8), skin, Vector3.new(1.4, 3.3, 0))
-	add("EyeL", Vector3.new(0.22, 0.3, 0.1), Color3.fromRGB(20, 20, 26), Vector3.new(-0.35, 5.3, -0.76))
-	add("EyeR", Vector3.new(0.22, 0.3, 0.1), Color3.fromRGB(20, 20, 26), Vector3.new(0.35, 5.3, -0.76))
-	if rng:NextNumber() < 0.55 then
+	local dark = Color3.fromRGB(26, 22, 30)
+	add("Body", Vector3.new(2, 2, 1.1), shirt, Vector3.new(0, 3.2, 0))
+	add("LegL", Vector3.new(0.95, 2.2, 1), pants, Vector3.new(-0.5, 1.1, 0))
+	add("LegR", Vector3.new(0.95, 2.2, 1), pants, Vector3.new(0.5, 1.1, 0))
+	add("ShoeL", Vector3.new(1, 0.45, 1.3), dark, Vector3.new(-0.5, 0.22, -0.1), "LegL")
+	add("ShoeR", Vector3.new(1, 0.45, 1.3), dark, Vector3.new(0.5, 0.22, -0.1), "LegR")
+	add("ArmL", Vector3.new(0.75, 1, 0.85), skin, Vector3.new(-1.42, 2.75, 0))
+	add("ArmR", Vector3.new(0.75, 1, 0.85), skin, Vector3.new(1.42, 2.75, 0))
+	add("SleeveL", Vector3.new(0.8, 1.1, 0.9), shirt, Vector3.new(-1.42, 3.75, 0), "ArmL")
+	add("SleeveR", Vector3.new(0.8, 1.1, 0.9), shirt, Vector3.new(1.42, 3.75, 0), "ArmR")
+	add("Head", Vector3.new(1.7, 1.7, 1.7), skin, Vector3.new(0, 5.1, 0))
+	for _, side in ipairs({ -1, 1 }) do
+		add("Eye", Vector3.new(0.3, 0.42, 0.1), dark, Vector3.new(side * 0.36, 5.2, -0.86), "Head")
+		add("EyeShine", Vector3.new(0.12, 0.13, 0.05), Color3.new(1, 1, 1), Vector3.new(side * 0.36 - 0.06, 5.32, -0.91), "Head")
+		add("Cheek", Vector3.new(0.28, 0.15, 0.05), Color3.fromRGB(255, 150, 160), Vector3.new(side * 0.6, 4.86, -0.86), "Head")
+	end
+	add("Smile", Vector3.new(0.42, 0.12, 0.05), dark, Vector3.new(0, 4.72, -0.86), "Head")
+	local hair = HAIRS[rng:NextInteger(1, #HAIRS)]
+	local style = rng:NextInteger(1, 4)
+	if style <= 2 then
+		add("Hair", Vector3.new(1.76, 0.5, 1.76), hair, Vector3.new(0, 5.95, 0), "Head")
+		add("HairBack", Vector3.new(1.76, 1.1, 0.4), hair, Vector3.new(0, 5.45, 0.7), "Head")
+		add("Fringe", Vector3.new(1.6, 0.3, 0.25), hair, Vector3.new(0, 5.8, -0.8), "Head")
+		if style == 2 then
+			add("HairLong", Vector3.new(1.8, 1.6, 0.4), hair, Vector3.new(0, 4.5, 0.72), "Head")
+		end
+	elseif style == 3 then
 		local hat = HATS[rng:NextInteger(1, #HATS)]
-		add("Hat", Vector3.new(2.1, 0.35, 2.1), hat, Vector3.new(0, 6.05, 0))
-		add("HatTop", Vector3.new(1.4, 0.6, 1.4), hat, Vector3.new(0, 6.4, 0))
+		add("Hat", Vector3.new(1.84, 0.6, 1.84), hat, Vector3.new(0, 6.1, 0), "Head")
+		add("HatBrim", Vector3.new(1.5, 0.16, 0.9), hat, Vector3.new(0, 5.85, -1.1), "Head")
+		add("HairBack", Vector3.new(1.76, 0.8, 0.4), hair, Vector3.new(0, 5.4, 0.7), "Head")
+	else
+		-- spiky
+		add("Hair", Vector3.new(1.76, 0.5, 1.76), hair, Vector3.new(0, 5.95, 0), "Head")
+		for i = -1, 1 do
+			add("Spike", Vector3.new(0.5, 0.7, 0.5), hair, Vector3.new(i * 0.55, 6.4, -0.1 + math.abs(i) * 0.2), "Head")
+		end
 	end
 	model.PrimaryPart = parts.Body.part
 	model.Parent = folder
@@ -174,15 +205,16 @@ local function makePerson(scale)
 end
 
 -- Poses a person at `cf` (feet on the ground). walk 0..1 swings the limbs; wave raises the right arm.
-local LIMB_PIVOT = { LegL = Vector3.new(-0.5, 2.2, 0), LegR = Vector3.new(0.5, 2.2, 0), ArmL = Vector3.new(-1.4, 4.2, 0), ArmR = Vector3.new(1.4, 4.2, 0) }
+local LIMB_PIVOT = { LegL = Vector3.new(-0.5, 2.2, 0), LegR = Vector3.new(0.5, 2.2, 0), ArmL = Vector3.new(-1.42, 4.2, 0), ArmR = Vector3.new(1.42, 4.2, 0) }
 local function posePerson(person, cf, phase, walk, wave, t, extra)
 	local partsList, cframes = {}, {}
 	local s = person.scale
 	local bob = math.abs(math.sin(phase)) * 0.18 * walk
 	local breathe = math.sin(t * 1.8 + (person.seed or 0)) * 0.04
 	local base = cf * CFrame.new(0, bob + breathe * (1 - walk), 0)
-	for name, entry in pairs(person.parts) do
+	for _, entry in pairs(person.parts) do
 		local offset = entry.offset
+		local name = entry.group
 		local pivot = LIMB_PIVOT[name]
 		local result = base * offset
 		if pivot then
@@ -203,8 +235,8 @@ local function posePerson(person, cf, phase, walk, wave, t, extra)
 			end
 			local p = CFrame.new(pivot * s)
 			result = base * p * CFrame.Angles(swing, 0, roll) * p:Inverse() * offset
-		elseif name == "Head" or name == "EyeL" or name == "EyeR" or name == "Hat" or name == "HatTop" then
-			local p = CFrame.new(Vector3.new(0, 4.5, 0) * s)
+		elseif name == "Head" then
+			local p = CFrame.new(Vector3.new(0, 4.3, 0) * s)
 			result = base * p * CFrame.Angles(extra and extra.nod or 0, extra and extra.look or 0, 0) * p:Inverse() * offset
 		end
 		table.insert(partsList, entry.part)
@@ -343,7 +375,7 @@ for _, spec in ipairs(T.vendors) do
 	local person = makePerson(1)
 	person.seed = rng:NextNumber(0, 10)
 	local apron = newPart(person.model, "Apron", Vector3.new(1.8, 1.8, 0.2), Color3.fromRGB(250, 250, 250))
-	person.parts.Apron = { part = apron, offset = CFrame.new(0, 3.1, -0.62) }
+	person.parts.Apron = { part = apron, offset = CFrame.new(0, 3.1, -0.62), group = "Body" }
 	table.insert(vendors, { person = person, at = spec.at, face = spec.face, y = nil, nextCall = os.clock() + rng:NextNumber(3, 12), waveUntil = 0 })
 end
 

@@ -56,6 +56,10 @@ Config.Shards = { unique = 1, duplicate = 10 }
 -- but each pull is a dash move (DashMoves) of that rarity. A duplicate gives Shards like a creature does. You
 -- equip up to `slots` dashes; Q rolls one of them. Everyone starts with Zoomies equipped and one capsule.
 Config.Capsules = { name = "Dash Capsule", pearlCost = 400, slots = 3, starterDash = "Zoomies" }
+-- Patch 23: Tide Chests, the chest gacha at the Tide Lab. Pearls only, opened on the spot. Same rates (Config.Tiers)
+-- and pity (Config.Pity, counted on its own); each chest holds a creature of the rolled rarity or, `dashChance` of
+-- the time, a dash move of it.
+Config.Chest = { name = "Tide Chest", pearlCost = 600, dashChance = 0.5 }
 
 -- Locked rod stats table. Costs are Pearls; Celestial Rod is prestige only.
 Config.Rods = {
@@ -310,10 +314,11 @@ Config.Npcs = {
 	Pinch = { name = "Pinch", role = "Guide crab", lines = { "New here? Walk east down Harbor Street and through the Tidegate: 22 islands of the Sunken Shoals are out there.", "Cast at the glowing spots, bank fish at a Tide Cache (it heals you too), steal eggs, then hold at a beacon to extract.", "Crabs, puffers and gulls camp on the islands. Click or press F to swipe your rod at them!", "Geysers launch you between far islands. The Tide Slide behind me goes to the Harbor Ring, where your Home Nest is." } },
 	OldHarl = { name = "Old Harl", role = "Tackle Shop", panel = "RODS", lines = { "Every rod's stats are on the rack. No secrets, no Robux.", "Worn rod? I'll repair it for Pearls before you dive." } },
 	Nim = { name = "Nim", role = "Bait Shop", panel = "BAIT", lines = { "Brineworm for the shallows, Glowmite when you want rarer bites!", "Mending Vials heal you, Revive Vials wake a companion. Pearls only!" } },
-	SisterCoralie = { name = "Sister Coralie", role = "Tide Egg Shrine", panel = "ODDS", lines = { "These are the odds, child, every one of them. Your pity never resets on a wipe." } },
+	SisterCoralie = { name = "Sister Coralie", role = "Tide Lab · Egg Shrine", panel = "ODDS", lines = { "These are the odds, child, every one of them. Your pity never resets on a wipe." } },
 	CaptainBrask = { name = "Captain Brask", role = "Season Pass Board", panel = "QUESTS", lines = { "The season track isn't posted yet. Quill's quests pay Pearls today." } },
 	Quill = { name = "Quill", role = "Daily Quest Board", panel = "QUESTS", lines = { "Three quests a day, reset at midnight UTC. Squawk!" } },
 	ArchivistOphel = { name = "Archivist Ophel", role = "Leaderboard Hall", panel = "BOARDS", lines = { "The Hall remembers this server's rarest hatches and boldest escapes." } },
+	NursePip = { name = "Nurse Pip", role = "Tide Center", lines = { "Welcome to the Tide Center! Hatching goes on at the incubator right out front.", "A companion got knocked out in the Shoals? A Revive Vial from Nim wakes it right up.", "Rest a moment, sweetie. The Shoals will still be there!" } },
 	GateWardenSel = { name = "Gate Warden Sel", role = "Tidegate", panel = "DIVE", lines = { "Dive Solo or Dive With Crew and I'll send you straight out to Landing Reef. Contested Waters stays off unless you switch it on.", "Push past a beacon and the Shoals pay more, but the Warden gets angrier.", "The Outer Reef past the Coral Maze is stormy. The best eggs and the worst mobs are out there." } },
 	TradesmanKobb = { name = "Tradesman Kobb", role = "Trading Post", lines = { "Trades open when cosmetics arrive. Creatures, eggs and bait never trade, so nobody buys power." } },
 }

@@ -386,6 +386,7 @@ local function buildState(player)
 		dashes = data.dashes,
 		equippedDashes = data.equippedDashes,
 		dashPity = data.pity.DashCapsule,
+		chestPity = data.pity.TideChest, -- Patch 23
 		mobKills = data.mobKills, -- Patch 21: Rod Trials progress
 		history = data.history,
 		collection = data.collection,
@@ -1512,8 +1513,8 @@ function handlers.BuyEgg(player, data)
 	return { ok = true }
 end
 
-local function hatchOne(player, data, mode)
-	local tierIndex, pityKey = Gacha.rollTier(data.pity.TideEgg, rng)
+local function hatchOne(player, data, mode, counters)
+	local tierIndex, pityKey = Gacha.rollTier(counters or data.pity.TideEgg, rng) -- Patch 23: chests pass their own pity
 	local tier = Config.Tiers[tierIndex]
 	local creature = tier.creatures[rng:NextInteger(1, #tier.creatures)]
 	local mutation = Gacha.rollMutation(rng)
@@ -1593,6 +1594,8 @@ local function syncDashes(player, data)
 	player:SetAttribute("Dashes", table.concat(ids, ","))
 end
 
+local grantDash
+
 function handlers.BuyCapsule(player, data)
 	local cost = Config.Capsules.pearlCost
 	if data.pearls < cost then
@@ -1611,7 +1614,12 @@ function handlers.OpenCapsule(player, data, run)
 		return { error = "Open capsules in town, not on a dive." }
 	end
 	data.capsules -= 1
-	local tierIndex, pityKey = Gacha.rollTier(data.pity.DashCapsule, rng)
+	return { ok = true, result = grantDash(player, data, data.pity.DashCapsule, "capsule") }
+end
+
+-- Rolls a dash on `counters` and gives it to you; returns the result the hatch scene plays.
+grantDash = function(player, data, counters, kind)
+	local tierIndex, pityKey = Gacha.rollTier(counters, rng)
 	-- a rarity with no dash yet falls back to the nearest one below
 	local pool = nil
 	for t = tierIndex, 1, -1 do
@@ -1634,7 +1642,32 @@ function handlers.OpenCapsule(player, data, run)
 	if tierIndex >= 5 then
 		notifyAll(("%s pulled the %s dash %s!"):format(player.DisplayName, Config.Tiers[tierIndex].id, move.name), "rare")
 	end
-	return { ok = true, result = { kind = "capsule", tier = tierIndex, dash = move.id, creature = move.name, isNew = isNew, shards = shards, pity = pityKey, equipped = table.find(data.equippedDashes, move.key) ~= nil } }
+	return { kind = kind, prize = "dash", tier = tierIndex, dash = move.id, creature = move.name, isNew = isNew, shards = shards, pity = pityKey, equipped = table.find(data.equippedDashes, move.key) ~= nil }
+end
+
+-- Patch 23: Tide Chests (the chest gacha in front of the Tide Lab). Pay and open at once: a rarity on the chest's
+-- own pity, then a creature of it (into your aquarium, like a hatch) or, Config.Chest.dashChance of the time, a dash.
+function handlers.OpenChest(player, data, run)
+	local cost = Config.Chest.pearlCost
+	if run.started then
+		return { error = "Open chests in town, not on a dive." }
+	end
+	if data.pearls < cost then
+		return { error = ("A Tide Chest costs %d Pearls."):format(cost) }
+	end
+	data.pearls -= cost
+	if rng:NextNumber() < Config.Chest.dashChance then
+		return { ok = true, result = grantDash(player, data, data.pity.TideChest, "chest") }
+	end
+	local result = hatchOne(player, data, "Solo", data.pity.TideChest)
+	result.kind = "chest"
+	result.prize = "creature"
+	local sold, soldCount = BaseService.enforceStorage(data)
+	if soldCount > 0 then
+		notify(player, ("Storage full: sold %d lowest-value creature(s) for %d Pearls. A Nest Vault holds more."):format(soldCount, sold), "warn")
+	end
+	BaseService.changed(player)
+	return { ok = true, result = result }
 end
 
 -- Equips a dash you own (into a free slot), or unequips it (you always keep at least one).

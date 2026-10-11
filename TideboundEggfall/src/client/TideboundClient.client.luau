@@ -861,6 +861,7 @@ local TABS = {
 	{ id = "DASHES", title = "DASHES", group = "dash" }, -- Patch 20
 	{ id = "CAPSULES", title = "DASH CAPSULE ODDS", group = "dash" },
 	{ id = "TRIALS", title = "ROD TRIALS", group = "dash" }, -- Patch 21
+	{ id = "CHEST", title = "TIDE CHEST", group = "dash" }, -- Patch 23
 }
 local groupSize = {}
 for _, tab in ipairs(TABS) do
@@ -1896,6 +1897,68 @@ do
 	end
 end
 
+-- Patch 23: the CHEST tab. Open a Tide Chest (the hatch scene, with a treasure chest whose lid flips open): a
+-- creature or a dash of the rolled rarity. One table inside this block: this script is at the 200-local limit.
+do
+	local ch = { pity = {} }
+	ch.page = makePage("CHEST")
+
+	function ch.open()
+		if not state or HatchScene.playing() then
+			return
+		end
+		local result = act("OpenChest")
+		if result and result.ok then
+			if menu.Visible then
+				closeMenu()
+			end
+			task.spawn(function()
+				local r = result.result
+				HatchScene.play(r)
+				local tier = Config.Tiers[r.tier]
+				if r.prize == "dash" then
+					toast(("%s %s dash: %s%s"):format(r.isNew and "New" or "Duplicate", tier.id, r.creature, r.isNew and (r.equipped and " (equipped)" or ": equip it in DASHES") or (" · +%d Shards"):format(r.shards)), r.isNew and "good" or "info")
+				else
+					toast(("%s %s %s, it's in your aquarium%s"):format(r.isNew and "New!" or "Got a", tier.id, r.creature, r.isNew and "" or (" · +%d Shards"):format(r.shards)), r.isNew and "good" or "info")
+				end
+			end)
+		end
+	end
+
+	ch.action = rowFrame(ch.page, 54)
+	ch.pearls = label({ Font = DISPLAY, TextSize = 19, Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(0.45, -14, 1, 0), Parent = ch.action })
+	button({ Text = ("OPEN CHEST · %d PEARLS"):format(Config.Chest.pearlCost), Size = UDim2.new(0.55, -14, 0, 38), Position = UDim2.new(0.45, 0, 0.5, -19), Parent = ch.action }, "gold", ch.open)
+	note(ch.page, ("Every chest holds a creature (it goes in your aquarium) or, %d%% of the time, a dash move, of the rarity below."):format(math.floor(Config.Chest.dashChance * 100 + 0.5)))
+
+	section(ch.page, "DROP RATES · per chest (same as Tide Eggs)")
+	for _, tier in ipairs(Config.Tiers) do
+		local row = rowFrame(ch.page, 30)
+		new("Frame", { Position = UDim2.new(0, 10, 0.5, -7), Size = UDim2.new(0, 14, 0, 14), BackgroundColor3 = tier.color, Parent = row }, { corner(3), stroke(WHITE, 1) })
+		label({ Text = tier.id, Font = DISPLAY, TextColor3 = tier.color, Position = UDim2.new(0, 32, 0, 0), Size = UDim2.new(0.3, 0, 1, 0), TextSize = 15, Parent = row })
+		label({ Text = pct(tier.rate), Font = DISPLAY, Position = UDim2.new(0.34, 10, 0, 0), Size = UDim2.new(0.2, 0, 1, 0), TextSize = 15, Parent = row })
+		label({ Text = "creature or dash", Position = UDim2.new(0.56, 0, 0, 0), Size = UDim2.new(0.44, -10, 1, 0), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
+	end
+	divider(ch.page)
+	section(ch.page, "PITY · counted separately from eggs and capsules")
+	for _, pity in ipairs(Config.Pity) do
+		local row = rowFrame(ch.page, 30)
+		label({ Text = pity.label, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.3, 0, 1, 0), TextSize = 14, Parent = row })
+		ch.pity[pity.key] = label({ Font = DISPLAY, TextSize = 14, Position = UDim2.new(0.3, 0, 0, 0), Size = UDim2.new(0.7, -12, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, Parent = row })
+	end
+	note(ch.page, "The chest sits in front of the Tide Lab. Pearls only; Robux can't buy chests.")
+
+	refreshers.CHEST = function()
+		ch.pearls.Text = ("PEARLS: %d"):format(state.pearls or 0)
+		for _, row in ipairs(Gacha.pityProgress(state.chestPity or {})) do
+			local labelInst = ch.pity[row.key]
+			if labelInst then
+				labelInst.Text = row.remaining <= 1 and "NEXT CHEST!" or ("%d / %d · %d left"):format(row.count, row.at, row.remaining)
+				labelInst.TextColor3 = row.remaining <= 1 and C.gold or C.text
+			end
+		end
+	end
+end
+
 -- Patch 21: the TRIALS tab. Each trial rod, its ability, and how far along its goals you are (counted from the
 -- mobs you've defeated, state.mobKills). Kept in one table inside this block: this script is at the 200-local limit.
 do
@@ -2109,11 +2172,12 @@ local ZONES = {
 	-- Patch 14: copied from the references. The town is the winter town (pale blue haze, cool soft light, glowing
 	-- windows); the Shoals are the green hub (clear air, saturated greens and blues, crisp light).
 	-- Patch 15: dimmed a lot (lower exposure and ambient, bloom only on real light sources)
+	-- Patch 23: the summer town of the Catch a Brainrot reference: clear warm light, saturated colour
 	Nest = {
-		atmosphere = { Density = 0.32, Offset = 0.25, Color = Color3.fromRGB(150, 176, 214), Decay = Color3.fromRGB(92, 120, 176), Glare = 0, Haze = 1 },
-		grade = { Saturation = 0.2, Contrast = 0.14, Brightness = -0.1, TintColor = Color3.fromRGB(232, 240, 255) },
+		atmosphere = { Density = 0.24, Offset = 0.2, Color = Color3.fromRGB(196, 220, 240), Decay = Color3.fromRGB(130, 170, 220), Glare = 0, Haze = 0.6 },
+		grade = { Saturation = 0.28, Contrast = 0.12, Brightness = -0.05, TintColor = Color3.fromRGB(255, 252, 244) },
 		bloom = { Intensity = 0.25, Size = 22, Threshold = 2.2 },
-		lighting = { Ambient = Color3.fromRGB(92, 102, 128), OutdoorAmbient = Color3.fromRGB(108, 120, 150), Brightness = 1.5, ExposureCompensation = -0.65, ColorShift_Top = Color3.fromRGB(200, 214, 240) },
+		lighting = { Ambient = Color3.fromRGB(110, 110, 118), OutdoorAmbient = Color3.fromRGB(128, 128, 136), Brightness = 1.8, ExposureCompensation = -0.4, ColorShift_Top = Color3.fromRGB(255, 244, 222) },
 	},
 	Shoals = {
 		atmosphere = { Density = 0.26, Offset = 0.15, Color = Color3.fromRGB(160, 196, 226), Decay = Color3.fromRGB(100, 150, 200), Glare = 0, Haze = 0.6 },
@@ -2921,7 +2985,7 @@ end
 
 -- Wiring -------------------------------------------------------------------------------
 
-local PANEL_TO_TAB = { Odds = "ODDS", Tackle = "RODS", Dashes = "DASHES" }
+local PANEL_TO_TAB = { Odds = "ODDS", Tackle = "RODS", Dashes = "DASHES", Chest = "CHEST" }
 
 local function refreshAll()
 	refreshHUD()
@@ -2948,10 +3012,18 @@ HazardEvent.OnClientEvent:Connect(function(kind, direction)
 	end
 end)
 
+-- Patch 23: TideboundDialogue shows NPC lines in the reference's dialogue box and opens their panel through this
+require(Shared:WaitForChild("MotionBus")).openPanel = function(panel)
+	openMenu(PANEL_TO_TAB[panel] or panel)
+end
+
 ProximityPromptService.PromptTriggered:Connect(function(prompt)
 	local npcId = prompt:GetAttribute("Npc")
 	if npcId then
 		local npc = Config.Npcs[npcId]
+		if npc and require(Shared:WaitForChild("MotionBus")).dialogue then
+			return
+		end
 		if npc then
 			toast(("%s: %s"):format(npc.name, npc.lines[math.random(1, #npc.lines)]), "info")
 			if npc.panel then
