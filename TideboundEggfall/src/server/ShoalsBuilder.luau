@@ -20,7 +20,7 @@ local L = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild("Isle
 
 local ShoalsBuilder = {}
 
-local VERSION = 1
+local VERSION = 2
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -31,7 +31,7 @@ local TOP, WATER_Y = L.TOP, L.WATER_Y
 local FLOOR = L.sea.floorY - 2 -- the terrain sand floor's top (terrain snaps to a 4-stud grid)
 
 -- palette
-local BEACH = Color3.fromRGB(232, 212, 160)
+local BEACH = Color3.fromRGB(208, 186, 136)
 local BEACH_DARK = Color3.fromRGB(120, 116, 112)
 local CLIFF = Color3.fromRGB(150, 112, 78)
 local CLIFF_RING1 = Color3.fromRGB(86, 158, 92)

@@ -21,7 +21,7 @@ local L = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild("Isle
 
 local TownBuilder = {}
 
-local VERSION = 1
+local VERSION = 2
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -32,9 +32,9 @@ local FLOOR = L.sea.floorY - 2
 local T = L.Town
 
 -- palette
-local GRASS = Color3.fromRGB(110, 196, 96)
+local GRASS = Color3.fromRGB(92, 176, 84)
 local GRASS_DARK = Color3.fromRGB(88, 170, 80)
-local SAND = Color3.fromRGB(236, 216, 164)
+local SAND = Color3.fromRGB(212, 190, 140)
 local COBBLE = Color3.fromRGB(176, 170, 164)
 local COBBLE_EDGE = Color3.fromRGB(130, 124, 120)
 local WOOD = Color3.fromRGB(150, 104, 68)
@@ -81,17 +81,8 @@ end
 -- The town island ---------------------------------------------------------------------------------------------
 -- A union of grass shapes (all topped at TOP) plus the beach (a little lower, so grass wins where they meet).
 
-local LAND = {
-	{ kind = "disk", c = v(-25, 0), r = 140 }, -- the core around the plaza
-	{ kind = "box", c = v(124, 0), size = v(168, 60) }, -- Harbor Street out to the Tidegate
-	{ kind = "disk", c = v(0, 130), r = 75 }, -- Market Row
-	{ kind = "disk", c = v(120, 120), r = 40 }, -- Lighthouse Point
-	{ kind = "disk", c = v(-135, 15), r = 66 }, -- Torii Hill
-	{ kind = "disk", c = v(-100, -110), r = 55 }, -- Hatchery Farms
-	{ kind = "disk", c = v(78, 106), r = 16 }, -- the neck between Market Row and Lighthouse Point
-	{ kind = "disk", c = v(-62, -150), r = 22 }, -- the meadow between the farms and the beach
-}
-local BEACH = { c = v(30, -140), r = 65 }
+local LAND = T.land -- IslesLayout (Patch 12: shared, so the sea chart draws the same coast)
+local BEACH = T.beach
 
 local function inShape(shape, p, margin)
 	local f = flat(p)

@@ -259,7 +259,7 @@ local gui = new("ScreenGui", { Name = "TideboundUI", ResetOnSpawn = false, ZInde
 
 -- Toasts ------------------------------------------------------------------------------
 
-local toastList = new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0.22, 0), Size = UDim2.new(0, 310, 0.6, 0), ZIndex = 30, Parent = gui }, {
+local toastList = new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 300), Size = UDim2.new(0, 310, 0.6, 0), ZIndex = 30, Parent = gui }, {
 	new("UIListLayout", { Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Right }),
 })
 local toastOrder = 0
@@ -1904,33 +1904,35 @@ end
 -- Zone lighting: snowy pink haze over the Nest (REF 1), bright turquoise over the Shoals (REF 2) ---
 
 local ZONES = {
+	-- Patch 12: toned down everywhere (less haze, less bloom, a touch darker, more contrast and colour)
 	Nest = {
-		atmosphere = { Density = 0.36, Color = Color3.fromRGB(226, 214, 222), Decay = Color3.fromRGB(196, 184, 196), Haze = 1.4 },
-		grade = { Saturation = 0.12, TintColor = Color3.fromRGB(255, 248, 250) },
-		bloom = 0.3,
+		atmosphere = { Density = 0.3, Color = Color3.fromRGB(190, 200, 222), Decay = Color3.fromRGB(150, 160, 190), Haze = 0.6 },
+		grade = { Saturation = 0.22, Contrast = 0.12, Brightness = -0.06, TintColor = Color3.fromRGB(255, 246, 240) },
+		bloom = 0.15,
 	},
 	Shoals = {
-		atmosphere = { Density = 0.28, Color = Color3.fromRGB(206, 242, 250), Decay = Color3.fromRGB(120, 214, 232), Haze = 0.7 },
-		grade = { Saturation = 0.28, TintColor = Color3.fromRGB(246, 255, 252) },
-		bloom = 0.55,
+		atmosphere = { Density = 0.26, Color = Color3.fromRGB(176, 214, 230), Decay = Color3.fromRGB(100, 170, 200), Haze = 0.5 },
+		grade = { Saturation = 0.26, Contrast = 0.1, Brightness = -0.05, TintColor = Color3.fromRGB(244, 252, 255) },
+		bloom = 0.22,
 	},
 	-- Patch 10: the Outer Reef (the Open Isles' third ring), a grey storm over dark rock
 	Storm = {
 		atmosphere = { Density = 0.42, Color = Color3.fromRGB(150, 160, 178), Decay = Color3.fromRGB(88, 98, 120), Haze = 2.4 },
-		grade = { Saturation = -0.04, TintColor = Color3.fromRGB(226, 234, 246) },
+		grade = { Saturation = -0.04, Contrast = 0.08, Brightness = -0.08, TintColor = Color3.fromRGB(226, 234, 246) },
 		bloom = 0.35,
 		lighting = { Ambient = Color3.fromRGB(108, 112, 128), OutdoorAmbient = Color3.fromRGB(118, 122, 140), Brightness = 1.9 },
 	},
 	-- Big Update: Kelp Cathedral, a dim teal cavern where everything that glows really glows
 	Kelp = {
 		atmosphere = { Density = 0.45, Color = Color3.fromRGB(46, 120, 110), Decay = Color3.fromRGB(18, 60, 70), Haze = 2.2 },
-		grade = { Saturation = 0.3, TintColor = Color3.fromRGB(214, 255, 240) },
+		grade = { Saturation = 0.3, Contrast = 0.1, Brightness = 0, TintColor = Color3.fromRGB(214, 255, 240) },
 		bloom = 1,
 		lighting = { Ambient = Color3.fromRGB(64, 104, 108), OutdoorAmbient = Color3.fromRGB(70, 120, 120), Brightness = 1.6 },
 	},
 }
--- the Nest and Shoals keep the place's own lighting (read once here) and get it back when you come up
-ZONES.Nest.lighting = { Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient, Brightness = Lighting.Brightness }
+-- the Nest and Shoals share the calm daylight WorldBuilder sets (Patch 12: fixed values, so a client that loads
+-- before the lighting replicates doesn't lock in the old glare)
+ZONES.Nest.lighting = { Ambient = Color3.fromRGB(104, 106, 122), OutdoorAmbient = Color3.fromRGB(124, 126, 146), Brightness = 2 }
 ZONES.Shoals.lighting = ZONES.Nest.lighting
 local currentZone = nil
 local function applyZone(name)

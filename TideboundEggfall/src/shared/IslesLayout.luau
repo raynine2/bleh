@@ -73,6 +73,18 @@ L.Town = {
 		{ at = v(150, 22), face = v(150, 0) }, { at = v(90, -22), face = v(90, 0) },
 	},
 	chickens = { center = v(-110, -120), radius = 20 },
+	-- the town island's coast: a union of grass shapes topped at TOP, plus the beach (TownBuilder, the sea chart)
+	land = {
+		{ kind = "disk", c = v(-25, 0), r = 140 }, -- the core around the plaza
+		{ kind = "box", c = v(124, 0), size = v(168, 60) }, -- Harbor Street out to the Tidegate
+		{ kind = "disk", c = v(0, 130), r = 75 }, -- Market Row
+		{ kind = "disk", c = v(120, 120), r = 40 }, -- Lighthouse Point
+		{ kind = "disk", c = v(-135, 15), r = 66 }, -- Torii Hill
+		{ kind = "disk", c = v(-100, -110), r = 55 }, -- Hatchery Farms
+		{ kind = "disk", c = v(78, 106), r = 16 }, -- the neck between Market Row and Lighthouse Point
+		{ kind = "disk", c = v(-62, -150), r = 22 }, -- the meadow between the farms and the beach
+	},
+	beach = { c = v(30, -140), r = 65 },
 	villagers = 26, -- how many walk the street graph
 }
 
