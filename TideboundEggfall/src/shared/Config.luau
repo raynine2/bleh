@@ -123,6 +123,47 @@ Config.Risk = {
 	lockLoseSight = 6, -- lock-on drops after 6 s without line of sight
 	luckyScalePearls = 25, -- an escaped fish whose meter passed 90%
 	luckyScaleThreshold = 0.9,
+	frayControl = 0.8, -- a lost fish frays the rod for the rest of the run: -20% Control
+	lockLoseRange = 60, -- beyond this the Warden counts as out of sight
+	streakEmberEvery = 3, -- Clean Extraction streak: +1 Ember per 3 in a row, up to +3
+	streakEmberMax = 3,
+}
+
+-- Delta Section 9: opt-in Open Tide runs. Calm Tide (the default) has no PvP.
+Config.OpenTide = {
+	snatchRange = 6, -- a rival behind you holds interact for 1 s
+	snatchHold = 1,
+	beaconSafeRadius = 40, -- no snatching near an extraction beacon
+	immunity = 5, -- seconds of snatch immunity after you are snatched from
+	burstSpeed = 3,
+	burstSeconds = 3,
+	bonusEggChance = 0.2, -- Open Tide pays x1.20 egg nests: a 20% chance of a second egg per steal
+}
+
+-- Delta Section 10 Table C: camera field of view per situation.
+Config.Camera = { exploration = 70, fishing = 65, chase = 80, hatch = 55 }
+
+-- Delta Section 8: the Harbor Ring hub, a ring town around a lagoon with the 8 Home Nest plots on its edge.
+-- North (+Z) points back toward the Nest plaza, which stays the Spawn Plaza and the Tidegate to the Shoals.
+Config.Harbor = {
+	center = Vector3.new(0, 0, -560),
+	lagoonRadius = 38,
+	groundRadius = 160,
+	plotInner = 150, -- plots start here; 8 plots of 120 x 120 need at least 145 so corners don't touch
+	plotSize = 120,
+	pier = { payoutPct = 0.5, maxTier = 2, baitChance = 0.25 }, -- Lagoon pier fishing: no Heat, banked at once
+}
+
+Config.Npcs = {
+	Pinch = { name = "Pinch", role = "Guide crab", lines = { "New here? Cast in the Shoals, steal eggs, then hold at a beacon to extract.", "The Tide Slide behind me goes to the Harbor Ring, where your Home Nest is." } },
+	OldHarl = { name = "Old Harl", role = "Tackle Shop", panel = "RODS", lines = { "Every rod's stats are on the rack. No secrets, no Robux." } },
+	Nim = { name = "Nim", role = "Bait Shop", panel = "BAIT", lines = { "Brineworm for the shallows, Glowmite when you want rarer bites!" } },
+	SisterCoralie = { name = "Sister Coralie", role = "Tide Egg Shrine", panel = "ODDS", lines = { "These are the odds, child, every one of them. Your pity never resets on a wipe." } },
+	CaptainBrask = { name = "Captain Brask", role = "Season Pass Board", panel = "QUESTS", lines = { "The season track isn't posted yet. Quill's quests pay Pearls today." } },
+	Quill = { name = "Quill", role = "Daily Quest Board", panel = "QUESTS", lines = { "Three quests a day, reset at midnight UTC. Squawk!" } },
+	ArchivistOphel = { name = "Archivist Ophel", role = "Leaderboard Hall", panel = "BOARDS", lines = { "The Hall remembers this server's rarest hatches and boldest escapes." } },
+	GateWardenSel = { name = "Gate Warden Sel", role = "Tidegate", panel = "RUN", lines = { "Calm Tide is safe from rivals. Open Tide lets them snatch eggs, and pays more eggs." } },
+	TradesmanKobb = { name = "Tradesman Kobb", role = "Trading Post", lines = { "Trades open when cosmetics arrive. Creatures, eggs and bait never trade, so nobody buys power." } },
 }
 
 -- Delta Section 7: Home Nest plots. Zone costs and upgrade curves are from Tables A and B.
@@ -157,6 +198,9 @@ Config.Base = {
 	admireShards = 1, -- a visitor admiring your Showcase Plinth: +1 Egg Shard, 10 per day
 	admireDailyCap = 10,
 	duplicateSellPct = 0.5, -- duplicate sales pay half the creature's value
+	baseStorage = 200, -- creatures kept without a Nest Vault; overflow is sold at duplicateSellPct
+	privacy = { "Public", "Friends", "Private" },
+	guestbookSize = 6,
 }
 
 -- Delta Section 8 / 11: daily quests on Quill's board (300-800 Pearls each, reset 00:00 UTC)
@@ -223,6 +267,19 @@ Config.Biomes = {
 	{ id = "AbyssTrench", name = "Abyss Trench", hazard = "Sonar pulses reveal player to Warden", guardian = "Trench Maw" },
 	{ id = "AuroraRift", name = "Aurora Rift", hazard = "Gravity shifts + aurora ribbons blind vision", guardian = "Rift Sovereign" },
 }
+
+-- Safe zones: the Nest plaza and the Harbor Ring. No Warden, no Heat hazards, and hatching is allowed.
+function Config.safeZone(position)
+	local flat = Vector3.new(position.X, 0, position.Z)
+	if flat.Magnitude <= Config.World.nestRadius then
+		return "Nest"
+	end
+	local h = Config.Harbor.center
+	if (flat - Vector3.new(h.X, 0, h.Z)).Magnitude <= Config.Harbor.plotInner + Config.Harbor.plotSize * 1.5 then
+		return "Harbor"
+	end
+	return nil
+end
 
 Config.LegalText = "Odds are per pull and shown before every purchase or hatch. Pity counters only reset when you hit that tier and are never hidden. "
 	.. "Tide Eggs are earned free by stealing them in the Sunken Shoals. Robux never buys eggs, odds, pity, speed or power."

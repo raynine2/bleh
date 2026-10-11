@@ -20,6 +20,8 @@ local StateEvent = Remotes:WaitForChild("State")
 local NotifyEvent = Remotes:WaitForChild("Notify")
 local FishingEvent = Remotes:WaitForChild("Fishing")
 local HazardEvent = Remotes:WaitForChild("Hazard")
+local CueEvent = Remotes:WaitForChild("Cue")
+local Animations = require(Shared:WaitForChild("Animations"))
 
 local DISPLAY = Enum.Font.FredokaOne
 local BODY = Enum.Font.BuilderSansBold
@@ -299,6 +301,8 @@ end
 -- HUD ---------------------------------------------------------------------------------
 
 local openMenu -- forward declaration
+local playAnim, stopAnim -- forward declarations (defined with the minigame)
+local situation = nil -- "fishing" while reeling, for the camera (Delta Section 10 Table C)
 
 local hud = new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 14, 0, 14), Size = UDim2.new(0, 176, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = gui }, { list(8) })
 
@@ -340,6 +344,7 @@ end
 local eggsButton = sideButton(1, "gold", "EGGS", "ODDS", "🥚")
 sideButton(2, "blue", "SHOP", "RODS", "🎣")
 sideButton(3, "red", "BOOK", "CREATURES")
+sideButton(4, "blue", "HOME", "BASE", "🏠")
 local eggBadge = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -16, 0, -8), BackgroundColor3 = C.neon, ZIndex = 4, Parent = eggsButton }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(WHITE, 2) })
 local eggBadgeText = label({ Font = DISPLAY, TextSize = 14, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4, Parent = eggBadge })
 
@@ -359,6 +364,8 @@ for _, mark in ipairs({ 25, 50, 75 }) do
 end
 local heatInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 3, Parent = heatFrame }, { textStroke(1) })
 local haulInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 4, Parent = heatFrame }, { textStroke(1) })
+-- Delta Section 9: health, lock-on, frayed rod and tide mode under the heat bar
+local riskInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Font = DISPLAY, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 5, Parent = heatFrame }, { textStroke(1.5) })
 local lastHeatStyle = nil
 
 local function refreshHUD()
@@ -396,12 +403,26 @@ local function refreshHUD()
 	end
 	heatInfo.Text = status
 	if state.carriedPearls > 0 or state.carriedEggs > 0 then
-		haulInfo.Text = ("At risk: %s Pearls of fish and %d egg(s). Extract at a beacon to keep them."):format(fmt(state.carriedPearls), state.carriedEggs)
+		haulInfo.Text = ("At risk: %s Pearls of fish and %d egg(s). A wipe keeps half the fish Pearls and loses the eggs."):format(fmt(state.carriedPearls), state.carriedEggs)
 		haulInfo.TextColor3 = C.warn
 	else
 		haulInfo.Text = "Nothing at risk. Cast at a glowing spot in the Sunken Shoals or steal a wild egg."
 		haulInfo.TextColor3 = C.muted
 	end
+	local parts = { string.rep("❤", state.health) .. string.rep("♡", state.maxHealth - state.health) }
+	if state.locked then
+		table.insert(parts, "LOCKED ON")
+	end
+	if state.frayed then
+		table.insert(parts, "Rod frayed")
+	end
+	table.insert(parts, state.openTide and "Open Tide" or "Calm Tide")
+	if state.immuneUntil > workspace:GetServerTimeNow() then
+		table.insert(parts, "Snatch immune")
+	end
+	riskInfo.Text = table.concat(parts, "  ·  ")
+	riskInfo.TextColor3 = state.locked and C.bad or (state.health < state.maxHealth and C.warn or C.text)
+	infoIncome.Text = ("Aquarium +%.1f Pearls/min"):format(state.incomePerMin)
 end
 
 -- Fishing minigame (Fisch-style: hold to push the bar, keep the fish inside it) ---
@@ -431,6 +452,33 @@ local function isHolding()
 		or UserInputService:IsGamepadButtonDown(Enum.UserInputType.Gamepad1, Enum.KeyCode.ButtonR2)
 end
 
+-- Placeholder animation hooks (Delta Section 10): plays Person B's animation when its id is filled in.
+local animTracks = {}
+playAnim = function(name)
+	local spec = Animations[name]
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+	if not spec or spec.id == "" or not animator then
+		return
+	end
+	local animation = Instance.new("Animation")
+	animation.AnimationId = spec.id
+	local ok, track = pcall(animator.LoadAnimation, animator, animation)
+	if ok and track then
+		track.Looped = spec.loop == true
+		track:Play()
+		animTracks[name] = track
+	end
+end
+stopAnim = function(name)
+	local track = animTracks[name]
+	if track then
+		track:Stop()
+		animTracks[name] = nil
+	end
+end
+
 local fishing = false
 local function runMinigame(cast)
 	if fishing then
@@ -441,9 +489,12 @@ local function runMinigame(cast)
 	fishFrame.Visible = true
 	reelTrack.Visible, progressTrack.Visible = false, false
 	fishTitle.TextColor3 = C.text
-	fishTitle.Text = "Casting" .. (cast.bait and (" with " .. cast.bait) or "") .. "..."
-	fishHint.Text = "Wait for the bite."
+	fishTitle.Text = (cast.pier and "Pier cast" or "Casting") .. (cast.bait and (" with " .. cast.bait) or "") .. "..."
+	fishHint.Text = cast.frayed and "Wait for the bite. Your rod is frayed: -20% Control until you extract." or "Wait for the bite."
+	playAnim("Cast")
+	situation = "fishing"
 	task.wait(cast.biteWait)
+	playAnim("ReelIn")
 
 	fishTitle.Text = "BITE! Reel it in!"
 	fishTitle.TextColor3 = C.gold
@@ -456,6 +507,7 @@ local function runMinigame(cast)
 	local fishPos, fishTarget, retarget = 0.5, 0.5, 0
 	local fishSpeed = 0.22 + 0.07 * cast.difficulty
 	local progress = f.startProgress
+	local peak = progress
 	local perfect = true
 	local started = os.clock()
 	local caught
@@ -486,6 +538,7 @@ local function runMinigame(cast)
 		reelBar.BackgroundColor3 = inside and Color3.fromRGB(170, 255, 200) or Color3.fromRGB(255, 180, 180)
 		fishIcon.Position = UDim2.new(fishPos, 0, 0.5, 0)
 		progressFill.Size = UDim2.new(math.clamp(progress, 0, 1), 0, 1, 0)
+		peak = math.max(peak, progress)
 		if progress >= 1 then
 			caught = true
 			break
@@ -497,7 +550,9 @@ local function runMinigame(cast)
 
 	fishTitle.TextColor3 = caught and C.good or C.bad
 	fishTitle.Text = caught and (perfect and "PERFECT CATCH!" or "CAUGHT!") or "It got away..."
-	act("FinishCast", cast.id, caught, perfect)
+	act("FinishCast", cast.id, caught, perfect, peak)
+	stopAnim("ReelIn")
+	situation = nil
 	task.wait(1.2)
 	fishFrame.Visible = false
 	fishing = false
@@ -548,14 +603,23 @@ local tabBar = new("Frame", { Position = UDim2.new(0, 16, 0, 16), Size = UDim2.n
 	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }),
 })
 
+-- Two tab groups so each bar stays readable: the egg and tackle menu, and the home and hub menu.
 local TABS = {
-	{ id = "ODDS", title = "TIDE EGG ODDS" },
-	{ id = "PITY", title = "PITY & PULLS" },
-	{ id = "RODS", title = "RODS" },
-	{ id = "BAIT", title = "BAIT & FISH ODDS" },
-	{ id = "CREATURES", title = "CREATURES" },
-	{ id = "BESTIARY", title = "BESTIARY" },
+	{ id = "ODDS", title = "TIDE EGG ODDS", group = "eggs" },
+	{ id = "PITY", title = "PITY & PULLS", group = "eggs" },
+	{ id = "RODS", title = "RODS", group = "eggs" },
+	{ id = "BAIT", title = "BAIT & FISH ODDS", group = "eggs" },
+	{ id = "CREATURES", title = "CREATURES", group = "eggs" },
+	{ id = "BESTIARY", title = "BESTIARY", group = "eggs" },
+	{ id = "BASE", title = "HOME NEST", group = "home" },
+	{ id = "QUESTS", title = "DAILY QUESTS", group = "home" },
+	{ id = "BOARDS", title = "LEADERBOARDS", group = "home" },
+	{ id = "RUN", title = "RUN & RISK", group = "home" },
 }
+local groupSize = {}
+for _, tab in ipairs(TABS) do
+	groupSize[tab.group] = (groupSize[tab.group] or 0) + 1
+end
 local tabButtons, tabPages = {}, {}
 local currentTab = "ODDS"
 
@@ -653,7 +717,7 @@ local confirmBuy, hatch -- forward declarations
 
 local actionRow = rowFrame(oddsPage, 54)
 local eggsLabel = label({ Font = DISPLAY, TextSize = 19, Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(0.36, -14, 1, 0), Parent = actionRow })
-button({ Text = "HATCH 1", Size = UDim2.new(0.3, -8, 0, 38), Position = UDim2.new(0.36, 0, 0.5, -19), Parent = actionRow }, "blue", function()
+local hatchButton = button({ Text = "HATCH 1", Size = UDim2.new(0.3, -8, 0, 38), Position = UDim2.new(0.36, 0, 0.5, -19), Parent = actionRow }, "blue", function()
 	hatch()
 end)
 button({ Text = ("BUY · %d PEARLS"):format(Config.Eggs.TideEgg.pearlCost), Size = UDim2.new(0.34, -14, 0, 38), Position = UDim2.new(0.66, 2, 0.5, -19), Parent = actionRow }, "gold", function()
@@ -686,8 +750,14 @@ end
 label({ Text = "TOTAL  " .. pct(totalMutations), Font = DISPLAY, TextSize = 15, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = nextOrder(), Parent = oddsPage })
 note(oddsPage, Config.LegalText)
 
+-- one egg per incubator slot hatches at once (Hatch Chamber upgrade)
+local function hatchCount()
+	return math.max(1, math.min(state.eggs, state.base and state.base.incubators or 1))
+end
+
 refreshers.ODDS = function()
 	eggsLabel.Text = ("x%d TIDE EGGS"):format(state.eggs)
+	hatchButton.Text = ("HATCH %d"):format(hatchCount())
 end
 
 -- PITY tab
@@ -879,10 +949,253 @@ refreshers.BESTIARY = function()
 	bestiaryHeader.Text = ("SUNKEN SHOALS · %d/%d fish caught"):format(caught, #fishList)
 end
 
+do
+	-- BASE tab: Home Nest zones, upgrades and storage (Delta Section 7)
+	local basePage = makePage("BASE")
+	local baseHeader = rowFrame(basePage, 54)
+	local baseTitle = label({ Font = DISPLAY, TextSize = 17, Position = UDim2.new(0, 14, 0, 4), Size = UDim2.new(0.44, -14, 0, 24), Parent = baseHeader })
+	local baseIncome = label({ TextSize = 12, TextColor3 = C.muted, Position = UDim2.new(0, 14, 0, 28), Size = UDim2.new(0.44, -14, 0, 20), Parent = baseHeader }, { textStroke(1) })
+	button({ Text = "GO HOME", Size = UDim2.new(0.27, -8, 0, 38), Position = UDim2.new(0.44, 0, 0.5, -19), TextSize = 14, Parent = baseHeader }, "blue", function()
+		local result = act("Travel", "Home")
+		if result and result.ok then
+			closeMenu()
+		end
+	end)
+	local privacyButton = button({ Size = UDim2.new(0.29, -14, 0, 38), Position = UDim2.new(0.71, 0, 0.5, -19), TextSize = 13, Parent = baseHeader }, "grey", function()
+		if not state then
+			return
+		end
+		local options = Config.Base.privacy
+		local index = table.find(options, state.base.privacy) or 1
+		act("SetPrivacy", options[index % #options + 1])
+	end)
+	note(basePage, "Nothing in your Home Nest can be stolen. Visitors can look around and Admire your showcase, but never take anything.")
+
+	section(basePage, "ZONES · 5 rooms + 3 outdoor zones")
+	local zoneRows = {}
+	for _, zone in ipairs(Config.Base.zones) do
+		local row = rowFrame(basePage, 40)
+		label({ Text = zone.name, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.38, -12, 1, 0), TextSize = 15, Parent = row })
+		local status = label({ Position = UDim2.new(0.38, 0, 0, 0), Size = UDim2.new(0.34, 0, 1, 0), TextSize = 12, TextColor3 = C.muted, TextWrapped = true, Parent = row }, { textStroke(1) })
+		local unlock = button({ Size = UDim2.new(0.28, -10, 0, 30), Position = UDim2.new(0.72, 0, 0.5, -15), TextSize = 13, Parent = row }, "gold", function()
+			act("UnlockZone", zone.id)
+		end)
+		zoneRows[zone.id] = { status = status, unlock = unlock }
+	end
+
+	divider(basePage)
+	section(basePage, "UPGRADES · Pearls only, Robux can't buy any of these")
+	local upgradeRows = {}
+	for _, upgrade in ipairs(Config.Base.upgrades) do
+		local row = rowFrame(basePage, 40)
+		label({ Text = upgrade.name, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.34, -12, 1, 0), TextSize = 15, Parent = row })
+		local status = label({ Position = UDim2.new(0.34, 0, 0, 0), Size = UDim2.new(0.38, 0, 1, 0), TextSize = 12, TextColor3 = C.muted, TextWrapped = true, Parent = row }, { textStroke(1) })
+		local buy = button({ Size = UDim2.new(0.28, -10, 0, 30), Position = UDim2.new(0.72, 0, 0.5, -15), TextSize = 13, Parent = row }, "gold", function()
+			act("Upgrade", upgrade.id)
+		end)
+		upgradeRows[upgrade.id] = { status = status, buy = buy, upgrade = upgrade }
+	end
+
+	divider(basePage)
+	section(basePage, "STORAGE & SALES")
+	local storageRow = rowFrame(basePage, 46)
+	local storageLabel = label({ Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.62, -12, 1, 0), TextSize = 13, TextWrapped = true, Parent = storageRow }, { textStroke(1) })
+	local sellArmedUntil = 0
+	local sellButton
+	sellButton = button({ Size = UDim2.new(0.38, -10, 0, 34), Position = UDim2.new(0.62, 0, 0.5, -17), TextSize = 13, Parent = storageRow }, "gold", function()
+		if os.clock() < sellArmedUntil then
+			sellArmedUntil = 0
+			act("SellDuplicates")
+		else
+			sellArmedUntil = os.clock() + 3
+			sellButton.Text = "TAP AGAIN TO SELL"
+		end
+	end)
+	local baseNotes = note(basePage, "")
+
+	local zoneById, upgradeById = {}, {}
+	for _, zone in ipairs(Config.Base.zones) do
+		zoneById[zone.id] = zone
+	end
+	for _, upgrade in ipairs(Config.Base.upgrades) do
+		upgradeById[upgrade.id] = upgrade
+	end
+
+	refreshers.BASE = function()
+		local b = state.base
+		baseTitle.Text = b.plot and ("HOME NEST %d"):format(b.plot) or "NO FREE PLOT"
+		local inc = b.income
+		baseIncome.Text = ("+%.1f Pearls/min · %d earning · filter +%d%% · trophies +%d%% · fed +%d%%"):format(b.incomePerMin, inc.earning, inc.filter * 100, inc.trophy * 100, inc.fed * 100)
+		privacyButton.Text = "VISITORS: " .. b.privacy:upper()
+		for id, row in pairs(zoneRows) do
+			local zone = zoneById[id]
+			if b.zones[id] then
+				row.status.Text = zone.kind == "room" and "Unlocked room" or "Unlocked"
+				row.unlock.Visible = false
+			else
+				row.unlock.Visible = true
+				row.status.Text = zone.requires and ("Needs " .. zone.requires) or ("%s Pearls"):format(fmt(zone.cost))
+				row.unlock.Text = zone.requires and "LOCKED" or ("UNLOCK · " .. fmt(zone.cost))
+				restyle(row.unlock, (not zone.requires and state.pearls >= zone.cost) and "gold" or "grey")
+			end
+		end
+		for id, row in pairs(upgradeRows) do
+			local upgrade = row.upgrade
+			local level = math.clamp(b.levels[id] or 1, 1, #upgrade.values)
+			local current = upgrade.values[level]
+			if level >= #upgrade.values then
+				row.status.Text = ("%s %s · MAX"):format(fmt(current), upgrade.unit)
+				row.buy.Text = "MAXED"
+				restyle(row.buy, "grey")
+			else
+				local cost = upgrade.costs[level]
+				local blocked = nil
+				if not upgrade.free and not b.zones[upgrade.zone] then
+					blocked = "Unlock " .. zoneById[upgrade.zone].name
+				elseif upgrade.needs and (b.levels[upgrade.needs.id] or 1) < upgrade.needs.level then
+					blocked = ("Needs %s Lv %d"):format(upgradeById[upgrade.needs.id].name, upgrade.needs.level)
+				end
+				row.status.Text = ("Lv %d/%d · %s → %s %s"):format(level, #upgrade.values, fmt(current), fmt(upgrade.values[level + 1]), upgrade.unit) .. (blocked and ("\n" .. blocked) or "")
+				row.buy.Text = fmt(cost) .. " P"
+				restyle(row.buy, (not blocked and state.pearls >= cost) and "gold" or "grey")
+			end
+		end
+		storageLabel.Text = ("Stored %d / %d creatures. Earning creatures and the best copy of each are always kept; overflow sells at 50%% value."):format(b.storage, b.storageCap)
+		if os.clock() >= sellArmedUntil then
+			sellButton.Text = b.saleCount > 0 and ("SELL %d DUPES · +%s"):format(b.saleCount, fmt(b.salePearls)) or "NO DUPLICATES"
+			restyle(sellButton, b.saleCount > 0 and "gold" or "grey")
+		end
+		local lines = {}
+		if b.zones.pen then
+			local left = b.fedUntil - os.time()
+			table.insert(lines, left > 0 and ("Creature Pen fed: +5%% income for %d more min."):format(math.ceil(left / 60)) or "Creature Pen is hungry: feed it at the trough for +5% income for 30 min.")
+		end
+		table.insert(lines, #b.guestbook > 0 and ("Recent visitors: " .. table.concat(b.guestbook, ", ")) or "No visitors yet. Friends can walk in from the Harbor Ring.")
+		table.insert(lines, "Prestige Altar opens after a Rift Sovereign defeat; Aurora Rift isn't built yet.")
+		baseNotes.Text = table.concat(lines, "\n")
+	end
+end
+
+do
+	-- QUESTS tab: Quill's daily quests and the season board (Delta Sections 8 and 11)
+	local questsPage = makePage("QUESTS")
+	section(questsPage, "DAILY QUESTS · reset at 00:00 UTC")
+	local questRows = {}
+	for _, quest in ipairs(Config.Quests) do
+		local row = rowFrame(questsPage, 52)
+		label({ Text = quest.text, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 4), Size = UDim2.new(0.66, -12, 0, 22), TextSize = 15, Parent = row })
+		local progressText = label({ Position = UDim2.new(0, 12, 0, 26), Size = UDim2.new(0.2, 0, 0, 20), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
+		local fill = bar(row, UDim2.new(0.2, 12, 0, 32), UDim2.new(0.46, -24, 0, 10), "gold")
+		local claim = button({ Size = UDim2.new(0.34, -10, 0, 36), Position = UDim2.new(0.66, 0, 0.5, -18), TextSize = 13, Parent = row }, "gold", function()
+			act("ClaimQuest", quest.id)
+		end)
+		questRows[quest.id] = { progress = progressText, fill = fill, claim = claim, quest = quest }
+	end
+	local questReset = note(questsPage, "")
+	divider(questsPage)
+	section(questsPage, "SEASON TRACK · Captain Brask")
+	note(questsPage, "The free season track opens with Season 1. It will pay Pearls, cosmetics and 100 Tideglass per 10 tiers, and nothing on it changes stats.")
+
+	refreshers.QUESTS = function()
+		for id, row in pairs(questRows) do
+			local count = state.quests.progress[id] or 0
+			local claimed = state.quests.claimed[id]
+			row.progress.Text = ("%d / %d"):format(count, row.quest.goal)
+			row.fill.Size = UDim2.new(math.clamp(count / row.quest.goal, 0, 1), 0, 1, 0)
+			if claimed then
+				row.claim.Text = "CLAIMED"
+				restyle(row.claim, "grey")
+			else
+				row.claim.Text = ("CLAIM · %d P"):format(row.quest.reward)
+				restyle(row.claim, count >= row.quest.goal and "gold" or "grey")
+			end
+		end
+		local secondsLeft = 86400 - (os.time() % 86400)
+		questReset.Text = ("New quests in %dh %dm."):format(secondsLeft // 3600, (secondsLeft % 3600) // 60)
+	end
+end
+
+do
+	-- BOARDS tab: the Leaderboard Hall (this server)
+	local boardsPage = makePage("BOARDS")
+	local boardLabels = {}
+	for _, board in ipairs({ { "rarest", "RAREST HATCH" }, { "streak", "LONGEST CLEAN EXTRACTION STREAK" }, { "heat", "HIGHEST HEAT EXTRACTED AT" }, { "hatched", "MOST HATCHED" } }) do
+		section(boardsPage, board[2])
+		boardLabels[board[1]] = label({ Text = "", TextSize = 14, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder(), Parent = boardsPage }, { textStroke(1) })
+		divider(boardsPage)
+	end
+	section(boardsPage, "YOUR RECORD")
+	local myRecord = label({ Text = "", TextSize = 14, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder(), Parent = boardsPage }, { textStroke(1) })
+
+	refreshers.BOARDS = function()
+		for key, labelInst in pairs(boardLabels) do
+			local entries = state.boards[key] or {}
+			local lines = {}
+			for i, entry in ipairs(entries) do
+				table.insert(lines, ("%d. %s · %s"):format(i, entry.name, entry.text))
+			end
+			labelInst.Text = #lines > 0 and table.concat(lines, "\n") or "Nobody yet. Be the first!"
+		end
+		local st = state.stats
+		myRecord.Text = ("Extractions %d · wipes %d · clean streak %d (best %d) · best Heat extracted %d · fish caught %d · hatched %d"):format(st.extractions, st.wipes, st.cleanStreak, st.bestStreak, st.bestHeatExtract or 0, st.fishCaught, st.hatched)
+	end
+end
+
+do
+	-- RUN tab: Calm or Open Tide, travel and the risk rules (Delta Section 9)
+	local runPage = makePage("RUN")
+	section(runPage, "TIDE MODE · pick before your run")
+	local tideRow = rowFrame(runPage, 50)
+	local calmButton = button({ Text = "CALM TIDE", Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new(0, 8, 0.5, -19), TextSize = 15, Parent = tideRow }, "blue", function()
+		act("SetOpenTide", false)
+	end)
+	local openButton = button({ Text = "OPEN TIDE", Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new(0.5, 6, 0.5, -19), TextSize = 15, Parent = tideRow }, "grey", function()
+		act("SetOpenTide", true)
+	end)
+	note(runPage, "Calm Tide (default): no PvP. Open Tide: a rival 6 studs behind you can hold for 1 s to snatch one carried egg, never near a beacon (40 studs), and you get 5 s of immunity and a speed burst. Egg nests can hold a bonus egg (x1.20).")
+	divider(runPage)
+	section(runPage, "TRAVEL · from the Nest or the Harbor Ring")
+	local travelRow = rowFrame(runPage, 50)
+	for i, dest in ipairs({ { "NEST PLAZA", "Nest" }, { "HARBOR RING", "Harbor" }, { "MY HOME NEST", "Home" } }) do
+		button({ Text = dest[1], Size = UDim2.new(1 / 3, -12, 0, 38), Position = UDim2.new((i - 1) / 3, 6, 0.5, -19), TextSize = 13, Parent = travelRow }, "blue", function()
+			local result = act("Travel", dest[2])
+			if result and result.ok then
+				closeMenu()
+			end
+		end)
+	end
+	divider(runPage)
+	section(runPage, "RISK RULES")
+	note(runPage, table.concat({
+		"Health: 3. Each Reef Warden hit costs 1; the third hit is a wipe.",
+		"Wipe: you lose every carried egg and half the run's fish Pearls. You keep the other half, your bestiary and every pity counter.",
+		"Heat: +8 per steal, +2 per fish, -1 per 3 s while lying low. 25 patrol, 50 riptide, 75 lock-on, 100 all beacons close for 30 s.",
+		"Lock-on breaks after 6 s out of the Warden's sight. Each carried egg costs 2 WalkSpeed; hold Shift (or SPRINT) to run faster.",
+		"Extract: hold 3 s at a beacon. Then stay for the Greed Window: every 5 s adds +15% payout and +5 Heat; all 15 s adds +2 Embers. Walk away or press BANK NOW to leave.",
+		"Beacon grace: within 10 studs of a beacon when Heat hits 100, you get 10 s to extract.",
+		"A lost fish frays your rod (-20% Control) until you extract. An escaped fish that passed 90% drops a Lucky Scale (+25 Pearls).",
+		"Clean Extraction streak: +1 Ember per 3 extractions in a row, up to +3. A wipe resets it.",
+	}, "\n"))
+	local runStats = note(runPage, "")
+
+	refreshers.RUN = function()
+		restyle(calmButton, state.openTide and "grey" or "blue")
+		restyle(openButton, state.openTide and "red" or "grey")
+		runStats.Text = ("Clean streak %d · best %d · extractions %d · wipes %d"):format(state.stats.cleanStreak, state.stats.bestStreak, state.stats.extractions, state.stats.wipes)
+	end
+end
+
 local function selectTab(id)
 	currentTab = id
+	local group
+	for _, tab in ipairs(TABS) do
+		if tab.id == id then
+			group = tab.group
+		end
+	end
 	for _, tab in ipairs(TABS) do
 		local selected = tab.id == id
+		tabButtons[tab.id].Visible = tab.group == group
 		tabPages[tab.id].Visible = selected
 		restyle(tabButtons[tab.id], selected and "red" or "grey")
 		if selected then
@@ -896,7 +1209,7 @@ local function selectTab(id)
 end
 
 for i, tab in ipairs(TABS) do
-	tabButtons[tab.id] = button({ Text = tab.id, Size = UDim2.new(1 / #TABS, -10, 1, 0), LayoutOrder = i, TextSize = 13, Parent = tabBar }, "grey", function()
+	tabButtons[tab.id] = button({ Text = tab.id, Size = UDim2.new(1 / groupSize[tab.group], -10, 1, 0), LayoutOrder = i, TextSize = 13, Parent = tabBar }, "grey", function()
 		selectTab(tab.id)
 	end)
 end
@@ -1022,14 +1335,36 @@ local function showReveal(result)
 	if result.pity then
 		table.insert(lines, "Pity guarantee triggered")
 	end
+	for _, other in ipairs(result.others or {}) do
+		local otherTier = Config.Tiers[other.tier]
+		table.insert(lines, ("Also: %s%s %s"):format(other.mutation ~= "None" and (other.mutation .. " ") or "", otherTier.id, other.creature))
+	end
 	revealDetails.Text = table.concat(lines, "\n")
 	revealClose.Visible = true
 end
 
 hatch = function()
-	local result = act("Hatch")
+	if not state then
+		return
+	end
+	local result = act("Hatch", hatchCount())
 	if result and result.ok then
-		task.spawn(showReveal, result.result)
+		local best = result.result
+		best.others = {}
+		local skippedBest = false
+		for _, other in ipairs(result.results or {}) do
+			local isBest = not skippedBest and other.creature == best.creature and other.value == best.value and other.mutation == best.mutation
+			if isBest then
+				skippedBest = true
+			elseif #best.others < 7 then
+				table.insert(best.others, other)
+			end
+		end
+		situation = "hatch"
+		task.spawn(function()
+			showReveal(best)
+			situation = nil
+		end)
 	end
 end
 
@@ -1069,12 +1404,184 @@ local function applyZone(name)
 	end
 end
 
+local refreshGreed -- set in the block below
+do
+	-- Tension and feel (Delta Sections 9 and 10) --------------------------------------------------
+
+	-- Screen-edge tint that climbs with Heat: faint gold at 25, orange at 50, pulsing red at lock-on.
+	local vignette = new("Frame", { Name = "Vignette", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 0, Parent = gui })
+	local edges = {}
+	for _, spec in ipairs({
+		{ UDim2.new(1, 0, 0.18, 0), UDim2.new(0, 0, 0, 0), 90 },
+		{ UDim2.new(1, 0, 0.18, 0), UDim2.new(0, 0, 0.82, 0), -90 },
+		{ UDim2.new(0.12, 0, 1, 0), UDim2.new(0, 0, 0, 0), 0 },
+		{ UDim2.new(0.12, 0, 1, 0), UDim2.new(0.88, 0, 0, 0), 180 },
+	}) do
+		local edge = new("Frame", { Size = spec[1], Position = spec[2], BackgroundColor3 = C.bad, BorderSizePixel = 0, BackgroundTransparency = 0, Parent = vignette })
+		new("UIGradient", { Rotation = spec[3], Transparency = NumberSequence.new(0, 1), Parent = edge })
+		table.insert(edges, edge)
+	end
+	local flash = new("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 40, Parent = gui })
+	local function screenFlash(color, from)
+		flash.BackgroundColor3 = color
+		flash.BackgroundTransparency = from or 0.4
+		TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+	end
+
+	local shakeUntil, shakeAmount = 0, 0
+	local function shake(amount, seconds)
+		shakeAmount = amount
+		shakeUntil = os.clock() + seconds
+	end
+
+	local function pulseHeat()
+		local scale = heatFrame:FindFirstChild("Pulse") or new("UIScale", { Name = "Pulse", Parent = heatFrame })
+		scale.Scale = 1.08
+		TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+	end
+
+	-- Greed Window panel: shows after the 3 s beacon channel while you hold position
+	local greedFrame = neonPanel({ AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -110), Size = UDim2.new(0, 360, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false }, 6, true)
+	greedFrame.Parent = gui
+	padding(10).Parent = greedFrame
+	list(6).Parent = greedFrame
+	local greedTitle = label({ Font = DISPLAY, TextSize = 20, TextColor3 = C.gold, Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, Parent = greedFrame })
+	local greedText = label({ TextSize = 13, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = greedFrame }, { textStroke(1) })
+	local greedFill = bar(new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 12), LayoutOrder = 3, Parent = greedFrame }), UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 1, 0), "gold")
+	button({ Text = "BANK NOW", Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 4, Parent = greedFrame }, "blue", function()
+		act("BankNow")
+	end)
+
+	refreshGreed = function()
+		local greed = state and state.greed
+		greedFrame.Visible = greed ~= nil
+		if not greed then
+			return
+		end
+		local elapsed = workspace:GetServerTimeNow() - greed.started
+		local window = Config.Risk.greedSeconds
+		greedTitle.Text = ("GREED WINDOW  %ds"):format(math.max(0, math.ceil(window - elapsed)))
+		greedText.Text = ("Bonus so far: +%d%% payout%s. Every 5 s adds +15%% and +5 Heat. Walk away or bank to leave."):format(greed.steps * 15, greed.steps >= 3 and " and +2 Embers" or "")
+		greedFill.Size = UDim2.new(math.clamp(elapsed / window, 0, 1), 0, 1, 0)
+	end
+
+	-- Sprint: Shift on keyboard, a SPRINT toggle on touch screens
+	local sprintHeld, sprintToggle = false, false
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and (input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonL3) then
+			sprintHeld = true
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonL3 then
+			sprintHeld = false
+		end
+	end)
+	if UserInputService.TouchEnabled then
+		local sprintButton
+		sprintButton = button({ Text = "SPRINT", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -150, 1, -40), Size = UDim2.new(0, 84, 0, 44), TextSize = 15, Parent = gui }, "grey", function()
+			sprintToggle = not sprintToggle
+			restyle(sprintButton, sprintToggle and "gold" or "grey")
+		end)
+	end
+
+	-- every frame: WalkSpeed (carry slowdown, treadmill, sprint), camera FOV and shake, vignette
+	local currentFov = Config.Camera.exploration
+	RunService.RenderStepped:Connect(function(dt)
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if humanoid and state then
+			local sprinting = (sprintHeld or sprintToggle) and humanoid.MoveDirection.Magnitude > 0.1
+			humanoid.WalkSpeed = state.walkSpeed + (sprinting and Config.Risk.sprintBonus or 0)
+			if shakeUntil > os.clock() then
+				humanoid.CameraOffset = Vector3.new((math.random() - 0.5) * shakeAmount, (math.random() - 0.5) * shakeAmount, 0)
+			elseif humanoid.CameraOffset.Magnitude > 0 then
+				humanoid.CameraOffset = Vector3.zero
+			end
+		end
+		local camera = workspace.CurrentCamera
+		if camera and state then
+			local target = Config.Camera.exploration
+			if situation == "fishing" then
+				target = Config.Camera.fishing
+			elseif situation == "hatch" then
+				target = Config.Camera.hatch
+			elseif state.locked then
+				target = Config.Camera.chase
+			end
+			currentFov += (target - currentFov) * math.min(1, dt * 4)
+			camera.FieldOfView = currentFov
+		end
+		local heat = state and state.heat or 0
+		local color, alpha = C.bad, 1
+		if state and state.locked then
+			alpha = 0.55 + 0.2 * math.sin(os.clock() * 6)
+		elseif heat >= Config.Heat.hazardAt then
+			color, alpha = Color3.fromRGB(255, 140, 50), 0.75
+		elseif heat >= Config.Heat.patrolAt then
+			color, alpha = C.gold, 0.88
+		end
+		for _, edge in ipairs(edges) do
+			edge.BackgroundColor3 = color
+			edge.BackgroundTransparency = alpha
+		end
+	end)
+
+	-- Feel cues from the server: animations (placeholders until Person B delivers), screen effects
+	CueEvent.OnClientEvent:Connect(function(name, payload)
+		if name == "Steal" then
+			playAnim("EggGrab")
+			pulseHeat()
+			shake(0.15, 0.15)
+		elseif name == "Hit" then
+			playAnim("HitReact")
+			screenFlash(C.bad, 0.5)
+			shake(0.4, 0.3)
+		elseif name == "Down" then
+			playAnim("Down")
+			screenFlash(C.bad, 0.2)
+		elseif name == "Extract" then
+			playAnim("ExtractionEmote")
+			screenFlash(WHITE, 0.2)
+		elseif name == "Greed" then
+			pulseHeat()
+		elseif name == "Snatched" then
+			screenFlash(C.warn, 0.5)
+			shake(0.25, 0.2)
+		elseif name == "Threshold" then
+			pulseHeat()
+			if payload == Config.Heat.lockAt then
+				shake(0.2, 0.4)
+			end
+		end
+	end)
+
+	-- Your own Snatch prompt is for rivals, so hide it locally
+	local function hideOwnSnatch(character)
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		local snatch = root and root:WaitForChild("SnatchPrompt", 10)
+		if snatch then
+			snatch.Enabled = false
+			snatch:GetPropertyChangedSignal("Enabled"):Connect(function()
+				if snatch.Enabled then
+					snatch.Enabled = false
+				end
+			end)
+		end
+	end
+	player.CharacterAdded:Connect(hideOwnSnatch)
+	if player.Character then
+		task.spawn(hideOwnSnatch, player.Character)
+	end
+end
+
 -- Wiring -------------------------------------------------------------------------------
 
 local PANEL_TO_TAB = { Odds = "ODDS", Tackle = "RODS" }
 
 local function refreshAll()
 	refreshHUD()
+	refreshGreed()
 	if menu.Visible then
 		refreshers[currentTab]()
 	end
@@ -1088,7 +1595,13 @@ end)
 NotifyEvent.OnClientEvent:Connect(toast)
 
 HazardEvent.OnClientEvent:Connect(function(kind, direction)
-	if kind == "Riptide" then
+	if kind == "Hit" then
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if root then
+			root.AssemblyLinearVelocity = direction.Unit * Config.Risk.knockback + Vector3.new(0, 25, 0)
+		end
+	elseif kind == "Riptide" then
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if root then
@@ -1099,6 +1612,17 @@ HazardEvent.OnClientEvent:Connect(function(kind, direction)
 end)
 
 ProximityPromptService.PromptTriggered:Connect(function(prompt)
+	local npcId = prompt:GetAttribute("Npc")
+	if npcId then
+		local npc = Config.Npcs[npcId]
+		if npc then
+			toast(("%s: %s"):format(npc.name, npc.lines[math.random(1, #npc.lines)]), "info")
+			if npc.panel then
+				openMenu(npc.panel)
+			end
+		end
+		return
+	end
 	local panel = prompt:GetAttribute("Panel")
 	if panel then
 		openMenu(PANEL_TO_TAB[panel] or panel)
@@ -1120,10 +1644,11 @@ task.spawn(function()
 	while true do
 		task.wait(0.5)
 		refreshHUD()
+		refreshGreed()
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if root then
-			applyZone(root.Position.X > 55 and "Shoals" or "Nest")
+			applyZone((root.Position.X > 55 and not Config.safeZone(root.Position)) and "Shoals" or "Nest")
 		end
 	end
 end)

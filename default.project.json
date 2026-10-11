@@ -4,17 +4,17 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "Tidebound": {
-        "$path": "src/shared"
+        "$path": "TideboundEggfall/src/shared"
       }
     },
     "ServerScriptService": {
       "Tidebound": {
-        "$path": "src/server"
+        "$path": "TideboundEggfall/src/server"
       }
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
-        "$path": "src/client"
+        "$path": "TideboundEggfall/src/client"
       }
     }
   }

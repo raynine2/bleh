@@ -38,13 +38,15 @@ local function template()
 		aquarium = {},
 		history = {},
 		bestiary = {},
-		stats = { fishCaught = 0, hatched = 0, extractions = 0, wipes = 0, cleanStreak = 0, bestStreak = 0 },
+		stats = { fishCaught = 0, hatched = 0, extractions = 0, wipes = 0, cleanStreak = 0, bestStreak = 0, bestHeatExtract = 0, bestHatchValue = 0, bestHatch = "" },
 		-- Delta Section 7: Home Nest zones (true = unlocked) and upgrade levels (1 = first value)
 		zones = { hatch = true, aquarium = true },
 		levels = { incubators = 1, aquarium = 1, filter = 1, treadmill = 1, pen = 1, trophy = 1, vault = 1 },
 		fedUntil = 0,
 		admires = { day = 0, count = 0, visitors = {} },
 		quests = { day = 0, progress = {}, claimed = {} },
+		settings = { openTide = false, privacy = "Public" },
+		guestbook = {},
 		lastSeen = 0,
 	}
 end
