@@ -19,8 +19,8 @@ local PropKit = {}
 
 -- palette (sampled by eye from the references)
 local C = {
-	SNOW = Color3.fromRGB(226, 236, 250),
-	SNOW_SHADE = Color3.fromRGB(196, 212, 236),
+	SNOW = Color3.fromRGB(176, 190, 214), -- Patch 15: a soft blue-grey, so it never glares
+	SNOW_SHADE = Color3.fromRGB(150, 166, 196),
 	LOG = Color3.fromRGB(150, 88, 60),
 	LOG_DARK = Color3.fromRGB(112, 64, 46),
 	LOG_END = Color3.fromRGB(196, 140, 96),
@@ -37,8 +37,8 @@ local C = {
 	CLIFF = Color3.fromRGB(96, 120, 186),
 	CLIFF_DARK = Color3.fromRGB(70, 90, 156),
 	NEON_RED = Color3.fromRGB(226, 60, 90),
-	WHITE = Color3.fromRGB(246, 246, 250),
-	LANTERN = Color3.fromRGB(255, 196, 110),
+	WHITE = Color3.fromRGB(214, 218, 228),
+	LANTERN = Color3.fromRGB(230, 160, 90),
 }
 PropKit.color = C
 

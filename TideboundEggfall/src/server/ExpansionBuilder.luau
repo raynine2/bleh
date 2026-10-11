@@ -13,7 +13,7 @@ local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("Tidebo
 
 local ExpansionBuilder = {}
 
-local VERSION = 5
+local VERSION = 6
 
 local K = WorldBuilder.kit
 local P = K.color

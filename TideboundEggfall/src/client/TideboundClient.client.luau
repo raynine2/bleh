@@ -1906,17 +1906,18 @@ end
 local ZONES = {
 	-- Patch 14: copied from the references. The town is the winter town (pale blue haze, cool soft light, glowing
 	-- windows); the Shoals are the green hub (clear air, saturated greens and blues, crisp light).
+	-- Patch 15: dimmed a lot (lower exposure and ambient, bloom only on real light sources)
 	Nest = {
-		atmosphere = { Density = 0.4, Offset = 0.28, Color = Color3.fromRGB(196, 222, 255), Decay = Color3.fromRGB(118, 158, 222), Glare = 0.15, Haze = 2.1 },
-		grade = { Saturation = 0.22, Contrast = 0.07, Brightness = 0.02, TintColor = Color3.fromRGB(236, 246, 255) },
-		bloom = { Intensity = 0.7, Size = 32, Threshold = 1.2 },
-		lighting = { Ambient = Color3.fromRGB(150, 170, 210), OutdoorAmbient = Color3.fromRGB(168, 188, 226), Brightness = 2.4, ExposureCompensation = -0.1, ColorShift_Top = Color3.fromRGB(214, 232, 255) },
+		atmosphere = { Density = 0.32, Offset = 0.25, Color = Color3.fromRGB(150, 176, 214), Decay = Color3.fromRGB(92, 120, 176), Glare = 0, Haze = 1 },
+		grade = { Saturation = 0.2, Contrast = 0.14, Brightness = -0.1, TintColor = Color3.fromRGB(232, 240, 255) },
+		bloom = { Intensity = 0.25, Size = 22, Threshold = 2.2 },
+		lighting = { Ambient = Color3.fromRGB(92, 102, 128), OutdoorAmbient = Color3.fromRGB(108, 120, 150), Brightness = 1.5, ExposureCompensation = -0.65, ColorShift_Top = Color3.fromRGB(200, 214, 240) },
 	},
 	Shoals = {
-		atmosphere = { Density = 0.24, Offset = 0.15, Color = Color3.fromRGB(206, 236, 255), Decay = Color3.fromRGB(140, 196, 240), Glare = 0, Haze = 0.6 },
-		grade = { Saturation = 0.36, Contrast = 0.12, Brightness = 0.02, TintColor = Color3.fromRGB(255, 252, 246) },
-		bloom = { Intensity = 0.45, Size = 28, Threshold = 1.4 },
-		lighting = { Ambient = Color3.fromRGB(140, 150, 170), OutdoorAmbient = Color3.fromRGB(160, 172, 194), Brightness = 2.6, ExposureCompensation = -0.05, ColorShift_Top = Color3.fromRGB(255, 244, 226) },
+		atmosphere = { Density = 0.26, Offset = 0.15, Color = Color3.fromRGB(160, 196, 226), Decay = Color3.fromRGB(100, 150, 200), Glare = 0, Haze = 0.6 },
+		grade = { Saturation = 0.28, Contrast = 0.14, Brightness = -0.08, TintColor = Color3.fromRGB(246, 250, 255) },
+		bloom = { Intensity = 0.25, Size = 22, Threshold = 2.2 },
+		lighting = { Ambient = Color3.fromRGB(96, 106, 126), OutdoorAmbient = Color3.fromRGB(116, 126, 148), Brightness = 1.7, ExposureCompensation = -0.55, ColorShift_Top = Color3.fromRGB(240, 230, 214) },
 	},
 	-- Patch 10: the Outer Reef (the Open Isles' third ring), a grey storm over dark rock
 	Storm = {

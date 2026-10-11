@@ -11,12 +11,12 @@ local CollectionService = game:GetService("CollectionService")
 
 local WorldBuilder = {}
 
-local VERSION = 12
+local VERSION = 13
 
 -- REF 1 palette
 -- Patch 12: the snow is a soft blue-grey, not paper white, so it doesn't glare
-local SNOW_GROUND = Color3.fromRGB(196, 210, 226)
-local SNOW_CAP = Color3.fromRGB(220, 230, 242)
+local SNOW_GROUND = Color3.fromRGB(168, 182, 206)
+local SNOW_CAP = Color3.fromRGB(186, 198, 220)
 local DIRT = Color3.fromRGB(146, 104, 82)
 local DIRT_DARK = Color3.fromRGB(122, 86, 70)
 local COBBLE = Color3.fromRGB(128, 132, 140)
@@ -454,26 +454,28 @@ local function setupEnvironment()
 	-- soft and coloured, never black; a pale blue haze that swallows the distance; saturated colour; and bloom
 	-- low enough to make windows, lanterns, neon and ice glow. (Set Lighting.Technology to Future in Studio for
 	-- the lanterns and windows to light their surroundings like the references.)
-	Lighting.ClockTime = 13.6
-	Lighting.GeographicLatitude = 28
-	Lighting.Brightness = 2.4
-	Lighting.ExposureCompensation = -0.1
-	Lighting.Ambient = Color3.fromRGB(150, 170, 210)
-	Lighting.OutdoorAmbient = Color3.fromRGB(168, 188, 226)
-	Lighting.ColorShift_Top = Color3.fromRGB(214, 232, 255)
-	Lighting.ColorShift_Bottom = Color3.fromRGB(150, 180, 230)
-	Lighting.EnvironmentDiffuseScale = 0.7
-	Lighting.EnvironmentSpecularScale = 0.4
+	-- Patch 15: much dimmer. The snow glared because bright ambient, high exposure and a low bloom threshold all
+	-- stacked on near-white ground; now the light is softer and only real light sources (neon, lanterns) bloom.
+	Lighting.ClockTime = 14.6
+	Lighting.GeographicLatitude = 30
+	Lighting.Brightness = 1.5
+	Lighting.ExposureCompensation = -0.65
+	Lighting.Ambient = Color3.fromRGB(92, 102, 128)
+	Lighting.OutdoorAmbient = Color3.fromRGB(108, 120, 150)
+	Lighting.ColorShift_Top = Color3.fromRGB(200, 214, 240)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(90, 110, 150)
+	Lighting.EnvironmentDiffuseScale = 0.4
+	Lighting.EnvironmentSpecularScale = 0.2
 	Lighting.GlobalShadows = true
 	Lighting.ShadowSoftness = 0.35
 
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
-	atmosphere.Density = 0.4
-	atmosphere.Offset = 0.28
-	atmosphere.Color = Color3.fromRGB(196, 222, 255)
-	atmosphere.Decay = Color3.fromRGB(118, 158, 222)
-	atmosphere.Glare = 0.15
-	atmosphere.Haze = 2.1
+	atmosphere.Density = 0.32
+	atmosphere.Offset = 0.25
+	atmosphere.Color = Color3.fromRGB(150, 176, 214)
+	atmosphere.Decay = Color3.fromRGB(92, 120, 176)
+	atmosphere.Glare = 0
+	atmosphere.Haze = 1
 	atmosphere.Parent = Lighting
 
 	for _, name in ipairs({ "TideboundRays" }) do
@@ -490,9 +492,9 @@ local function setupEnvironment()
 		end
 		e.Parent = Lighting
 	end
-	effect("ColorCorrectionEffect", "TideboundGrade", { Saturation = 0.22, Contrast = 0.07, Brightness = 0.02, TintColor = Color3.fromRGB(236, 246, 255) })
-	effect("BloomEffect", "TideboundBloom", { Intensity = 0.7, Size = 32, Threshold = 1.2 })
-	effect("SunRaysEffect", "TideboundSunRays", { Intensity = 0.05, Spread = 0.6 })
+	effect("ColorCorrectionEffect", "TideboundGrade", { Saturation = 0.2, Contrast = 0.14, Brightness = -0.1, TintColor = Color3.fromRGB(232, 240, 255) })
+	effect("BloomEffect", "TideboundBloom", { Intensity = 0.25, Size = 22, Threshold = 2.2 })
+	effect("SunRaysEffect", "TideboundSunRays", { Intensity = 0.015, Spread = 0.5 })
 
 	workspace.GlobalWind = Vector3.new(6, 0, 3)
 

@@ -21,7 +21,7 @@ local PropKit = require(script.Parent:WaitForChild("PropKit"))
 
 local ShoalsBuilder = {}
 
-local VERSION = 4
+local VERSION = 5
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit

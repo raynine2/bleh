@@ -23,7 +23,7 @@ local PC = PropKit.color
 
 local TownBuilder = {}
 
-local VERSION = 4
+local VERSION = 5
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -130,7 +130,7 @@ local function buildLand(parent)
 	-- and frosted white grass (TideboundFoliage) only out on the edges, so the streets stay clean
 	local STYLE = {
 		grass = { top = TOP, color = PC.SNOW },
-		plaza = { top = TOP, color = Color3.fromRGB(206, 216, 234) },
+		plaza = { top = TOP, color = Color3.fromRGB(150, 162, 186) },
 		beach = { top = TOP - 0.4, color = SAND },
 		shore = { top = WATER_Y + 0.8, color = SAND:Lerp(Color3.fromRGB(180, 160, 120), 0.3) },
 	}
