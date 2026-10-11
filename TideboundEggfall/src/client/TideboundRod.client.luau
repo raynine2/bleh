@@ -23,6 +23,7 @@ local RodModels = require(Shared:WaitForChild("RodModels"))
 local FishModels = require(Shared:WaitForChild("FishModels"))
 local FishingFeel = require(Shared:WaitForChild("FishingFeel"))
 local Audio = require(Shared:WaitForChild("Audio"))
+local VfxLibrary = require(Shared:WaitForChild("VfxLibrary")) -- GDD Section 8: bait splash and water impact
 local MotionBus = require(Shared:WaitForChild("MotionBus"))
 local Fx = require(Shared:WaitForChild("Fx"))
 
@@ -682,6 +683,7 @@ local function updateCast(rec, look, rodId, spot, tipPos)
 	else
 		if once(rec, "plop") then
 			Audio.play("Plop", rec.bobber.PrimaryPart)
+			VfxLibrary.baitSplash(rec.bobber.PrimaryPart.Position)
 			splashRing(spot, 3)
 			waterBurst(spot, 8, 6)
 			local effect = CAST_FX[look.castFx]
@@ -711,6 +713,7 @@ local function updateCast(rec, look, rodId, spot, tipPos)
 				if once(rec, "nibble" .. math.floor(clock * 8.5 / (math.pi * 2))) then
 					splashRing(spot, 1.4)
 					Audio.play("Plop", rec.bobber.PrimaryPart)
+			VfxLibrary.baitSplash(rec.bobber.PrimaryPart.Position)
 				end
 			end
 		elseif step == "BiteTell" then
@@ -830,6 +833,9 @@ local function updateLand(rec, spot)
 	end
 	if once(rec, "flip") and spot then
 		Audio.play("Splash", root)
+		if typeof(spot) == "Vector3" then
+			VfxLibrary.waterImpact(spot, 0.8) -- Section 8 Table B: Water Impact
+		end
 		waterBurst(spot, 30, 14)
 		splashRing(spot, 5)
 		-- the video's chunky splash: water cubes fly out where the fish breaks the surface

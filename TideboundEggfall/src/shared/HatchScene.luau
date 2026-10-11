@@ -24,6 +24,8 @@ local Audio = require(Shared:WaitForChild("Audio"))
 local MotionBus = require(Shared:WaitForChild("MotionBus"))
 local CreatureModels = require(Shared:WaitForChild("CreatureModels"))
 local DashMoves = require(Shared:WaitForChild("DashMoves")) -- Patch 20: Dash Capsules hatch the same way
+local ClientBus = require(Shared:WaitForChild("ClientBus")) -- GDD Section 9: Reveal music and the gacha audio stages
+local VfxLibrary = require(Shared:WaitForChild("VfxLibrary")) -- GDD Section 8: hatch explosion, reveal, mutation burst
 
 local HatchScene = {}
 
@@ -465,6 +467,7 @@ function HatchScene.play(result)
 		end
 	end
 	local rare = tierIndex >= 4
+	ClientBus.hold("Reveal") -- the Reveal music state for as long as the scene plays
 	local camera = workspace.CurrentCamera
 	local playerGui = player:WaitForChild("PlayerGui")
 	local hud = playerGui:FindFirstChild("TideboundUI")
@@ -640,7 +643,7 @@ function HatchScene.play(result)
 					egg.light.Color = color
 					shot(eggBase + (root.Position - eggBase).Unit * 15 + right * 2 + Vector3.new(0, 4.5, 0), eggBase + Vector3.new(0, 5.5, 0), 62, 0.9)
 					TweenService:Create(ui.tint, TweenInfo.new(0.8), { BackgroundTransparency = 0.45 }):Play()
-					Audio.play("RevealHum", root)
+					ClientBus.gacha("PreReveal", root) -- rising synth and heartbeat (2.0 s)
 				end
 			elseif stage == "charge" then
 				local s = math.clamp(u / 1.3, 0, 1)
@@ -730,7 +733,16 @@ function HatchScene.play(result)
 				Fx.cubes(burstAt + Vector3.new(0, 2, 0), { GOLD, WHITE, color, Color3.fromRGB(255, 140, 210) }, { spread = 14 + i * 3, size = 0.5, life = 1.2, up = 1, count = 18 })
 			end)
 		end
-		ui.flash.BackgroundTransparency = 0
+		ui.flash.BackgroundTransparency = 1 - ClientBus.flashAllowed() -- Rules 3 and 5: limited, softened by Reduce Flashing
+		ClientBus.gacha("Reveal", root) -- choir hit and glass shatter (0.5 s)
+		VfxLibrary.hatchExplosion(burstAt, tierIndex)
+		VfxLibrary.gachaReveal(Vector3.new(burstAt.X, floorY + 0.5, burstAt.Z), tierIndex)
+		if mutation and mutation.id ~= "None" then
+			VfxLibrary.mutationBurst(root, mutation.color)
+		end
+		task.delay(0.5, function()
+			ClientBus.gacha("RarityConfirm", root) -- harp glissando and coins (1.5 s)
+		end)
 		TweenService:Create(ui.flash, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
 		TweenService:Create(ui.tint, TweenInfo.new(0.5), { BackgroundTransparency = 0.7 }):Play()
 		Fx.cubes(burstAt, { style.shell, style.shade, style.spot, WHITE }, { spread = 22, size = 1.2, life = 1.1, up = 0.9, count = 40, material = Enum.Material.SmoothPlastic })
@@ -742,7 +754,6 @@ function HatchScene.play(result)
 				Fx.ring(Vector3.new(burstAt.X, floorY + 0.3, burstAt.Z), (i % 2 == 0) and GOLD or color, 14 + i * 6, 0.7, 0.6)
 			end)
 		end
-		Audio.play("Celebrate", root)
 		Audio.play("Tier" .. tier.id, root)
 		shake(rare and 2.4 or 1.6)
 		-- the camera kicks back, then settles into a slow orbit round the creature
@@ -847,6 +858,7 @@ function HatchScene.play(result)
 		hud.Enabled = true
 	end
 	MotionBus.cutscene = false
+	ClientBus.release("Reveal")
 	playing = false
 end
 
