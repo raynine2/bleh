@@ -1,8 +1,6 @@
--- Tidebound: Eggfall: the Big Update map. Builds two new areas into Workspace.TideboundWorld.Descent, without
--- touching the Studio-built Nest and Sunken Shoals (WorldBuilder) or the Delta areas (ExpansionBuilder):
---   OuterShoals: three new reefs around the Shoals, linked by boardwalks. Shipwreck Reef (a wrecked galleon with
---     an egg in its hull), Lighthouse Isle (a striped lighthouse with a sweeping beam and a new beacon) and
---     Maelstrom Isle beside the Maelstrom, the whirlpool that PUSH DEEPER drags you down.
+-- Tidebound: Eggfall: the Big Update map. Builds Kelp Cathedral into Workspace.TideboundWorld.Descent, and
+-- shares its video-style pieces (DescentBuilder.kit) with ShoalsBuilder, which builds the Open Isles (Patch 10):
+-- studded paths, checkered grass, voxel trees, the shipwreck, the lighthouse and the Maelstrom.
 --   KelpCathedral: biome 2 (Canon order), a sunken cathedral in a cavern under the sea. A studded nave between
 --     stone pillars and giant kelp, arches, a rose window over the apse where the Kelp Leviathan coils, holy-
 --     water pools to fish in (west aisle), ruined chapels with wild eggs (east aisle), a whale skeleton,
@@ -19,7 +17,7 @@ local Config = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild(
 
 local DescentBuilder = {}
 
-local VERSION = 1
+local VERSION = 2
 
 local K = WorldBuilder.kit
 local P = K.color
@@ -33,7 +31,6 @@ local LEAVES = { Color3.fromRGB(58, 168, 70), Color3.fromRGB(84, 192, 80), Color
 local TRUNK = Color3.fromRGB(112, 74, 50)
 local PATH = Color3.fromRGB(214, 134, 62)
 local PATH_EDGE = Color3.fromRGB(150, 92, 52)
-local SAND = Color3.fromRGB(96, 178, 86)
 local HULL = Color3.fromRGB(110, 72, 48)
 local HULL_DARK = Color3.fromRGB(78, 50, 36)
 local SAIL = Color3.fromRGB(236, 226, 196)
@@ -188,29 +185,7 @@ local function boardwalk(parent, a, ra, b, rb, bend)
 	return mid, side
 end
 
--- Outer Shoals ----------------------------------------------------------------------------------------------
-
-local OUTER = {
-	Shipwreck = { pos = Vector3.new(195, 0, 150), r = 20 },
-	Lighthouse = { pos = Vector3.new(300, 0, 125), r = 15 },
-	Maelstrom = { pos = Vector3.new(200, 0, -160), r = 16 },
-}
-
-local function island(parent, name, spec, rng)
-	local pos, r = spec.pos, spec.r
-	disk(parent, name, Vector3.new(pos.X, TOP - 4, pos.Z), r, 8, SAND)
-	checkerDisk(parent, Vector3.new(pos.X, 0, pos.Z), r - 1, 4, TOP)
-	for _ = 1, 8 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local s = rng:NextNumber(2, 3.6)
-		decor({ Name = "ShoreRock", Size = Vector3.new(s * 1.4, s * 0.8, s), CFrame = CFrame.new(pos.X + math.cos(a) * (r - 0.5), TOP - 0.2, pos.Z + math.sin(a) * (r - 0.5)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = P.MINT_ROCK, Parent = parent })
-	end
-	for _ = 1, 10 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local d = rng:NextNumber(3, r - 3)
-		tuft(parent, Vector3.new(pos.X + math.cos(a) * d, TOP + 0.5, pos.Z + math.sin(a) * d), rng, LEAVES[rng:NextInteger(1, 3)])
-	end
-end
+-- Set pieces the Shoals use (ShoalsBuilder builds them on the Open Isles) ----------------------------------
 
 local function shipwreck(parent, at, rng)
 	local model = Instance.new("Model")
@@ -317,61 +292,6 @@ local function maelstrom(parent, at, rng)
 		decor({ Name = "Rune", Size = Vector3.new(1.4, 3, 0.3), CFrame = CFrame.lookAt(at2 + Vector3.new(0, h * 0.55, 0), Vector3.new(c.X, at2.Y + h * 0.55, c.Z)) * CFrame.new(0, 0, -1.3), Color = RUNE, Material = Enum.Material.Neon, Parent = parent })
 	end
 	light(funnel, Color3.fromRGB(90, 220, 255), 30, 1.5)
-end
-
-local function buildOuterShoals(root)
-	local folder = Instance.new("Folder")
-	folder.Name = "OuterShoals"
-	folder.Parent = root
-	local rng = Random.new(4401)
-	for name, spec in pairs(OUTER) do
-		island(folder, name .. "Isle", spec, rng)
-	end
-	local reefs = {}
-	for _, spec in ipairs(K.shoals.islands) do
-		reefs[spec.name] = spec
-	end
-
-	-- boardwalks out from the old reefs, with bamboo and lily pads beside them
-	for _, link in ipairs({
-		{ reefs.ReefB, OUTER.Shipwreck, 8 },
-		{ OUTER.Shipwreck, OUTER.Lighthouse, -8 },
-		{ reefs.ReefD, OUTER.Lighthouse, 9 },
-		{ reefs.ReefC, OUTER.Maelstrom, -7 },
-		{ reefs.ReefE, OUTER.Maelstrom, 7 },
-	}) do
-		local mid, side = boardwalk(folder, link[1].pos, link[1].r, link[2].pos, link[2].r, link[3])
-		K.bambooCluster(folder, mid + side * 10 - Vector3.new(0, 4, 0), rng)
-	end
-
-	-- Shipwreck Reef: the galleon, an egg in its smashed hull, two spots in the water
-	local ship = OUTER.Shipwreck.pos
-	shipwreck(folder, ship, rng)
-	wildEgg(folder, 101, Vector3.new(ship.X - 1, 0, ship.Z + 3), TOP + 1)
-	blockTree(folder, Vector3.new(ship.X - 12, TOP + 0.5, ship.Z - 8), rng, 1)
-	blockTree(folder, Vector3.new(ship.X + 10, TOP + 0.5, ship.Z - 11), rng, 0.9)
-	fishingSpot(folder, 101, Vector3.new(ship.X + 27, 0, ship.Z + 10), WATER_Y, 1)
-	fishingSpot(folder, 102, Vector3.new(ship.X - 23, 0, ship.Z + 18), WATER_Y, 1)
-
-	-- Lighthouse Isle: the lighthouse and a new beacon
-	local lh = OUTER.Lighthouse.pos
-	lighthouse(folder, lh)
-	beacon(folder, 101, Vector3.new(lh.X - 7, 0, lh.Z - 7), TOP, 1)
-	blockTree(folder, Vector3.new(lh.X + 7, TOP + 0.5, lh.Z + 6), rng, 0.8)
-	fishingSpot(folder, 103, Vector3.new(lh.X + 4, 0, lh.Z + 23), WATER_Y, 1)
-
-	-- Maelstrom Isle and the Maelstrom itself
-	local ms = OUTER.Maelstrom.pos
-	maelstrom(folder, Vector3.new(ms.X + 44, 0, ms.Z - 16), rng)
-	wildEgg(folder, 102, Vector3.new(ms.X - 4, 0, ms.Z - 6), TOP + 0.5)
-	blockTree(folder, Vector3.new(ms.X + 6, TOP + 0.5, ms.Z + 7), rng, 1.1)
-	fishingSpot(folder, 104, Vector3.new(ms.X + 24, 0, ms.Z + 12), WATER_Y, 1)
-	fishingSpot(folder, 105, Vector3.new(ms.X - 22, 0, ms.Z - 20), WATER_Y, 1)
-	local sign = part({ Name = "MaelstromSign", Size = Vector3.new(12, 5, 0.6), CFrame = CFrame.lookAt(Vector3.new(ms.X + 10, TOP + 5, ms.Z - 9), Vector3.new(ms.X + 44, TOP + 5, ms.Z - 16)) * CFrame.Angles(0, math.pi, 0), Color = Color3.fromRGB(20, 16, 34), Parent = folder })
-	K.surfaceText(sign, "THE MAELSTROM\nPush deeper at a beacon to dive to Kelp Cathedral", RUNE)
-	for _, x in ipairs({ -5, 5 }) do
-		part({ Name = "SignPost", Size = Vector3.new(0.8, 5, 0.8), CFrame = sign.CFrame * CFrame.new(x, -4, 0), Color = HULL_DARK, Parent = folder })
-	end
 end
 
 -- Kelp Cathedral --------------------------------------------------------------------------------------------
@@ -899,10 +819,47 @@ function DescentBuilder.build(world)
 	local root = Instance.new("Folder")
 	root.Name = "Descent"
 	root:SetAttribute("Version", VERSION)
-	buildOuterShoals(root)
 	buildKelp(root)
 	root.Parent = world
 	return root
 end
+
+-- The video-style pieces, for ShoalsBuilder (Patch 10). y arguments are walk heights.
+DescentBuilder.kit = {
+	studded = studded,
+	windy = windy,
+	tag = tag,
+	studPath = studPath,
+	checkerDisk = checkerDisk,
+	blockTree = blockTree,
+	tuft = tuft,
+	wildEgg = wildEgg,
+	fishingSpot = fishingSpot,
+	beacon = beacon,
+	boardwalk = boardwalk,
+	shipwreck = shipwreck,
+	lighthouse = lighthouse,
+	maelstrom = maelstrom,
+	color = {
+		GRASS_A = GRASS_A,
+		GRASS_B = GRASS_B,
+		LEAVES = LEAVES,
+		TRUNK = TRUNK,
+		PATH = PATH,
+		PATH_EDGE = PATH_EDGE,
+		HULL = HULL,
+		HULL_DARK = HULL_DARK,
+		SAIL = SAIL,
+		STRIPE_RED = STRIPE_RED,
+		WHITE = WHITE,
+		RUNE = RUNE,
+		STONE = STONE,
+		STONE_DARK = STONE_DARK,
+		ROCK = ROCK,
+		MOSS = MOSS,
+		BONE = BONE,
+		GLOWS = GLOWS,
+	},
+}
 
 return DescentBuilder

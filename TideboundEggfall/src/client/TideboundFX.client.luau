@@ -1,5 +1,6 @@
 -- Tidebound: Eggfall: the living world (Big Update). Everything here moves only on your screen:
 --   TideboundSpin    the lighthouse beam and the Maelstrom's rings and foam turn round their Pivot attribute
+--                    (about the optional Axis attribute, so windmill sails can turn too)
 --   TideboundFloat   Kelp Cathedral jellies drift and bob around their Home attribute
 --   TideboundSchool  schools of little glowing fish circle each anchor (Radius, Count, Color)
 --   TideboundSerpent the Kelp Leviathan's long body trails behind its head along the path it swam
@@ -76,7 +77,13 @@ watchTag("TideboundSpin", function(p)
 	if typeof(pivot) ~= "Vector3" then
 		return
 	end
-	spinners[p] = { pivot = pivot, rel = CFrame.new(pivot):ToObjectSpace(p.CFrame), speed = p:GetAttribute("SpinSpeed") or 0.5 }
+	local axis = p:GetAttribute("Axis") -- optional world axis (windmill sails, water wheels); default is upright
+	spinners[p] = {
+		pivot = pivot,
+		rel = CFrame.new(pivot):ToObjectSpace(p.CFrame),
+		speed = p:GetAttribute("SpinSpeed") or 0.5,
+		axis = typeof(axis) == "Vector3" and axis.Magnitude > 0 and axis.Unit or nil,
+	}
 end, function(p)
 	spinners[p] = nil
 end)
@@ -395,7 +402,8 @@ RunService.RenderStepped:Connect(function()
 	local cam = camPos()
 	for p, spin in pairs(spinners) do
 		if p.Parent and (spin.pivot - cam).Magnitude < ANIMATE_RANGE then
-			p.CFrame = CFrame.new(spin.pivot) * CFrame.Angles(0, t * spin.speed, 0) * spin.rel
+			local turn = spin.axis and CFrame.fromAxisAngle(spin.axis, t * spin.speed) or CFrame.Angles(0, t * spin.speed, 0)
+			p.CFrame = CFrame.new(spin.pivot) * turn * spin.rel
 		end
 	end
 	for model, float in pairs(floaters) do

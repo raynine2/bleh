@@ -1,8 +1,9 @@
--- Tidebound: Eggfall: builds the Nest hub and the Sunken Shoals biome to match the art references.
--- Nest (refs/REF 1): snowy white blocky plaza in a valley of towering dirt-and-cobble terraces, a round
--- blue fountain with a gold rim and a square monument, separate wooden plank steps, voxel trees.
--- Shoals (refs/REF 2): painterly daylight pond, dark boardwalk with brown posts and sagging rope, lime
--- bamboo in the water, a giant lavender tree, a white hut with dark lattice and round windows, crystal lanterns.
+-- Tidebound: Eggfall: builds the Nest plaza at the heart of Eggfall Town, the sky, and the shared prop kit.
+-- Nest (refs/REF 1): snowy white blocky plaza, a round blue fountain with a gold rim and a square monument,
+-- separate wooden plank steps, voxel trees, the egg shrine, incubator and tackle shop.
+-- Patch 10 (the Open Isles): the town around the plaza is TownBuilder's and the Sunken Shoals are
+-- ShoalsBuilder's, both laid out by IslesLayout; they build with this file's kit (REF 2 boardwalks, bamboo,
+-- the lavender tree and lattice huts, REF 3 shops, REF 5 timber houses and torii).
 -- Safe to run in Edit mode (the result is saved with the place) or at server start.
 
 local Lighting = game:GetService("Lighting")
@@ -10,7 +11,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local WorldBuilder = {}
 
-local VERSION = 8
+local VERSION = 9
 
 -- REF 1 palette
 local SNOW_GROUND = Color3.fromRGB(240, 238, 242)
@@ -44,30 +45,11 @@ local POND_GRASS = Color3.fromRGB(118, 214, 96)
 local MINT_ROCK = Color3.fromRGB(196, 234, 214)
 local CRYSTAL = Color3.fromRGB(196, 238, 255)
 local SAND = Color3.fromRGB(96, 178, 86)
-local SPOT = Color3.fromRGB(150, 236, 255)
 local BEACON = Color3.fromRGB(90, 255, 200)
 
 local TOP = 6 -- walkable surface height for the nest, reefs and boardwalks
 local WATER_Y = 4
-
-local ISLANDS = {
-	{ name = "ReefA", pos = Vector3.new(110, 0, 0), r = 22 },
-	{ name = "ReefB", pos = Vector3.new(160, 0, 58), r = 18 },
-	{ name = "ReefC", pos = Vector3.new(165, 0, -60), r = 18 },
-	{ name = "ReefD", pos = Vector3.new(232, 0, 8), r = 24 },
-	{ name = "ReefE", pos = Vector3.new(262, 0, -72), r = 16 },
-	{ name = "WardensRock", pos = Vector3.new(305, 0, 0), r = 11 },
-}
-local LINKS = { { "ReefA", "ReefB" }, { "ReefA", "ReefC" }, { "ReefA", "ReefD" }, { "ReefB", "ReefD" }, { "ReefD", "ReefE" }, { "ReefC", "ReefE" } }
-local FISHING_SPOTS = {
-	Vector3.new(110, 0, 31), Vector3.new(104, 0, -31), Vector3.new(180, 0, 78), Vector3.new(140, 0, 78),
-	Vector3.new(186, 0, -80), Vector3.new(146, 0, -82), Vector3.new(255, 0, 30), Vector3.new(282, 0, -88),
-}
-local EGG_NESTS = {
-	Vector3.new(160, 0, 58), Vector3.new(165, 0, -60), Vector3.new(240, 0, -4), Vector3.new(224, 0, 20), Vector3.new(262, 0, -72),
-}
-local BEACONS = { Vector3.new(148, 0, 48), Vector3.new(268, 0, -62) }
-local WARDEN_PATH = { "ReefA", "ReefB", "ReefD", "ReefE", "ReefC" }
+local SEA_FLOOR = -14 -- IslesLayout.sea.floorY: pilings reach down to it
 
 -- Primitives ---------------------------------------------------------------------
 
@@ -384,7 +366,8 @@ local function boardwalkSegment(parent, a, b, width)
 		for _, side in ipairs({ -1, 1 }) do
 			local base = frame * CFrame.new(side * (half - 0.5), 0, z)
 			decor({ Name = "Post", Size = Vector3.new(1.1, 4.2, 1.1), CFrame = base * CFrame.new(0, 1.6, 0), Color = POST, Parent = parent })
-			decor({ Name = "Piling", Size = Vector3.new(1, 5, 1), CFrame = base * CFrame.new(0, -3, 0), Color = POST, Parent = parent })
+			local depth = base.Y - SEA_FLOOR
+			decor({ Name = "Piling", Size = Vector3.new(1, depth, 1), CFrame = base * CFrame.new(0, -depth / 2, 0), Color = POST, Parent = parent })
 			local topPoint = (base * CFrame.new(0, 3.2, 0)).Position
 			if previous[side] then
 				local sag = (previous[side] + topPoint) / 2 - Vector3.new(0, 1.1, 0)
@@ -455,10 +438,12 @@ local function setupEnvironment()
 	terrain.WaterReflectance = 0.35
 	terrain.WaterWaveSize = 0.06
 	terrain.WaterWaveSpeed = 5
-	terrain:FillBlock(CFrame.new(100, 0, 0), Vector3.new(560, 8, 440), Enum.Material.Water)
+	-- the sea itself (terrain water over a sand floor) is ShoalsBuilder's
 
+	-- the baseplate sinks under the sea floor so the sea is deep enough to swim and for sharks
 	local baseplate = workspace:FindFirstChild("Baseplate")
 	if baseplate and baseplate:IsA("BasePart") then
+		baseplate.CFrame = CFrame.new(baseplate.Position.X, SEA_FLOOR - 3 - baseplate.Size.Y / 2, baseplate.Position.Z)
 		baseplate.Color = Color3.fromRGB(104, 156, 138)
 		baseplate.Material = Enum.Material.Sand
 		for _, child in ipairs(baseplate:GetChildren()) do
@@ -490,28 +475,6 @@ local function terraceBlock(parent, cframe, size, rng)
 		pineTree(parent, treeBase, rng:NextNumber(0.8, 1.2))
 	elseif r < 0.55 then
 		flowerTuft(parent, treeBase, rng)
-	end
-end
-
--- Stepped terraces enclosing the plaza on the west, north and south, leaving the east open to the dock.
-local function buildTerraces(parent, rng)
-	local center = Vector3.new(0, 0, 0)
-	for ring = 1, 7 do
-		local radius = 52 + (ring - 1) * 12
-		local top = TOP + ring * 6 + (ring >= 6 and (ring - 5) * 10 or 0)
-		local count = math.floor(radius * 0.42)
-		for i = 0, count - 1 do
-			local angle = math.rad(-125) + (i / count) * math.rad(250)
-			local at = center + Vector3.new(-math.cos(angle) * radius, 0, math.sin(angle) * radius)
-			local w = rng:NextNumber(9, 14)
-			local h = top + rng:NextNumber(-2, 2)
-			local cf = CFrame.lookAt(Vector3.new(at.X, h / 2 - 2, at.Z), Vector3.new(center.X, h / 2 - 2, center.Z))
-			terraceBlock(parent, cf, Vector3.new(w, h + 4, rng:NextNumber(11, 14)), rng)
-		end
-	end
-	-- stone steps leading up the first terraces
-	for i = 1, 4 do
-		part({ Name = "StoneStep", Size = Vector3.new(8, i * 1.5, 3), CFrame = CFrame.new(-44 - i * 2.5, TOP + i * 0.75 - 0.75, -26), Color = STONE, Parent = parent })
 	end
 end
 
@@ -726,7 +689,7 @@ local function buildNest(world)
 	local rng = Random.new(42)
 	local plaza = Vector3.new(0, TOP, 0)
 
-	part({ Name = "NestGround", Size = Vector3.new(200, 8, 220), CFrame = CFrame.new(-50, TOP - 4, 0), Color = SNOW_GROUND, Parent = nest })
+	-- the ground under the plaza is the town island's (TownBuilder)
 
 	-- fountain: grey stone basin wall, gold rim, blue water, square tan monument in the middle
 	disk(nest, "FountainWall", plaza + Vector3.new(0, 1.3, 0), 9, 2.6, STONE)
@@ -819,7 +782,7 @@ local function buildNest(world)
 	prompt(nestBeacon, "Extract", "Nest Beacon", { Action = "Extract" }, 1, 12)
 	billboard(nestBeacon, "EXTRACT", "Bank your haul", 6)
 
-	-- REF 5: timber houses lining the walk to the dock, and the torii gate with paper lanterns
+	-- REF 5: timber houses lining the walk to Harbor Street, and the torii gate with paper lanterns
 	timberHouse(nest, Vector3.new(36, TOP, 18), Vector3.new(36, TOP, 0), 11, 9, 9, ROOF_ORANGE)
 	timberHouse(nest, Vector3.new(36, TOP, -18), Vector3.new(36, TOP, 0), 11, 9, 9, ROOF_SLATE)
 	timberHouse(nest, Vector3.new(38, TOP, 32), Vector3.new(38, TOP, 0), 10, 8, 12, ROOF_ORANGE)
@@ -866,11 +829,6 @@ local function buildNest(world)
 		WindAffectsDrag = true,
 	})
 
-	-- dock out to the Shoals
-	boardwalkSegment(nest, Vector3.new(47, 0, 0), Vector3.new(90, 0, 0), 8)
-	billboard(decor({ Name = "BiomeSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(60, TOP + 7, 0), Transparency = 1, Parent = nest }), "SUNKEN SHOALS", "Hazard at heat 50: riptide pull", 0)
-
-	buildTerraces(nest, rng)
 end
 
 -- Sunken Shoals (REF 2) ----------------------------------------------------------------------
@@ -926,144 +884,10 @@ local function latticeHut(parent, center, facing)
 	crystalLantern(model, (cf * CFrame.new(w / 2 + 2, 1 + h, -d / 2 - 1.5)).Position, 3)
 end
 
-local function buildShoals(world)
-	local shoals = Instance.new("Folder")
-	shoals.Name = "SunkenShoals"
-	shoals.Parent = world
-	local rng = Random.new(1337)
-
-	local byName = {}
-	for _, island in ipairs(ISLANDS) do
-		byName[island.name] = island
-		local rock = island.name == "WardensRock"
-		disk(shoals, island.name, Vector3.new(island.pos.X, TOP - 4, island.pos.Z), island.r, 8, rock and MINT_ROCK or SAND)
-		if rock then
-			for _ = 1, 8 do
-				local angle = rng:NextNumber(0, math.pi * 2)
-				mintRock(shoals, island.pos + Vector3.new(math.cos(angle) * rng:NextNumber(3, 9), TOP + 1, math.sin(angle) * rng:NextNumber(3, 9)), rng, 1.3)
-			end
-		else
-			disk(shoals, island.name .. "Grass", Vector3.new(island.pos.X, TOP + 0.1, island.pos.Z), island.r - 1.5, 0.4, POND_GRASS)
-			for _ = 1, 7 do
-				local angle = rng:NextNumber(0, math.pi * 2)
-				mintRock(shoals, island.pos + Vector3.new(math.cos(angle) * (island.r - 0.5), TOP - 0.3, math.sin(angle) * (island.r - 0.5)), rng, 1.2)
-			end
-			for _ = 1, 3 do
-				local angle = rng:NextNumber(0, math.pi * 2)
-				local dist = rng:NextNumber(4, island.r - 5)
-				daisies(shoals, island.pos + Vector3.new(math.cos(angle) * dist, TOP + 0.3, math.sin(angle) * dist), rng)
-			end
-		end
-	end
-
-	for _, spec in ipairs({ { "ReefA", Vector3.new(-10, 0, 10) }, { "ReefB", Vector3.new(8, 0, -6) }, { "ReefC", Vector3.new(-7, 0, 6) }, { "ReefD", Vector3.new(-12, 0, -8) }, { "ReefE", Vector3.new(6, 0, 6) } }) do
-		local island = byName[spec[1]]
-		canopyTree(shoals, Vector3.new(island.pos.X, TOP, island.pos.Z) + spec[2], rng)
-	end
-
-	-- the giant lavender tree, on its own rock to the left of the dock
-	disk(shoals, "LavenderRock", Vector3.new(92, TOP - 4.5, -40), 10, 8, POND_GRASS)
-	giantLavenderTree(shoals, Vector3.new(92, TOP - 1, -40), rng)
-	for _ = 1, 5 do
-		local angle = rng:NextNumber(0, math.pi * 2)
-		mintRock(shoals, Vector3.new(92 + math.cos(angle) * 10, TOP - 0.5, -40 + math.sin(angle) * 10), rng, 1.4)
-	end
-
-	-- curving boardwalks between the reefs, with bamboo standing in the water beside them
-	for i, link in ipairs(LINKS) do
-		local a, b = byName[link[1]], byName[link[2]]
-		local dir = (Vector3.new(b.pos.X, 0, b.pos.Z) - Vector3.new(a.pos.X, 0, a.pos.Z)).Unit
-		local mid, side = curvedBoardwalk(shoals, a.pos + dir * (a.r - 3), b.pos - dir * (b.r - 3), 7, (i % 2 == 0) and 7 or -7)
-		bambooCluster(shoals, mid + side * 9 - Vector3.new(0, 4, 0), rng)
-		bambooCluster(shoals, mid - side * 10 + dir * 8 - Vector3.new(0, 4, 0), rng)
-		clovers(shoals, mid + side * 6, rng)
-	end
-
-	latticeHut(shoals, Vector3.new(244, TOP, 24), byName.ReefD.pos)
-
-	local spots = Instance.new("Folder")
-	spots.Name = "FishingSpots"
-	spots.Parent = shoals
-	for i, pos in ipairs(FISHING_SPOTS) do
-		local spot = part({
-			Name = "FishingSpot" .. i,
-			Shape = Enum.PartType.Cylinder,
-			Size = Vector3.new(0.2, 8, 8),
-			CFrame = CFrame.new(pos.X, WATER_Y + 0.15, pos.Z) * CFrame.Angles(0, 0, math.rad(90)),
-			Color = SPOT,
-			Transparency = 0.55,
-			CanCollide = false,
-			CastShadow = false,
-			Parent = spots,
-		})
-		sparkles(spot, Color3.new(1, 1, 1), 4)
-		prompt(spot, "Cast", "Fishing Spot", { Action = "Cast" }, 0, 16)
-	end
-
-	local nests = Instance.new("Folder")
-	nests.Name = "EggNests"
-	nests.Parent = shoals
-	for i, pos in ipairs(EGG_NESTS) do
-		disk(nests, "NestBase" .. i, Vector3.new(pos.X, TOP + 0.6, pos.Z), 2.8, 1, Color3.fromRGB(200, 164, 96))
-		local egg = eggShape(nests, "WildEgg" .. i, CFrame.new(pos.X, TOP + 2.6, pos.Z), Vector3.new(2.4, 3.2, 2.4), Color3.fromRGB(232, 248, 255))
-		sparkles(egg, Color3.fromRGB(200, 240, 255), 3)
-		prompt(egg, "Steal Egg", "Wild Tide Egg", { Action = "Steal" }, 1, 10)
-	end
-
-	for i, pos in ipairs(BEACONS) do
-		part({ Name = "BeaconBase" .. i, Size = Vector3.new(6, 1.5, 6), CFrame = CFrame.new(pos.X, TOP + 0.75, pos.Z), Color = MINT_ROCK, Parent = shoals })
-		local crystal = part({ Name = "ExtractionBeacon" .. i, Size = Vector3.new(2.6, 8, 2.6), CFrame = CFrame.new(pos.X, TOP + 5.5, pos.Z) * CFrame.Angles(0, math.rad(45), 0), Color = BEACON, Transparency = 0.1, Parent = shoals })
-		prompt(crystal, "Extract", "Extraction Beacon", { Action = "Extract" }, 1, 12)
-		billboard(crystal, "EXTRACT", nil, 6)
-	end
-
-	for _ = 1, 50 do
-		local at = Vector3.new(rng:NextNumber(60, 320), 0, rng:NextNumber(-130, 130))
-		local clear = true
-		for _, island in ipairs(ISLANDS) do
-			if (Vector3.new(at.X, 0, at.Z) - Vector3.new(island.pos.X, 0, island.pos.Z)).Magnitude < island.r + 4 then
-				clear = false
-			end
-		end
-		if clear then
-			if rng:NextNumber() < 0.5 then
-				clovers(shoals, at, rng)
-			else
-				decor({ Name = "LilyPad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.15, 2.6, 2.6), CFrame = CFrame.new(at.X, WATER_Y + 0.08, at.Z) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(92, 186, 84), CastShadow = false, Parent = shoals })
-			end
-		end
-	end
-	for _ = 1, 10 do
-		bambooCluster(shoals, Vector3.new(rng:NextNumber(70, 300), WATER_Y - 4, rng:NextNumber(-120, 120)), rng)
-	end
-
-	-- drifting petals over the pond
-	local petals = decor({ Name = "PetalEmitter", Size = Vector3.new(240, 1, 240), CFrame = CFrame.new(190, 40, 0), Transparency = 1, Parent = shoals })
-	particles(petals, {
-		Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(220, 255, 230)),
-		Rate = 25,
-		Lifetime = NumberRange.new(10, 14),
-		Speed = NumberRange.new(2, 4),
-		Size = NumberSequence.new(0.35),
-		Rotation = NumberRange.new(0, 360),
-		RotSpeed = NumberRange.new(-90, 90),
-		EmissionDirection = Enum.NormalId.Bottom,
-		Drag = 0.4,
-		WindAffectsDrag = true,
-	})
-
-	local path = Instance.new("Folder")
-	path.Name = "WardenPath"
-	path.Parent = shoals
-	for i, name in ipairs(WARDEN_PATH) do
-		local pos = byName[name].pos
-		part({ Name = ("WP%02d"):format(i), Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(pos.X, 8, pos.Z), Transparency = 1, CanCollide = false, CanQuery = false, Parent = path })
-	end
-
-	-- Reef Warden: the Sunken Shoals guardian, moved by the server
+-- Reef Warden: the Sunken Shoals guardian, moved by the server. ShoalsBuilder puts it at Warden's Rock.
+local function reefWarden(parent, lair)
 	local warden = Instance.new("Model")
 	warden.Name = "ReefWarden"
-	local lair = byName.WardensRock.pos
 	local body = part({ Name = "Body", Shape = Enum.PartType.Ball, Size = Vector3.new(7, 7, 7), CFrame = CFrame.new(lair.X, 8, lair.Z), Color = Color3.fromRGB(40, 110, 120), CanCollide = false, Parent = warden })
 	for _, side in ipairs({ -1, 1 }) do
 		local eye = part({ Name = "Eye", Shape = Enum.PartType.Ball, Size = Vector3.new(1.4, 1.4, 1.4), CFrame = body.CFrame * CFrame.new(side * 1.5, 1, -3), Color = Color3.fromRGB(255, 70, 60), Material = Enum.Material.Neon, CanCollide = false, Anchored = false, Massless = true, Parent = warden })
@@ -1082,7 +906,8 @@ local function buildShoals(world)
 	end
 	billboard(body, "REEF WARDEN", "Guardian of the Sunken Shoals", 6)
 	warden.PrimaryPart = body
-	warden.Parent = shoals
+	warden.Parent = parent
+	return warden
 end
 
 -- REF 5 sky: giant red-and-blue planet, slanted blue light beam, floating islands with waterfalls.
@@ -1109,10 +934,12 @@ local function buildSkyline(world)
 	sky.Name = "Skyline"
 	sky.Parent = world
 	local rng = Random.new(77)
-	local planetAt = Vector3.new(760, 420, 80)
-	decor({ Name = "Planet", Shape = Enum.PartType.Ball, Size = Vector3.new(420, 420, 420), CFrame = CFrame.new(planetAt), Color = Color3.fromRGB(196, 214, 246), CastShadow = false, Parent = sky })
-	decor({ Name = "PlanetBurn", Shape = Enum.PartType.Ball, Size = Vector3.new(380, 380, 380), CFrame = CFrame.new(planetAt + Vector3.new(-30, 70, 0)), Color = Color3.fromRGB(226, 52, 58), Material = Enum.Material.Neon, Transparency = 0.15, CastShadow = false, Parent = sky })
-	local a, b = Vector3.new(64, 0, 40), Vector3.new(10, 300, 150)
+	-- the planet hangs over the open sea, so it fills the view east from the town toward the Shoals
+	local planetAt = Vector3.new(1050, 600, 120)
+	decor({ Name = "Planet", Shape = Enum.PartType.Ball, Size = Vector3.new(600, 600, 600), CFrame = CFrame.new(planetAt), Color = Color3.fromRGB(196, 214, 246), CastShadow = false, Parent = sky })
+	decor({ Name = "PlanetBurn", Shape = Enum.PartType.Ball, Size = Vector3.new(544, 544, 544), CFrame = CFrame.new(planetAt + Vector3.new(-44, 100, 0)), Color = Color3.fromRGB(226, 52, 58), Material = Enum.Material.Neon, Transparency = 0.15, CastShadow = false, Parent = sky })
+	-- the slanted beam rises from the shrine on top of Torii Hill (IslesLayout.Town.districts.ToriiHill)
+	local a, b = Vector3.new(-150, 44, 15), Vector3.new(-210, 380, 150)
 	for _, layer in ipairs({ { 7, Color3.fromRGB(110, 160, 255), 0.4 }, { 3, Color3.fromRGB(210, 232, 255), 0.1 } }) do
 		local beam = rod(sky, a, b, layer[1], layer[2])
 		beam.Name = "LightBeam"
@@ -1120,9 +947,11 @@ local function buildSkyline(world)
 		beam.Transparency = layer[3]
 		beam.CastShadow = false
 	end
-	floatingIsland(sky, Vector3.new(380, 90, -110), 14, rng)
-	floatingIsland(sky, Vector3.new(430, 130, 70), 18, rng)
-	floatingIsland(sky, Vector3.new(350, 160, 190), 12, rng)
+	floatingIsland(sky, Vector3.new(420, 120, -150), 16, rng)
+	floatingIsland(sky, Vector3.new(560, 160, 110), 20, rng)
+	floatingIsland(sky, Vector3.new(330, 180, 270), 12, rng)
+	floatingIsland(sky, Vector3.new(980, 210, -560), 18, rng)
+	floatingIsland(sky, Vector3.new(1250, 190, 330), 14, rng)
 end
 
 function WorldBuilder.build()
@@ -1138,7 +967,6 @@ function WorldBuilder.build()
 	world.Name = "TideboundWorld"
 	world:SetAttribute("Version", VERSION)
 	buildNest(world)
-	buildShoals(world)
 	buildSkyline(world)
 	world.Parent = workspace
 	return world
@@ -1176,8 +1004,15 @@ WorldBuilder.kit = {
 	latticeHut = latticeHut,
 	TOP = TOP,
 	WATER_Y = WATER_Y,
-	-- Sunken Shoals layout, so the Master Patch threats sit on the same islands
-	shoals = { islands = ISLANDS, links = LINKS, beacons = BEACONS, eggNests = EGG_NESTS },
+	-- REF 2 Shoals props
+	canopyTree = canopyTree,
+	giantLavenderTree = giantLavenderTree,
+	mintRock = mintRock,
+	clovers = clovers,
+	daisies = daisies,
+	curvedBoardwalk = curvedBoardwalk,
+	reefWarden = reefWarden,
+	SEA_FLOOR = SEA_FLOOR,
 	color = {
 		SNOW_GROUND = SNOW_GROUND,
 		SNOW_CAP = SNOW_CAP,
@@ -1206,6 +1041,11 @@ WorldBuilder.kit = {
 		TORII_RED = TORII_RED,
 		MINT_ROCK = MINT_ROCK,
 		BAMBOO = BAMBOO,
+		POND_GRASS = POND_GRASS,
+		SAND = SAND,
+		BARK = BARK,
+		LEAF = LEAF,
+		CANOPY = CANOPY,
 	},
 }
 

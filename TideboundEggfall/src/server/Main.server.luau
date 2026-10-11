@@ -16,6 +16,10 @@
 --            fish and guardian, the Kelp Leviathan. Cutscenes play for the first join, every dive, a guardian
 --            waking, the descent, extraction (which lifts you home) and a wipe. Attributes on your character
 --            (HurtAt, StunUntil, CarryEggs, GrabAt, CheerAt, DownAt) drive everyone's TideboundMotion.
+--   Patch 10 (the Open Isles): the map is about 10x bigger: Eggfall Town (TownBuilder) is the safe spawn, and
+--            the Sunken Shoals (ShoalsBuilder) are 22 islands in an open sea, laid out by IslesLayout. Mobs camp
+--            across the islands and fight you (Mobs); you swipe them with your rod (SwingAt). Stand by a Tide
+--            Cache to heal, and you slowly heal anywhere once nothing has hurt you for a while.
 -- Home Nests, hub boards and the base economy are in BaseService. Everything that grants currency or rolls
 -- odds happens here; the client only displays and asks.
 
@@ -37,9 +41,14 @@ local Companions = require(script.Parent:WaitForChild("Companions"))
 local Threats = require(script.Parent:WaitForChild("Threats"))
 local Rods = require(script.Parent:WaitForChild("Rods"))
 local DescentBuilder = require(script.Parent:WaitForChild("DescentBuilder"))
+local TownBuilder = require(script.Parent:WaitForChild("TownBuilder"))
+local ShoalsBuilder = require(script.Parent:WaitForChild("ShoalsBuilder"))
+local Mobs = require(script.Parent:WaitForChild("Mobs"))
+local CollectionService = game:GetService("CollectionService")
 
 local world = WorldBuilder.build()
-local shoals = world:WaitForChild("SunkenShoals")
+TownBuilder.build(world)
+local shoals = ShoalsBuilder.build(world)
 local delta = ExpansionBuilder.build(world)
 local descent = DescentBuilder.build(world)
 local kelp = descent:WaitForChild("KelpCathedral")
@@ -62,6 +71,7 @@ local NotifyEvent = remote("RemoteEvent", "Notify")
 local FishingEvent = remote("RemoteEvent", "Fishing")
 local HazardEvent = remote("RemoteEvent", "Hazard")
 local CueEvent = remote("RemoteEvent", "Cue") -- feel cues (Delta Section 10): animations, camera, screen effects
+local SwipeEvent = remote("RemoteEvent", "Swipe") -- Patch 10: the client asks to swipe its rod
 
 local R = Config.Risk
 local G = Config.Guardian
@@ -122,6 +132,9 @@ local function newRun()
 		maxDepth = 1,
 		travelUntil = 0, -- a descent, ascent or extraction cutscene is moving you; nothing can hurt you
 		woke = {}, -- [guardian id] = true once its wake cutscene played this run
+		lastHurt = 0, -- Patch 10: out-of-combat healing waits Config.Isles.regenDelay after this
+		regen = 0, -- fractional health healed so far
+		swipeAt = 0,
 	}
 end
 
@@ -626,6 +639,7 @@ local function damage(player, amount, fromPosition, label, guardian)
 	end
 	run.health = math.max(0, run.health - amount)
 	run.invulnerableUntil = now() + R.hitInvulnerable
+	run.lastHurt = now()
 	mark(player, "HurtAt", now())
 	mark(player, "HurtAmount", amount)
 	if run.health <= 0 then
@@ -677,26 +691,74 @@ local function giveBait(player, baitId, count)
 	end
 end
 
+-- Anyone out of the safe zones on a dive, alive: what threats and mobs may target.
+local function exposedRoot(player)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and humanoid and humanoid.Health > 0 and runs[player] and not Config.safeZone(root.Position) then
+		return root
+	end
+	return nil
+end
+
 Threats.init({
 	delta = delta,
 	notify = notify,
 	notifyAll = notifyAll,
 	cue = cue,
-	exposed = function(player)
-		local character = player.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if root and humanoid and humanoid.Health > 0 and runs[player] and not Config.safeZone(root.Position) then
-			return root
-		end
-		return nil
-	end,
+	exposed = exposedRoot,
 	damage = function(player, amount, fromPosition, label)
 		damage(player, amount, fromPosition, label, false)
 	end,
 	stun = stun,
 	giveBait = giveBait,
 })
+
+-- Patch 10: wild mobs across the Open Isles and Kelp Cathedral, and the rod swipe that fights them.
+Mobs.init({
+	world = world,
+	notify = notify,
+	exposed = exposedRoot,
+	damage = function(player, amount, fromPosition, label)
+		damage(player, amount, fromPosition, label, false)
+	end,
+	heatOf = function(player)
+		local run = runs[player]
+		return run and run.heat or 0
+	end,
+	giveBait = giveBait,
+})
+
+local swipeTokens = {} -- [Player] = the latest swing, so only it puts the rod back
+SwipeEvent.OnServerEvent:Connect(function(player)
+	local run, root = runs[player], rootOf(player)
+	if not run or not root or now() - run.swipeAt < Config.Swipe.cooldown * 0.8 then
+		return
+	end
+	if run.session or now() < math.max(run.revealUntil, run.travelUntil, run.stunUntil) then
+		return
+	end
+	local token = now()
+	run.swipeAt = token
+	mark(player, "SwingAt", token) -- every client's TideboundMotion and TideboundRod play the swing
+	-- the rod jumps from your back to your hand for the swing, then goes back
+	Rods.hold(player, true)
+	swipeTokens[player] = token
+	task.delay(0.7, function()
+		local current = runs[player]
+		if swipeTokens[player] == token and not (current and current.session) then
+			swipeTokens[player] = nil
+			Rods.hold(player, false)
+		end
+	end)
+	if not Config.safeZone(root.Position) then
+		Mobs.swipe(player, root)
+	end
+end)
+Players.PlayerRemoving:Connect(function(player)
+	swipeTokens[player] = nil
+end)
 
 -- World actions (ProximityPrompts) -------------------------------------------
 
@@ -1746,6 +1808,30 @@ task.spawn(function()
 			if run.session and os.clock() - run.session.started > 90 then
 				run.session = nil
 				setFishPhase(player, "")
+			end
+			-- Patch 10: heal in town or by a Tide Cache, and slowly anywhere once nothing has hurt you for a while
+			if run.health < R.maxHealth and run.health > 0 then
+				local root = rootOf(player)
+				local heal = 0
+				if safe then
+					heal = Config.Isles.cacheHeal
+				elseif root then
+					for _, cache in ipairs(CollectionService:GetTagged("TideboundCache")) do
+						if cache:IsA("BasePart") and (cache.Position - root.Position).Magnitude <= Config.Isles.cacheRadius then
+							heal = Config.Isles.cacheHeal
+							break
+						end
+					end
+				end
+				if heal == 0 and now() - run.lastHurt >= Config.Isles.regenDelay and not Mobs.inCombat(player) then
+					run.regen += Config.Isles.regenPerSecond
+					heal = math.floor(run.regen)
+					run.regen -= heal
+				end
+				if heal > 0 then
+					run.health = math.min(R.maxHealth, run.health + heal)
+					push(player)
+				end
 			end
 			if data and not run.started and not safe and rootOf(player) and now() >= run.travelUntil then
 				startRun(player, run, data)

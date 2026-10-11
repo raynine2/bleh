@@ -2,6 +2,7 @@
 -- Idle (breathing, weight shifts, looking around, fidgets), walk, run and sprint cycles that follow how far
 -- you actually move, jumping, falling, landing squash, swimming, getting hurt, being stunned, going down,
 -- grabbing an egg, carrying eggs, cheering, and the fishing arms TideboundRod publishes on MotionBus.
+-- Patch 10: the fishing body (legs braced, lunging, squatting on the reel), the rod swing and the geyser flip.
 -- Effects: footstep puffs (dust, snow, grass or splashes), landing rings, speed trails while sprinting, hit
 -- sparks, damage numbers, dizzy stars and the eggs you carry, which everyone can see.
 -- It writes each joint's Transform after the default animations every frame (PreSimulation), which works for
@@ -76,6 +77,7 @@ local KEYS = {
 	"hipRX", "hipRZ", "kneeRX", "ankRX", "hipLX", "hipLZ", "kneeLX", "ankLX",
 }
 local UPPER = { "waistX", "waistY", "waistZ", "shRX", "shRY", "shRZ", "elRX", "shLX", "shLY", "shLZ", "elLX" }
+local LOWER = { "rootX", "rootZ", "rootUp", "neckX", "hipRX", "hipRZ", "kneeRX", "ankRX", "hipLX", "hipLZ", "kneeLX", "ankLX" }
 
 local function mix(a, b, w, keys)
 	if w <= 0 then
@@ -324,6 +326,57 @@ local function hurtPose(u, side)
 		hipLX = -0.1,
 		kneeLX = -0.2,
 	}
+end
+
+-- Patch 10: the rod swing. Up and back over the shoulder, then a chop forward into a lunge.
+local function swingPose(u)
+	local p = {
+		waistY = -0.45,
+		waistX = 0.12,
+		neckX = -0.1,
+		shRX = 3.0,
+		shRZ = 0.35,
+		elRX = 0.75,
+		shLX = 0.7,
+		shLZ = -0.25,
+		elLX = 0.9,
+		hipLX = 0.3,
+		kneeLX = -0.35,
+		hipRX = -0.2,
+		kneeRX = -0.2,
+		rootUp = -0.2,
+	}
+	local chop = smooth((u - 0.1) / 0.13)
+	return mix(p, {
+		waistY = 0.6,
+		waistX = -0.25,
+		neckX = -0.15,
+		shRX = 0.45,
+		shRZ = -0.55,
+		elRX = 0.15,
+		shLX = -0.35,
+		shLZ = -0.2,
+		elLX = 0.6,
+		hipLX = 0.65,
+		kneeLX = -0.85,
+		ankLX = 0.2,
+		hipRX = -0.45,
+		kneeRX = -0.3,
+		rootUp = -0.45,
+		rootX = -0.18,
+	}, chop)
+end
+
+-- Patch 10: flying off a geyser: arms flung up, a tucked front flip at the top of the arc, then legs down to land.
+local function launchPose(s)
+	local p = { shRX = 2.8, shRZ = 0.55, elRX = 0.3, shLX = 2.8, shLZ = -0.55, elLX = 0.3, waistX = 0.2, neckX = 0.25, hipRX = -0.15, hipLX = 0.25, kneeRX = -0.35, kneeLX = -0.6 }
+	local tuck = math.min(smooth((s - 0.2) / 0.12), smooth((0.78 - s) / 0.12))
+	if tuck > 0 then
+		mix(p, { shRX = 1.3, shRZ = -0.1, elRX = 1.4, shLX = 1.3, shLZ = 0.1, elLX = 1.4, waistX = -0.5, neckX = -0.3, hipRX = 1.7, hipLX = 1.7, kneeRX = -2.2, kneeLX = -2.2, ankRX = 0.5, ankLX = 0.5 }, tuck)
+	end
+	local flip = smooth((s - 0.25) / 0.5)
+	p.rootX = flip < 1 and -flip * math.pi * 2 or 0
+	return p
 end
 
 local function dizzyPose(t)
@@ -599,13 +652,21 @@ local function clearRecord(rec)
 end
 
 -- An animation an animator made (an Action-priority track we didn't start) takes the body over.
+-- Core (Value 1000, the default Animate script's tracks) sorts above Action by Value, so the check names the
+-- four Action priorities instead of comparing values; comparing them switched every body off.
+local ACTION = {
+	[Enum.AnimationPriority.Action] = true,
+	[Enum.AnimationPriority.Action2] = true,
+	[Enum.AnimationPriority.Action3] = true,
+	[Enum.AnimationPriority.Action4] = true,
+}
 local function externalTrack(humanoid)
 	local animator = humanoid:FindFirstChildOfClass("Animator")
 	if not animator then
 		return false
 	end
 	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-		if track.Priority.Value >= Enum.AnimationPriority.Action.Value and track.WeightCurrent > 0.3 then
+		if ACTION[track.Priority] and track.WeightCurrent > 0.3 then
 			return true
 		end
 	end
@@ -880,6 +941,32 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 	if arms and armsW > 0 then
 		local a = arms.pose
 		mix(pose, { shRX = a.shR, shRZ = a.inR, elRX = a.elR, shLX = a.shL, shLZ = a.inL, elLX = a.elL, waistX = a.waist, waistY = 0, waistZ = 0, shRY = 0, shLY = 0 }, armsW, UPPER)
+	end
+	-- Patch 10: the legs and hips join in (braced stance, lunge on the cast, squat and lean on the reel)
+	if arms and armsW > 0 and arms.body then
+		mix(pose, arms.body, armsW * (1 - 0.8 * math.clamp(rec.move, 0, 1)), LOWER)
+	end
+
+	-- Patch 10: the rod swing every client sees (SwingAt from the server)
+	local swingAt = character:GetAttribute("SwingAt")
+	if swingAt then
+		local u = serverNow - swingAt
+		local w = envelope(u, 0.5, 0.04, 0.22)
+		if w > 0 then
+			-- the arms always swing; the lunge only while standing, so you can swing on the run
+			local swing = swingPose(u)
+			mix(pose, swing, w, UPPER)
+			mix(pose, swing, w * (1 - 0.85 * math.clamp(rec.move, 0, 1)), LOWER)
+		end
+	end
+
+	-- Patch 10: a geyser launch (TideboundTravel)
+	local launch = MotionBus.launch and MotionBus.launch[character]
+	if launch then
+		local s = (os.clock() - launch.start) / math.max(launch.duration, 0.1)
+		if s >= 0 and s <= 1 then
+			mix(pose, launchPose(s), math.min(1, s * 10, (1 - s) * 6))
+		end
 	end
 
 	-- one-shot full-body moments from the server

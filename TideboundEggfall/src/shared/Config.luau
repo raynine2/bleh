@@ -3,6 +3,9 @@
 
 local Config = {}
 
+-- Patch 10: the Open Isles map (town, islands, camps) lives in its own module; zones and spawns below read it.
+local Isles = require(script.Parent:WaitForChild("IslesLayout"))
+
 Config.Title = "Tidebound: Eggfall"
 Config.Tagline = "Cast. Steal. Hatch. Escape."
 
@@ -141,7 +144,7 @@ Config.Modes = {
 	crewPerMember = 0.05, -- a Crew earns +5% Pearls per extra member (1.15x at 4)
 	crewMax = 4,
 	inviteSeconds = 60,
-	diveSpawn = CFrame.new(86, 10, 0) * CFrame.Angles(0, -math.pi / 2, 0), -- end of the dock into the Shoals
+	diveSpawn = Isles.diveSpawn, -- Patch 10: Landing Reef, at the end of the causeway from the Tidegate
 }
 
 -- Master Patch 1: opt-in PvP egg theft ("Contested Waters"), set before each run, OFF by default and
@@ -206,6 +209,29 @@ Config.EliteLootCooldown = 180 -- per player, per elite
 -- Master Patch 3 Table C: Sunken Shoals terrain hazard (always on).
 Config.Anemone = { damage = 10, slow = 0.3, tick = 1.5 }
 
+-- Patch 10: wild mobs in camps across the Open Isles (and Kelp Cathedral). Unlike elites they fight back and
+-- can be beaten with a rod swipe. Every attack has a tell (a red "!" and, for blasts, a ring on the ground).
+-- Damage grows with heat: x(1 + heat / 100 * heatDamage). They drop bait, never Pearls (Canon caps hold).
+Config.Mobs = {
+	wakeRange = 190, -- a camp only thinks while a diver is this close
+	respawn = { 45, 75 },
+	heatDamage = 0.5,
+	drop = { chance = 0.3, bait = "Brineworm", count = 1 },
+	kinds = {
+		crab = { name = "Snapper Crab", hp = 3, speed = 12, aggro = 26, leash = 44, reach = 5, tell = 0.5, damage = 8, cooldown = 1.6 },
+		puffer = { name = "Spike Puffer", hp = 2, speed = 6, aggro = 24, trigger = 12, tell = 0.8, radius = 8, damage = 12, cooldown = 3 },
+		gull = { name = "Raider Gull", hp = 1, speed = 22, diveSpeed = 64, aggro = 42, tell = 0.8, reach = 4.5, damage = 6, cooldown = 4, height = 18 },
+		shark = { name = "Reef Shark", hp = 4, speed = 14, chaseSpeed = 26, aggro = 46, reach = 5, tell = 0.4, damage = 15, cooldown = 2 },
+		golem = { name = "Coral Golem", hp = 8, speed = 7, aggro = 30, trigger = 9, tell = 1.0, radius = 10, damage = 18, cooldown = 3.2 },
+	},
+}
+
+-- Patch 10: the rod swipe (left click or F on land, outside a cast). Elites and guardians shrug it off.
+Config.Swipe = { cooldown = 0.55, range = 9, cone = 0.3, damage = 1, knock = 10 }
+
+-- Patch 10: Open Isles survival. Stand by a Tide Cache to heal; out of combat you slowly heal anywhere.
+Config.Isles = { cacheHeal = 4, cacheRadius = 12, regenDelay = 12, regenPerSecond = 0.35 }
+
 -- Master Patch 3 Table D: Sunken Shoals weather.
 Config.Weather = {
 	GlassCalm = { name = "Glass Calm", every = 900, firstAfter = 300, duration = 180, warning = 20, biteMult = 0.7, reward = { bait = "Brineworm", count = 3 } },
@@ -226,14 +252,14 @@ Config.Harbor = {
 }
 
 Config.Npcs = {
-	Pinch = { name = "Pinch", role = "Guide crab", lines = { "New here? Cast in the Shoals, bank fish at the Tide Cache, steal eggs, then hold at a beacon to extract.", "The Tide Slide behind me goes to the Harbor Ring, where your Home Nest is." } },
+	Pinch = { name = "Pinch", role = "Guide crab", lines = { "New here? Walk east down Harbor Street and through the Tidegate: 22 islands of the Sunken Shoals are out there.", "Cast at the glowing spots, bank fish at a Tide Cache (it heals you too), steal eggs, then hold at a beacon to extract.", "Crabs, puffers and gulls camp on the islands. Click or press F to swipe your rod at them!", "Geysers launch you between far islands. The Tide Slide behind me goes to the Harbor Ring, where your Home Nest is." } },
 	OldHarl = { name = "Old Harl", role = "Tackle Shop", panel = "RODS", lines = { "Every rod's stats are on the rack. No secrets, no Robux.", "Worn rod? I'll repair it for Pearls before you dive." } },
 	Nim = { name = "Nim", role = "Bait Shop", panel = "BAIT", lines = { "Brineworm for the shallows, Glowmite when you want rarer bites!", "Mending Vials heal you, Revive Vials wake a companion. Pearls only!" } },
 	SisterCoralie = { name = "Sister Coralie", role = "Tide Egg Shrine", panel = "ODDS", lines = { "These are the odds, child, every one of them. Your pity never resets on a wipe." } },
 	CaptainBrask = { name = "Captain Brask", role = "Season Pass Board", panel = "QUESTS", lines = { "The season track isn't posted yet. Quill's quests pay Pearls today." } },
 	Quill = { name = "Quill", role = "Daily Quest Board", panel = "QUESTS", lines = { "Three quests a day, reset at midnight UTC. Squawk!" } },
 	ArchivistOphel = { name = "Archivist Ophel", role = "Leaderboard Hall", panel = "BOARDS", lines = { "The Hall remembers this server's rarest hatches and boldest escapes." } },
-	GateWardenSel = { name = "Gate Warden Sel", role = "Tidegate", panel = "DIVE", lines = { "Dive Solo or Dive With Crew. Contested Waters stays off unless you switch it on.", "Push past a beacon and the Shoals pay more, but the Warden gets angrier." } },
+	GateWardenSel = { name = "Gate Warden Sel", role = "Tidegate", panel = "DIVE", lines = { "Dive Solo or Dive With Crew and I'll send you straight out to Landing Reef. Contested Waters stays off unless you switch it on.", "Push past a beacon and the Shoals pay more, but the Warden gets angrier.", "The Outer Reef past the Coral Maze is stormy. The best eggs and the worst mobs are out there." } },
 	TradesmanKobb = { name = "Tradesman Kobb", role = "Trading Post", lines = { "Trades open when cosmetics arrive. Creatures, eggs and bait never trade, so nobody buys power." } },
 }
 
@@ -286,11 +312,21 @@ Config.Fishing = {
 	biteMax = 5,
 	minReelSeconds = 1.0, -- server rejects catches faster than bite + this
 	perfectBonus = 1.2,
-	baseBarWidth = 0.22, -- times rod Control
-	reelAccel = 2.6,
-	gainPerSecond = 0.32,
-	lossPerSecond = 0.22, -- divided by rod Resilience
-	startProgress = 0.3,
+	-- Patch 10: easier and fairer. A wider bar, a slower and calmer fish, faster progress, slower loss, and a
+	-- little grace at the bar's edges, so the reel is about timing, not twitch reflexes.
+	baseBarWidth = 0.3, -- times rod Control (clamped to barMin..barMax)
+	barMin = 0.18,
+	barMax = 0.6,
+	reelAccel = 2.3,
+	barDamping = 1.6, -- the bar's speed eases off, so it doesn't overshoot
+	barMaxSpeed = 1.15,
+	fishBaseSpeed = 0.15, -- + fishSpeedPerDifficulty * difficulty, in bar widths per second
+	fishSpeedPerDifficulty = 0.045,
+	fishJump = 0.45, -- the fish's next target is at most this far from where it is
+	edgeGrace = 0.035, -- the fish counts as inside this close to the bar's edge
+	gainPerSecond = 0.4,
+	lossPerSecond = 0.15, -- divided by rod Resilience
+	startProgress = 0.35,
 }
 
 -- Master Patch 6: the fish reveal. Seconds per phase; the tier climb holds `step` on every tier it passes.
@@ -331,8 +367,8 @@ Config.Warden = {
 }
 
 Config.World = {
-	nestRadius = 46,
-	wardenNoGoRadius = 54,
+	nestRadius = Isles.SAFE_RADIUS, -- Patch 10: all of Eggfall Town is safe
+	wardenNoGoRadius = Isles.SAFE_RADIUS + 30,
 	spawnCFrame = CFrame.new(0, 10, -24),
 	eggRespawnSeconds = 45,
 	beaconOpenColor = Color3.fromRGB(90, 255, 200),
@@ -389,7 +425,7 @@ Config.Kelp = {
 	center = Vector3.new(0, -320, 1000), -- the cavern floor's centre (the floor's top is at center.Y)
 	belowY = -150,
 	arrival = CFrame.lookAt(Vector3.new(0, -314, 812), Vector3.new(0, -314, 900)), -- on the Descent dais, facing down the nave (+Z)
-	ascend = CFrame.lookAt(Vector3.new(194, 10, -154), Vector3.new(244, 10, -176)), -- back up: Maelstrom Isle, facing the whirlpool
+	ascend = Isles.ascend, -- back up: Maelstrom Isle, facing the whirlpool
 	vineSlow = 0.4, -- Canon hazard: grasping vines slow you while you stand in them
 }
 
@@ -426,13 +462,14 @@ function Config.zoneOf(position)
 	if position.Y < Config.Kelp.belowY then
 		return "Kelp"
 	end
-	if position.X > 55 and not Config.safeZone(position) then
+	if position.X > Isles.shoalsX and not Config.safeZone(position) then
 		return "Shoals"
 	end
 	return "Nest"
 end
 
--- Safe zones: the Nest plaza and the Harbor Ring. No Warden, no Heat hazards, and hatching is allowed.
+-- Safe zones: Eggfall Town (around the Nest plaza) and the Harbor Ring. No Warden, no Heat hazards, no mobs,
+-- and hatching is allowed.
 function Config.safeZone(position)
 	local flat = Vector3.new(position.X, 0, position.Z)
 	if flat.Magnitude <= Config.World.nestRadius then

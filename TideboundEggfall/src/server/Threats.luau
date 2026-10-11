@@ -388,7 +388,7 @@ local nextSting = {}
 local function anemoneTick()
 	local beds = {}
 	for _, bed in ipairs(CollectionService:GetTagged("TideboundAnemone")) do
-		if bed:IsDescendantOf(deps.delta) then
+		if bed:IsDescendantOf(workspace) then
 			table.insert(beds, bed)
 		end
 	end
@@ -413,8 +413,12 @@ function Threats.init(dependencies)
 	local folder = Instance.new("Folder")
 	folder.Name = "Elites"
 	folder.Parent = deps.delta
-	local dens = deps.delta:WaitForChild("ShoalsAdditions"):WaitForChild("EliteDens")
-	for _, den in ipairs(dens:GetChildren()) do
+	-- Patch 10: dens are tagged by ShoalsBuilder on the Open Isles (sorted by name so indices stay stable)
+	local dens = CollectionService:GetTagged("TideboundEliteDen")
+	table.sort(dens, function(a, b)
+		return a.Name < b.Name
+	end)
+	for _, den in ipairs(dens) do
 		if den:IsA("BasePart") then
 			local holes = {}
 			for _, child in ipairs(den:GetChildren()) do

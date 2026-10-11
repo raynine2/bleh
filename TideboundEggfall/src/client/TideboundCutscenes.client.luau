@@ -24,6 +24,7 @@ local MotionBus = require(Shared:WaitForChild("MotionBus"))
 local FishingFeel = require(Shared:WaitForChild("FishingFeel"))
 local Fx = require(Shared:WaitForChild("Fx"))
 local Audio = require(Shared:WaitForChild("Audio"))
+local Isles = require(Shared:WaitForChild("IslesLayout"))
 local Remotes = Shared:WaitForChild("Remotes")
 local Request = Remotes:WaitForChild("Request")
 local StateEvent = Remotes:WaitForChild("State")
@@ -370,26 +371,40 @@ local scenes = {}
 function scenes.Intro()
 	begin(true)
 	fadeTo(0, 0)
-	pcall(player.RequestStreamAroundAsync, player, Vector3.new(200, 6, 0), 2)
+	-- Patch 10: the camera tours the Open Isles: the town, the islands, the Warden's Rock and the Maelstrom
+	local warden, whirl, gate = Isles.wardenLair, Isles.maelstrom, Isles.Town.tidegate
+	pcall(player.RequestStreamAroundAsync, player, Vector3.new(40, 6, 0), 2)
+	task.spawn(function()
+		for _, at in ipairs({ Vector3.new(500, 6, 0), Vector3.new(warden.X, 6, warden.Z), Vector3.new(whirl.X, 6, whirl.Z) }) do
+			pcall(player.RequestStreamAroundAsync, player, at, 2)
+		end
+	end)
 	fadeTo(1, 1.2)
 	showCard("WELCOME TO", "TIDEBOUND: EGGFALL", "Steal eggs. Catch fish. Get out alive.", GOLD, 3.2)
-	say("The tide brought strange eggs to the Sunken Shoals...")
+	say("Eggfall Town is safe. Everything past the Tidegate is not.")
 	local ok = film(4.5, function(a)
-		local from = Vector3.new(10, 70, -70):Lerp(Vector3.new(70, 52, 60), a)
-		return CFrame.lookAt(from, Vector3.new(190, 0, 0))
+		local from = Vector3.new(-120, 90, -150):Lerp(Vector3.new(60, 60, 110), a)
+		return CFrame.lookAt(from, Vector3.new(gate.X - 40, 10, gate.Z))
 	end)
+	if ok then
+		say("The tide brought strange eggs to the 22 islands of the Sunken Shoals...")
+		ok = film(4.5, function(a)
+			local from = Vector3.new(230, 70, -60):Lerp(Vector3.new(420, 46, 40), a)
+			return CFrame.lookAt(from, Vector3.new(660, 0, 0))
+		end)
+	end
 	if ok then
 		say("...and the Reef Warden guards every last one of them.")
 		ok = film(3.6, function(a)
-			local from = Vector3.new(255, 26, -36):Lerp(Vector3.new(276, 16, -14), a)
-			return CFrame.lookAt(from, Vector3.new(305, 10, 0))
+			local from = Vector3.new(warden.X - 55, 30, warden.Z - 40):Lerp(Vector3.new(warden.X - 30, 18, warden.Z - 16), a)
+			return CFrame.lookAt(from, Vector3.new(warden.X, 10, warden.Z))
 		end)
 	end
 	if ok then
 		say("Push deeper through the Maelstrom, and Kelp Cathedral waits below.")
 		ok = film(3.6, function(a)
-			local from = Vector3.new(205, 44, -116):Lerp(Vector3.new(222, 26, -140), a)
-			return CFrame.lookAt(from, Vector3.new(244, 2, -176))
+			local from = Vector3.new(whirl.X - 45, 44, whirl.Z + 70):Lerp(Vector3.new(whirl.X - 30, 26, whirl.Z + 40), a)
+			return CFrame.lookAt(from, Vector3.new(whirl.X, 2, whirl.Z))
 		end)
 	end
 	local root = rootPart()
@@ -425,7 +440,7 @@ function scenes.Dive(payload)
 	film(CUT.diveSeconds, function(a)
 		local r = rootPart() or root
 		local goal = behind(r, 12, 5)
-		return CFrame.lookAt(start, Vector3.new(190, 0, 0)):Lerp(goal, a)
+		return CFrame.lookAt(start, root.Position + root.CFrame.LookVector * 60 - Vector3.new(0, 8, 0)):Lerp(goal, a)
 	end)
 	finish()
 end

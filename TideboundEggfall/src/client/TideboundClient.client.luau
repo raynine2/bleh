@@ -575,25 +575,33 @@ local function runMinigame(cast)
 	FishingFeel.set("bite")
 	fishTitle.Text = "BITE! Reel it in!"
 	fishTitle.TextColor3 = C.gold
+	-- Patch 10: the bite pops the panel
+	local pop = fishFrame:FindFirstChild("Pop") or new("UIScale", { Name = "Pop", Parent = fishFrame })
+	pop.Scale = 1.12
+	TweenService:Create(pop, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	task.wait(0.3)
 	FishingFeel.set("reel")
 	fishHint.Text = "Hold click (or touch) to push the bar right. Keep the fish inside it."
 	reelTrack.Visible, progressTrack.Visible = true, true
 	local rng = Random.new()
-	local barWidth = math.clamp(f.baseBarWidth * cast.control, 0.12, 0.5)
+	local barWidth = math.clamp(f.baseBarWidth * cast.control, f.barMin, f.barMax)
 	reelBar.Size = UDim2.new(barWidth, 0, 1, 0)
 	local barPos, barVel = 0.5 - barWidth / 2, 0
-	local fishPos, fishTarget, retarget = 0.5, 0.5, 0
-	local fishSpeed = 0.22 + 0.07 * cast.difficulty
+	local fishPos, fishTarget, retarget = 0.5, 0.5, 0.6
+	local fishSpeed = f.fishBaseSpeed + f.fishSpeedPerDifficulty * cast.difficulty
 	local progress = f.startProgress
 	local peak = progress
 	local perfect = true
 	local started = os.clock()
 	local caught
+	local milestones = { 0.5, 0.75, 0.9 }
+	local cheers = { "Halfway! Keep it there!", "Almost! Don't let go!", "One more pull!" }
+	FishingFeel.progress, FishingFeel.milestone = progress, 0
 
 	while true do
 		local dt = RunService.RenderStepped:Wait()
-		barVel = math.clamp(barVel + (isHolding() and f.reelAccel or -f.reelAccel) * dt, -1.4, 1.4)
+		barVel += (isHolding() and f.reelAccel or -f.reelAccel) * dt
+		barVel = math.clamp(barVel * (1 - math.min(1, f.barDamping * dt)), -f.barMaxSpeed, f.barMaxSpeed)
 		barPos += barVel * dt
 		if barPos < 0 then
 			barPos, barVel = 0, 0
@@ -602,11 +610,11 @@ local function runMinigame(cast)
 		end
 		retarget -= dt
 		if retarget <= 0 then
-			fishTarget = rng:NextNumber(0.05, 0.95)
-			retarget = rng:NextNumber(0.4, math.max(0.6, 1.8 - cast.difficulty * 0.15))
+			fishTarget = math.clamp(fishPos + rng:NextNumber(-f.fishJump, f.fishJump), 0.05, 0.95)
+			retarget = rng:NextNumber(0.6, math.max(0.9, 2.2 - cast.difficulty * 0.15))
 		end
 		fishPos += math.clamp(fishTarget - fishPos, -fishSpeed * dt, fishSpeed * dt)
-		local inside = fishPos >= barPos and fishPos <= barPos + barWidth
+		local inside = fishPos >= barPos - f.edgeGrace and fishPos <= barPos + barWidth + f.edgeGrace
 		if inside then
 			progress += f.gainPerSecond * dt
 		else
@@ -617,11 +625,25 @@ local function runMinigame(cast)
 		-- with it, harder for rarer fish
 		local away = inside and 0 or math.clamp(0.5 + math.min(math.abs(fishPos - barPos), math.abs(fishPos - barPos - barWidth)) * 2, 0, 1)
 		FishingFeel.tension += (away - FishingFeel.tension) * math.min(1, dt * 6)
-		FishingFeel.shake(0.02 + 0.05 * FishingFeel.tension * (0.6 + 0.15 * cast.difficulty), 0.05)
+		FishingFeel.shake(0.015 + 0.04 * FishingFeel.tension * (0.6 + 0.15 * cast.difficulty), 0.05)
+		FishingFeel.progress = progress
+		local clock = os.clock()
 		reelBar.Position = UDim2.new(barPos, 0, 0, 0)
-		reelBar.BackgroundColor3 = inside and Color3.fromRGB(170, 255, 200) or Color3.fromRGB(255, 180, 180)
-		fishIcon.Position = UDim2.new(fishPos, 0, 0.5, 0)
+		-- the bar glows green and breathes while you hold the fish, and flushes red when it slips out
+		reelBar.BackgroundColor3 = inside and Color3.fromRGB(150, 255, 190):Lerp(WHITE, 0.25 + 0.25 * math.sin(clock * 9)) or Color3.fromRGB(255, 150, 150)
+		reelBar.BackgroundTransparency = inside and 0.25 or 0.4
+		fishIcon.Position = UDim2.new(fishPos, 0, 0.5, math.sin(clock * 17) * (2 + 4 * FishingFeel.tension))
+		fishIcon.Rotation = math.sin(clock * 11) * (10 + 25 * FishingFeel.tension)
 		progressFill.Size = UDim2.new(math.clamp(progress, 0, 1), 0, 1, 0)
+		local nextMilestone = milestones[FishingFeel.milestone + 1]
+		if nextMilestone and progress >= nextMilestone then
+			-- TideboundRod bursts at the bobber; the progress bar flashes gold
+			FishingFeel.milestone += 1
+			progressTrack.BackgroundColor3 = Color3.fromRGB(255, 220, 90)
+			TweenService:Create(progressTrack, TweenInfo.new(0.4), { BackgroundColor3 = Color3.fromRGB(40, 40, 44) }):Play()
+			fishTitle.Text = cheers[FishingFeel.milestone]
+		end
+		fishHint.Text = perfect and "PERFECT so far! The fish hasn't slipped once." or "Hold click (or touch) to push the bar right. Keep the fish inside it."
 		peak = math.max(peak, progress)
 		if progress >= 1 then
 			caught = true
@@ -1784,6 +1806,13 @@ local ZONES = {
 		grade = { Saturation = 0.28, TintColor = Color3.fromRGB(246, 255, 252) },
 		bloom = 0.55,
 	},
+	-- Patch 10: the Outer Reef (the Open Isles' third ring), a grey storm over dark rock
+	Storm = {
+		atmosphere = { Density = 0.42, Color = Color3.fromRGB(150, 160, 178), Decay = Color3.fromRGB(88, 98, 120), Haze = 2.4 },
+		grade = { Saturation = -0.04, TintColor = Color3.fromRGB(226, 234, 246) },
+		bloom = 0.35,
+		lighting = { Ambient = Color3.fromRGB(108, 112, 128), OutdoorAmbient = Color3.fromRGB(118, 122, 140), Brightness = 1.9 },
+	},
 	-- Big Update: Kelp Cathedral, a dim teal cavern where everything that glows really glows
 	Kelp = {
 		atmosphere = { Density = 0.45, Color = Color3.fromRGB(46, 120, 110), Decay = Color3.fromRGB(18, 60, 70), Haze = 2.2 },
@@ -2548,7 +2577,11 @@ task.spawn(function()
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if root then
-			applyZone(Config.zoneOf(root.Position))
+			local zone = Config.zoneOf(root.Position)
+			if zone == "Shoals" and root.Position.X > 1240 then
+				zone = "Storm" -- the Outer Reef ring of the Open Isles
+			end
+			applyZone(zone)
 		end
 	end
 end)

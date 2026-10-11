@@ -3,8 +3,7 @@
 -- Everything reuses WorldBuilder's REF 1 / REF 3 / REF 5 props and palette, so the new areas match the refs:
 -- snowy voxel ground and terraces (REF 1), neon shop signage (REF 3), timber houses and lanterns (REF 5).
 -- Also adds the Nest plaza's NPCs and the Tide Slide pad, inside the same folder.
--- Master Patch 2-3: the Sunken Shoals Tide Cache, Stinging Anemone Beds, Snapjaw Moray holes and the elite
--- dens, also built into this folder so the Studio-built Shoals map is never rebuilt.
+-- Patch 10: the Shoals' Tide Caches, anemone beds and elite dens moved to ShoalsBuilder with the Open Isles.
 
 local CollectionService = game:GetService("CollectionService")
 
@@ -14,7 +13,7 @@ local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("Tidebo
 
 local ExpansionBuilder = {}
 
-local VERSION = 2
+local VERSION = 3
 
 local K = WorldBuilder.kit
 local P = K.color
@@ -102,6 +101,8 @@ local function npc(parent, id, cframe, kind, shirt, hat)
 		end
 	end
 	model.PrimaryPart = body
+	model:SetAttribute("Kind", kind)
+	CollectionService:AddTag(model, "TideboundNpc") -- TideboundLife gives them idle motion and turns them to you
 	billboard(body, info.name, info.role, kind == "person" and 4.6 or 3.6)
 	prompt(body, "Talk", info.name, { Npc = id }, 0, 10)
 	return model
@@ -135,94 +136,6 @@ local function buildNestAdditions(root)
 	npc(folder, "OldHarl", stall * CFrame.new(-4.4, 0.6, 1.2), "person", Color3.fromRGB(70, 96, 140), Color3.fromRGB(90, 70, 50))
 	npc(folder, "SisterCoralie", facing(Vector3.new(-31, TOP, 4), plaza), "person", Color3.fromRGB(236, 236, 244), Color3.fromRGB(255, 90, 110))
 	npc(folder, "GateWardenSel", facing(Vector3.new(42, TOP, -10), Vector3.new(30, TOP, 0)), "person", Color3.fromRGB(176, 34, 30), Color3.fromRGB(44, 34, 34))
-end
-
--- Sunken Shoals additions (Master Patch 2-3) ----------------------------------------------------
-
-local ANEMONE_BASE = Color3.fromRGB(196, 64, 126)
-local ANEMONE_TIP = Color3.fromRGB(255, 120, 200)
-local CORAL_DARK = Color3.fromRGB(70, 58, 84)
-
--- Offsets from each island's centre, picked clear of boardwalk ends, egg nests, trees and beacons.
-local ANEMONE_BEDS = {
-	{ "ReefA", Vector3.new(-2, 0, -12) },
-	{ "ReefB", Vector3.new(0, 0, 10) },
-	{ "ReefC", Vector3.new(0, 0, -10) },
-	{ "ReefD", Vector3.new(2, 0, -16) },
-	{ "ReefE", Vector3.new(6, 0, -9) },
-}
--- Elite dens: a Barnacle Brute wanders the island, or a Snapjaw Moray hides in one of its coral holes.
-local ELITE_DENS = {
-	{ island = "ReefB", holes = { 20, 70, 160 } },
-	{ island = "ReefC", holes = { -60, -120, 60 } },
-	{ island = "ReefD", holes = { 20, -100, 100 } },
-}
-
-local function buildShoalsAdditions(root)
-	local folder = Instance.new("Folder")
-	folder.Name = "ShoalsAdditions"
-	folder.Parent = root
-	local islands = {}
-	for _, island in ipairs(K.shoals.islands) do
-		islands[island.name] = island
-	end
-	local rng = Random.new(2611)
-
-	-- Tide Cache: a lantern buoy at ReefA's edge, where the dock lands. Fish banked here are safe Pearls.
-	local reefA = islands.ReefA.pos
-	local cacheAt = Vector3.new(reefA.X - 14, TOP, reefA.Z - 10)
-	disk(folder, "CacheBase", cacheAt + Vector3.new(0, 0.4, 0), 3.4, 0.8, P.MINT_ROCK)
-	part({ Name = "CachePost", Size = Vector3.new(0.8, 8, 0.8), CFrame = CFrame.new(cacheAt + Vector3.new(0, 4.6, 0)), Color = P.POST, Parent = folder })
-	part({ Name = "CacheArm", Size = Vector3.new(3.4, 0.5, 0.5), CFrame = CFrame.new(cacheAt + Vector3.new(1.4, 8.4, 0)), Color = P.POST, Parent = folder })
-	K.crystalLantern(folder, cacheAt + Vector3.new(2.8, 8.2, 0), 1.2)
-	local ring = decor({ Name = "CacheRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.6, 5.6, 5.6), CFrame = CFrame.new(cacheAt + Vector3.new(0, 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(255, 120, 80), Parent = folder })
-	decor({ Name = "CacheRingHole", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.7, 3.8, 3.8), CFrame = ring.CFrame, Color = P.MINT_ROCK, Parent = folder })
-	local chest = part({ Name = "TideCache", Size = Vector3.new(3, 2.2, 2.2), CFrame = CFrame.new(cacheAt + Vector3.new(0, 2.7, 0)), Color = P.PLANK, Material = Enum.Material.WoodPlanks, Parent = folder })
-	decor({ Name = "CacheLid", Size = Vector3.new(3.2, 0.5, 2.4), CFrame = chest.CFrame * CFrame.new(0, 1.3, 0), Color = P.GOLD, Parent = folder })
-	light(chest, P.BEACON, 14, 1)
-	K.sparkles(chest, Color3.fromRGB(200, 255, 240), 4)
-	prompt(chest, "Bank Catch", "Tide Cache", { Action = "BankCatch" }, 1, 12)
-	billboard(chest, "TIDE CACHE", "Bank fish here: safe Pearls", 5)
-
-	-- Stinging Anemone Beds: always-on terrain hazard (10 damage and a 30% slow). Walk the sand paths.
-	for _, bed in ipairs(ANEMONE_BEDS) do
-		local center = islands[bed[1]].pos + bed[2]
-		local pad = decor({ Name = "AnemoneBed", Size = Vector3.new(8, 0.3, 8), CFrame = CFrame.new(center.X, TOP + 0.35, center.Z) * CFrame.Angles(0, rng:NextNumber(0, math.pi), 0), Color = ANEMONE_BASE, Parent = folder })
-		CollectionService:AddTag(pad, "TideboundAnemone")
-		for _ = 1, 9 do
-			local x, z = rng:NextNumber(-3.3, 3.3), rng:NextNumber(-3.3, 3.3)
-			local h = rng:NextNumber(0.8, 1.8)
-			local stalk = pad.CFrame * CFrame.new(x, h / 2, z)
-			decor({ Name = "Stalk", Size = Vector3.new(0.4, h, 0.4), CFrame = stalk, Color = ANEMONE_BASE, Parent = folder })
-			decor({ Name = "Tip", Shape = Enum.PartType.Ball, Size = Vector3.new(0.7, 0.7, 0.7), CFrame = stalk * CFrame.new(0, h / 2, 0), Color = ANEMONE_TIP, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
-		end
-	end
-
-	-- Elite dens and Snapjaw Moray coral holes
-	local dens = Instance.new("Folder")
-	dens.Name = "EliteDens"
-	dens.Parent = folder
-	for i, den in ipairs(ELITE_DENS) do
-		local island = islands[den.island]
-		local slot = decor({ Name = "EliteDen" .. i, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(island.pos.X, TOP + 1, island.pos.Z), Transparency = 1, Parent = dens })
-		slot:SetAttribute("Island", den.island)
-		slot:SetAttribute("Radius", island.r - 5)
-		for j, angle in ipairs(den.holes) do
-			local a = math.rad(angle)
-			local at = Vector3.new(island.pos.X + math.cos(a) * (island.r - 4), TOP, island.pos.Z + math.sin(a) * (island.r - 4))
-			disk(slot, "HoleRim", at + Vector3.new(0, 0.6, 0), 2.4, 1.2, CORAL_DARK).CanCollide = false
-			local glow = disk(slot, "MorayHole" .. j, at + Vector3.new(0, 1.25, 0), 1.6, 0.15, Color3.fromRGB(255, 190, 70))
-			glow.CanCollide = false
-			glow.CanQuery = false
-			glow.Material = Enum.Material.Neon
-			glow.Transparency = 0.7
-			glow:SetAttribute("Hole", true)
-			for _ = 1, 3 do
-				local b = rng:NextNumber(0, math.pi * 2)
-				decor({ Name = "Coral", Size = Vector3.new(0.5, rng:NextNumber(1, 2.2), 0.5), CFrame = CFrame.new(at + Vector3.new(math.cos(b) * 2.6, 1.2, math.sin(b) * 2.6)) * CFrame.Angles(rng:NextNumber(-0.3, 0.3), 0, rng:NextNumber(-0.3, 0.3)), Color = Color3.fromRGB(255, 140, 120), Parent = slot })
-			end
-		end
-	end
 end
 
 -- Harbor Ring hub ----------------------------------------------------------------------------
@@ -593,7 +506,6 @@ function ExpansionBuilder.build(world)
 	root.Name = "Delta"
 	root:SetAttribute("Version", VERSION)
 	buildNestAdditions(root)
-	buildShoalsAdditions(root)
 	buildHarbor(root)
 	buildPlots(root)
 	root.Parent = world
