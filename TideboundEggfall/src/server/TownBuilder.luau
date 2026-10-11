@@ -1,6 +1,7 @@
 -- Tidebound: Eggfall: Eggfall Town, the safe spawn of the Open Isles (Patch 10). Builds
 -- Workspace.TideboundWorld.Town around WorldBuilder's REF 1 fountain plaza, laid out by IslesLayout.Town:
---   the town island itself (grass, sand and cliffs down to the sea floor), with snow on the plaza (REF 1)
+--   the town island itself (grass, sand and cliffs down to the sea floor); Patch 23 made it the bright summer
+--     town of the Catch a Brainrot reference (green grass, orange brick roads, coloured roofs, cube trees)
 --   Harbor Street and the docks (east): fish market, warehouses, the Salty Egg tavern, two piers over the
 --     harbor basins, moored boats, cranes and nets, and the Tidegate, where the causeway to the Shoals starts
 --   Market Row (north): REF 3 neon shops, food stalls round a market square, an arcade and string lights
@@ -23,7 +24,7 @@ local PC = PropKit.color
 
 local TownBuilder = {}
 
-local VERSION = 8
+local VERSION = 9 -- Patch 23: the summer town
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -35,7 +36,7 @@ local T = L.Town
 
 -- palette
 local SAND = Color3.fromRGB(212, 190, 140)
-local COBBLE = PC.PAVER -- Patch 14: grey studded paving, like the reference snow town
+local COBBLE = PC.PAVER -- Patch 23: orange studded brick, like the reference summer town
 local COBBLE_EDGE = PC.PAVER_DARK
 local WOOD = Color3.fromRGB(150, 104, 68)
 local WOOD_DARK = Color3.fromRGB(104, 72, 50)
@@ -126,11 +127,11 @@ local function buildLand(parent)
 		end
 		return nil
 	end
-	-- Patch 14: the town is snow (the reference winter town): studded blue-white snow, a slightly greyer plaza,
-	-- and frosted white grass (TideboundFoliage) only out on the edges, so the streets stay clean
+	-- Patch 23: the summer town: studded green grass everywhere (PC.SNOW holds the grass green now), tall voxel
+	-- grass (TideboundFoliage) from just outside the plaza, the hub's brick roads laid on top
 	local STYLE = {
 		grass = { top = TOP, color = PC.SNOW },
-		plaza = { top = TOP, color = Color3.fromRGB(150, 162, 186) },
+		plaza = { top = TOP, color = PC.SNOW },
 		beach = { top = TOP - 0.4, color = SAND },
 		shore = { top = WATER_Y + 0.8, color = SAND:Lerp(Color3.fromRGB(180, 160, 120), 0.3) },
 	}
@@ -143,7 +144,7 @@ local function buildLand(parent)
 				local w = xEnd - runStart
 				local strip = part({ Name = "Town_" .. runKind, Size = Vector3.new(w, style.top - FLOOR, GRID), CFrame = CFrame.new(runStart + w / 2, (style.top + FLOOR) / 2, zc), Color = style.color, Material = Enum.Material.Plastic, Parent = parent })
 				strip.TopSurface = Enum.SurfaceType.Studs
-				if runKind == "grass" and Vector3.new(runStart + w / 2, 0, zc).Magnitude > 130 then
+				if runKind == "grass" and Vector3.new(runStart + w / 2, 0, zc).Magnitude > 70 then
 					CollectionService:AddTag(strip, "TideboundGrass")
 				end
 			end
@@ -174,7 +175,7 @@ end
 -- Streets -----------------------------------------------------------------------------------------------------
 
 local function lamp(parent, base, target)
-	PropKit.gallowsLamp(parent, base, target) -- Patch 14: the reference's wooden lamp with a hanging lantern
+	K.lampPost(parent, base, target) -- Patch 23: the summer town's lamp post with a glowing lantern
 end
 
 -- A cobbled street from a to b (clipped to stay out of the plaza), with curbs and lamps; a boardwalk over water.
@@ -803,7 +804,6 @@ local function buildHouses(parent, rng)
 	local folder = Instance.new("Folder")
 	folder.Name = "Houses"
 	folder.Parent = parent
-	local roofs = { P.ROOF_ORANGE, P.ROOF_SLATE, Color3.fromRGB(120, 70, 140), Color3.fromRGB(70, 130, 90) }
 	local placed = 0
 	for _ = 1, 300 do
 		if placed >= 34 then
@@ -813,18 +813,18 @@ local function buildHouses(parent, rng)
 		if p.Magnitude > T.plazaRadius + 10 and isLand(p, 10) and (flat(p) - BEACH.c).Magnitude > BEACH.r - 4 and free(p, 8) then
 			local q, d = nearestStreetPoint(p)
 			if q and d > 11 and d < 24 then
-				-- Patch 14: the reference town's houses: mostly snowy log cabins, some brick houses with tiled roofs,
-				-- each with a fence round its front garden and a snow mound or two
+				-- Patch 23: the summer town's houses: mostly brick houses with blue, red, orange, green or purple tiled
+				-- roofs, some log cabins, each with a white picket fence round its front garden and a bush
 				local w, depth, h = rng:NextNumber(11, 14), rng:NextNumber(9, 11), rng:NextNumber(8, 10)
-				if rng:NextNumber() < 0.7 then
+				if rng:NextNumber() < 0.25 then
 					PropKit.logCabin(folder, at(p, TOP), at(q, TOP), w, depth, h, rng)
 				else
-					PropKit.brickHouse(folder, at(p, TOP), at(q, TOP), w, depth, h, roofs[rng:NextInteger(1, #roofs)])
+					PropKit.brickHouse(folder, at(p, TOP), at(q, TOP), w, depth, h, PC.ROOFS[rng:NextInteger(1, #PC.ROOFS)])
 				end
 				local cf = facing(p, q)
 				local yard = depth / 2 + 4
-				PropKit.woodFence(folder, (cf * CFrame.new(-w / 2 - 1, 0, -yard)).Position, (cf * CFrame.new(-2.4, 0, -yard)).Position, TOP)
-				PropKit.woodFence(folder, (cf * CFrame.new(2.4, 0, -yard)).Position, (cf * CFrame.new(w / 2 + 1, 0, -yard)).Position, TOP)
+				PropKit.picketFence(folder, (cf * CFrame.new(-w / 2 - 1, 0, -yard)).Position, (cf * CFrame.new(-2.4, 0, -yard)).Position, TOP)
+				PropKit.picketFence(folder, (cf * CFrame.new(2.4, 0, -yard)).Position, (cf * CFrame.new(w / 2 + 1, 0, -yard)).Position, TOP)
 				PropKit.snowMound(folder, (cf * CFrame.new(w / 2 + 3, 0, rng:NextNumber(-3, 3))).Position, rng, rng:NextNumber(0.8, 1.2))
 				reserve(p, math.max(w, depth) * 0.8)
 				placed += 1
@@ -846,8 +846,8 @@ local function buildGreenery(parent, rng)
 		if p.Magnitude > T.plazaRadius + 4 and isLand(p, 4) and (flat(p) - BEACH.c).Magnitude > BEACH.r and free(p, 4) then
 			local r = rng:NextNumber()
 			local base = at(p, TOP)
-			-- Patch 14: a winter forest: mostly snowy pines, some voxel trees
-			if r < 0.3 then
+			-- Patch 23: the summer town's cube-canopy trees, a few pines
+			if r < 0.8 then
 				K.voxelTree(folder, base, rng, rng:NextNumber(1, 1.4))
 			else
 				K.pineTree(folder, base, rng:NextNumber(1, 1.6))
@@ -862,7 +862,7 @@ local function buildGreenery(parent, rng)
 			if rng:NextNumber() < 0.6 then
 				PropKit.snowMound(folder, at(p, TOP), rng, rng:NextNumber(0.6, 1.3))
 			else
-				D.tuft(folder, at(p, TOP), rng, Color3.fromRGB(230, 240, 255), Color3.fromRGB(200, 220, 245))
+				D.tuft(folder, at(p, TOP), rng, Color3.fromRGB(120, 210, 80), Color3.fromRGB(90, 180, 64))
 			end
 		end
 	end
@@ -876,12 +876,11 @@ local function buildWinter(parent, rng)
 	local folder = Instance.new("Folder")
 	folder.Name = "Winter"
 	folder.Parent = parent
-	-- grey paving inlays set into the snow round the plaza, the market square and the Tidegate
-	PropKit.inlays(folder, v(0, 0), T.plazaRadius + 8, TOP, rng, PC.PAVER, 22)
+	-- orange brick inlays round the market square and the Tidegate
 	PropKit.inlays(folder, v(0, 125), 30, TOP, rng, PC.PAVER, 10)
 	PropKit.inlays(folder, v(170, 0), 26, TOP, rng, PC.PAVER, 8)
-	-- vending machines round the plaza's edge
-	for _, spec in ipairs({ { v(54, -24), "BAIT MACHINE", Color3.fromRGB(60, 120, 220) }, { v(-50, 30), "EGG MACHINE", Color3.fromRGB(230, 70, 110) }, { v(-50, -30), "DASH CAPSULES", Color3.fromRGB(255, 170, 40) } }) do
+	-- the bait machine at the plaza's east edge (Patch 23: the Dash Capsule machine moved to the Tide Lab's yard)
+	for _, spec in ipairs({ { v(54, -24), "BAIT MACHINE", Color3.fromRGB(60, 120, 220) } }) do
 		local cf = facing(spec[1], v(0, 0))
 		local machine = PropKit.vendingMachine(folder, cf, spec[2], spec[3])
 		reserve(spec[1], 4)
@@ -903,7 +902,7 @@ local function buildWinter(parent, rng)
 			end
 		end
 	end
-	-- glowing ice crystals and snowy igloos out on the edges of town
+	-- glowing mushrooms and striped camp tents out on the edges of town
 	local placed = 0
 	for _ = 1, 200 do
 		if placed >= 18 then
@@ -933,41 +932,77 @@ local function buildWinter(parent, rng)
 		reserve(spec[1], 2)
 		reserve(spec[2], 2)
 	end
-	-- wooden fences round the plaza's corners
-	for i = 0, 3 do
-		local a = math.rad(45 + i * 90)
-		local mid = v(math.cos(a) * (T.plazaRadius + 3), math.sin(a) * (T.plazaRadius + 3))
-		local side = v(-math.sin(a), math.cos(a)) * 9
-		PropKit.woodFence(folder, mid - side, mid + side, TOP)
-	end
 end
 
--- Patch 15: the hub plaza, rebuilt from the reference snow town. Everything players use stays where it was
--- (the NPCs and the Tide Slide stand round these spots): the Tide Egg shrine (-24, 12) in front of a big glass
--- EGG SHOP, the incubator (-24, -12) in front of a red HATCHERY, the tackle stall (18, -32), the Nest beacon
--- (26, 22) and the spawn (0, -24). In the middle a frozen fountain with an ice crystal and a gold egg; log cabins
--- on the corners; lamps, benches, pines, crystals and inlays round the square.
+-- Patch 23: the hub plaza, rebuilt as the Catch a Brainrot summer town. A round orange brick plaza round the
+-- Eggfall Egg with four brick roads out to the edges (TIDEBOUND and WELCOME carved into them), and a building
+-- in each corner: the Tide Lab (north-west) with the gacha yard in front of it (the Tide Egg shrine, the treasure
+-- chest and the Dash Capsule machine), the Tide Center (south-west) with the incubator, the Tackle Shop
+-- (south-east, Old Harl behind its counter) and the Nest beacon by a lily pond (north-east). Cube trees, bushes,
+-- flower beds, picket fences, lamps and benches fill the gaps. The Tide Slide (-14, -26), the spawn (0, -24) and
+-- the NPCs (ExpansionBuilder) are kept clear.
+TownBuilder.hub = {
+	lab = v(-38, 38),
+	center = v(-38, -38),
+	tackle = v(34, -36),
+	tackleSize = Vector3.new(14, 11, 9),
+}
+
+local function stationPrompt(parent, at, action, object, panel, title, subtitle, offset)
+	K.prompt(parent, action, object, { Panel = panel }, 0, 10)
+	K.billboard(parent, title, subtitle, offset)
+	reserve(at, 6)
+end
+
 local function buildHub(parent, rng)
 	local hub = Instance.new("Folder")
 	hub.Name = "Hub"
 	hub.Parent = parent
 	local plaza = v(0, 0)
+	local H = TownBuilder.hub
 
-	-- grey paving: a darker border round the square and a cross of darker paths to the four exits
-	for _, spec in ipairs({ { v(0, -52), Vector3.new(108, 0, 4) }, { v(0, 52), Vector3.new(108, 0, 4) }, { v(-52, 0), Vector3.new(4, 0, 108) }, { v(52, 0), Vector3.new(4, 0, 108) } }) do
-		PropKit.studs(decor({ Name = "PlazaBorder", Size = Vector3.new(spec[2].X, 0.3, spec[2].Z), CFrame = CFrame.new(spec[1].X, TOP + 0.15, spec[1].Z), Color = PC.PAVER_DARK, Parent = hub })).CanQuery = true
+	-- the round brick plaza with a darker rim, and the four roads out of it with darker kerbs
+	disk(hub, "PlazaRim", Vector3.new(0, TOP + 0.1, 0), 20, 0.2, PC.PAVER_DARK, Enum.Material.Plastic)
+	disk(hub, "PlazaBrick", Vector3.new(0, TOP + 0.15, 0), 18.5, 0.3, PC.PAVER, Enum.Material.Plastic)
+	for _, dir in ipairs({ v(1, 0), v(-1, 0), v(0, 1), v(0, -1) }) do
+		local mid = dir * 36
+		local across = v(-dir.Z, dir.X)
+		local size = Vector3.new(math.abs(dir.X) * 38 + math.abs(dir.Z) * 10, 0.25, math.abs(dir.Z) * 38 + math.abs(dir.X) * 10)
+		PropKit.studs(decor({ Name = "Road", Size = size, CFrame = CFrame.new(mid.X, TOP + 0.12, mid.Z), Color = PC.PAVER, Parent = hub })).CanQuery = true
+		for _, side in ipairs({ -1, 1 }) do
+			local kerb = mid + across * side * 5.5
+			local kerbSize = Vector3.new(math.abs(dir.X) * 36 + math.abs(dir.Z), 0.4, math.abs(dir.Z) * 36 + math.abs(dir.X))
+			PropKit.studs(decor({ Name = "Kerb", Size = kerbSize, CFrame = CFrame.new(kerb.X + dir.X, TOP + 0.2, kerb.Z + dir.Z), Color = PC.PAVER_DARK, Parent = hub })).CanQuery = true
+		end
+		for s = 20, 54, 6 do
+			reserve(dir * s, 7)
+		end
 	end
-	for _, spec in ipairs({ { v(0, 33), Vector3.new(6, 0, 38) }, { v(0, -36), Vector3.new(6, 0, 32) }, { v(33, 0), Vector3.new(38, 0, 6) }, { v(-36, 0), Vector3.new(32, 0, 6) } }) do
-		PropKit.studs(decor({ Name = "PlazaPath", Size = Vector3.new(spec[2].X, 0.25, spec[2].Z), CFrame = CFrame.new(spec[1].X, TOP + 0.12, spec[1].Z), Color = PC.PAVER, Parent = hub })).CanQuery = true
-	end
+	-- giant letters set into the roads, like the reference's paths
+	PropKit.carvedText(hub, "TIDEBOUND", Vector3.new(19, 0, 2.1), Vector3.new(1, 0, 0), TOP, 0.6)
+	PropKit.carvedText(hub, "WELCOME", Vector3.new(-2.6, 0, 20), Vector3.new(0, 0, 1), TOP, 0.75)
 
-	-- Patch 16: the plaza's own monument, the Eggfall Egg (a giant cracked Tide Egg in a nest on a dais)
+	-- the Eggfall Egg stays in the middle, with benches round it
 	PropKit.eggMonument(hub, plaza, TOP, rng)
 	reserve(plaza, 15)
+	for i = 0, 3 do
+		local a = math.rad(i * 90 + 45)
+		local p = v(math.cos(a) * 21, math.sin(a) * 21)
+		local cf = CFrame.lookAt(at(p, TOP), at(plaza, TOP))
+		PropKit.studs(decor({ Name = "BenchSeat", Size = Vector3.new(4, 0.5, 1.4), CFrame = cf * CFrame.new(0, 1.3, 0), Color = PC.WOOD, Parent = hub }))
+		decor({ Name = "BenchBack", Size = Vector3.new(4, 1.4, 0.4), CFrame = cf * CFrame.new(0, 2.2, 0.6), Color = PC.WOOD, Parent = hub })
+		for _, x in ipairs({ -1.6, 1.6 }) do
+			decor({ Name = "BenchLeg", Size = Vector3.new(0.4, 1.1, 1.2), CFrame = cf * CFrame.new(x, 0.55, 0), Color = PC.WOOD_DARK, Parent = hub })
+		end
+		reserve(p, 2.5)
+	end
 
-	-- the EGG SHOP (the reference's glass SELL building) and the Tide Egg shrine in front of it
-	PropKit.glassShop(hub, at(v(-42, 16), TOP), at(plaza, TOP), 16, 12, 11, "TIDE EGGS", Color3.fromRGB(240, 196, 50))
-	local shrineAt = at(v(-24, 12), TOP)
+	-- NORTH-WEST: the Tide Lab, and the gacha yard in front of it
+	PropKit.tideLab(hub, at(H.lab, TOP), at(plaza, TOP), 22, 16, 12)
+	reserve(H.lab, 15)
+	-- the Tide Egg shrine (HatchScene finds the ShrineEgg for the hatch cutscene)
+	local shrine = v(-16, 30)
+	local shrineAt = at(shrine, TOP)
 	PropKit.studs(part({ Name = "ShrineStep", Size = Vector3.new(10, 1, 10), CFrame = CFrame.new(shrineAt + Vector3.new(0, 0.5, 0)), Color = PC.PAVER_DARK, Parent = hub }))
 	local pedestal = PropKit.studs(part({ Name = "ShrinePedestal", Size = Vector3.new(7, 2.4, 7), CFrame = CFrame.new(shrineAt + Vector3.new(0, 2.2, 0)), Color = Color3.fromRGB(240, 196, 50), Parent = hub }))
 	decor({ Name = "PedestalGlow", Size = Vector3.new(7.4, 0.4, 7.4), CFrame = CFrame.new(shrineAt + Vector3.new(0, 3.2, 0)), Color = Color3.fromRGB(255, 230, 140), Material = Enum.Material.Neon, Parent = hub })
@@ -979,83 +1014,112 @@ local function buildHub(parent, rng)
 	light(shrineEgg, Color3.fromRGB(200, 230, 255), 14, 0.8)
 	K.prompt(pedestal, "Odds & Buy", "Tide Egg Shrine", { Panel = "Odds" })
 	K.billboard(shrineEgg, "TIDE EGGS", "Odds and pity", 6)
-	reserve(v(-24, 12), 7)
-	reserve(v(-42, 16), 11)
+	reserve(shrine, 7)
+	-- the treasure chest (the chest gacha)
+	local chestAt = v(-29, 21)
+	local chestBody = PropKit.treasureChest(hub, at(chestAt, TOP), at(plaza, TOP), 1.1)
+	stationPrompt(chestBody, chestAt, "Open Chests", "Tide Chest", "Chest", "TIDE CHEST", "Creatures or dashes", 6)
+	-- the Dash Capsule machine with a globe full of capsules on top
+	local capsuleAt = v(-43, 17)
+	local capsuleCf = facing(capsuleAt, plaza)
+	local machine = PropKit.vendingMachine(hub, capsuleCf, "DASH CAPSULES", Color3.fromRGB(255, 170, 40))
+	local top = capsuleCf * CFrame.new(0, 9.4, 0)
+	local globe = K.part({ Name = "CapsuleGlobe", Shape = Enum.PartType.Ball, Size = Vector3.new(4.6, 4.6, 4.6), CFrame = top * CFrame.new(0, 2.3, 0), Color = Color3.fromRGB(200, 240, 255), Material = Enum.Material.Glass, Transparency = 0.45, CanCollide = false, Parent = machine })
+	local capsuleRng = Random.new(20)
+	for _ = 1, 9 do
+		local spot = globe.Position + Vector3.new(capsuleRng:NextNumber(-1.2, 1.2), capsuleRng:NextNumber(-1.5, 0.6), capsuleRng:NextNumber(-1.2, 1.2))
+		K.decor({ Name = "Capsule", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(spot), Color = Color3.fromHSV(capsuleRng:NextNumber(), 0.6, 1), Material = Enum.Material.Neon, Parent = machine })
+	end
+	K.decor({ Name = "GlobeCap", Size = Vector3.new(2, 0.6, 2), CFrame = top * CFrame.new(0, 4.8, 0), Color = Color3.fromRGB(255, 170, 40), Parent = machine })
+	K.light(globe, Color3.fromRGB(255, 200, 120), 14, 1.2)
+	local machineBody = machine:FindFirstChild("Body")
+	if machineBody then
+		K.prompt(machineBody, "Open Capsules", "Dash Capsule Machine", { Panel = "Dashes" }, 0, 10)
+	end
+	reserve(capsuleAt, 5)
 
-	-- the HATCHERY (a red framed shop) and the incubator in front of it: a studded crate of straw under a heat lamp
-	PropKit.frameShop(hub, at(v(-42, -16), TOP), at(plaza, TOP), 15, 11, 11, "HATCHERY", PC.NEON_RED)
-	local incAt = at(v(-24, -12), TOP)
+	-- SOUTH-WEST: the Tide Center, and the incubator in front of it (a studded crate of straw under a heat lamp)
+	PropKit.tideCenter(hub, at(H.center, TOP), at(plaza, TOP), 20, 14, 10)
+	reserve(H.center, 14)
+	local inc = v(-29, -17)
+	local incAt = at(inc, TOP)
 	local incubator = PropKit.studs(part({ Name = "IncubatorBase", Size = Vector3.new(8, 2, 8), CFrame = CFrame.new(incAt + Vector3.new(0, 1, 0)), Color = PC.WOOD, Parent = hub }))
 	decor({ Name = "Straw", Size = Vector3.new(6.6, 0.6, 6.6), CFrame = CFrame.new(incAt + Vector3.new(0, 2.2, 0)), Color = Color3.fromRGB(232, 200, 110), Parent = hub })
 	for _, x in ipairs({ -3.6, 3.6 }) do
 		for _, z in ipairs({ -3.6, 3.6 }) do
-			PropKit.studs(decor({ Name = "IncubatorPost", Size = Vector3.new(0.9, 6.5, 0.9), CFrame = CFrame.new(incAt + Vector3.new(x, 4.25, z)), Color = PC.WOOD_DARK, Parent = hub }))
+			PropKit.studs(decor({ Name = "IncubatorPost", Size = Vector3.new(0.9, 6.5, 0.9), CFrame = CFrame.new(incAt + Vector3.new(x, 4.25, z)), Color = Color3.fromRGB(250, 246, 246), Parent = hub }))
 		end
 	end
-	PropKit.studs(decor({ Name = "IncubatorRoof", Size = Vector3.new(9.4, 0.8, 9.4), CFrame = CFrame.new(incAt + Vector3.new(0, 7.8, 0)), Color = PC.NEON_RED, Parent = hub }))
-	PropKit.studs(decor({ Name = "IncubatorSnow", Size = Vector3.new(9, 0.5, 9), CFrame = CFrame.new(incAt + Vector3.new(0, 8.4, 0)), Color = PC.SNOW, Parent = hub }))
+	PropKit.studs(decor({ Name = "IncubatorRoof", Size = Vector3.new(9.4, 0.8, 9.4), CFrame = CFrame.new(incAt + Vector3.new(0, 7.8, 0)), Color = Color3.fromRGB(226, 56, 70), Parent = hub }))
+	PropKit.studs(decor({ Name = "IncubatorRoofTop", Size = Vector3.new(6, 0.5, 6), CFrame = CFrame.new(incAt + Vector3.new(0, 8.4, 0)), Color = Color3.fromRGB(250, 246, 246), Parent = hub }))
 	local heat = decor({ Name = "HeatLamp", Size = Vector3.new(1.6, 0.8, 1.6), CFrame = CFrame.new(incAt + Vector3.new(0, 7, 0)), Color = Color3.fromRGB(255, 150, 70), Material = Enum.Material.Neon, Parent = hub })
 	light(heat, Color3.fromRGB(255, 150, 80), 14, 1.4)
 	K.eggShape(hub, "IncubatingEgg", CFrame.new(incAt + Vector3.new(0, 4, 0)), Vector3.new(2.6, 3.4, 2.6), Color3.fromRGB(248, 236, 210))
 	K.prompt(incubator, "Hatch Eggs", "Incubator", { Panel = "Odds" })
 	K.billboard(incubator, "INCUBATOR", "Hatch your eggs", 9)
-	reserve(v(-24, -12), 7)
-	reserve(v(-42, -16), 11)
+	reserve(inc, 7)
 
-	-- the tackle stall (Old Harl stands behind its counter) with rods on a rack beside it
-	local stallCf, stall = PropKit.stripedStall(hub, at(v(18, -32), TOP), at(plaza, TOP), Color3.fromRGB(220, 60, 60), PC.WHITE)
-	local counter = stall:FindFirstChild("Counter")
-	if counter then
-		K.prompt(counter, "Rods & Bait", "Tackle Shop", { Panel = "Tackle" })
-	end
-	local sign = decor({ Name = "TackleSign", Size = Vector3.new(10, 2.2, 0.4), CFrame = stallCf * CFrame.new(0, 10.4, -2.6), Color = Color3.fromRGB(30, 24, 40), Parent = hub })
-	surfaceText(sign, "TACKLE SHOP!", Color3.fromRGB(110, 236, 255))
+	-- SOUTH-EAST: the Tackle Shop, a brick shop house with a counter under a striped awning, and a rod rack
+	local size = H.tackleSize
+	local shopCf, counter = PropKit.shopHouse(hub, at(H.tackle, TOP), at(plaza, TOP), size.X, size.Y, size.Z, Color3.fromRGB(220, 60, 60), "TACKLE SHOP!")
+	K.prompt(counter, "Rods & Bait", "Tackle Shop", { Panel = "Tackle" })
 	local rodColors = { Color3.fromRGB(150, 100, 60), Color3.fromRGB(230, 90, 100), Color3.fromRGB(80, 120, 230), Color3.fromRGB(255, 200, 70), Color3.fromRGB(160, 90, 230) }
+	local rack = shopCf * CFrame.new(size.X / 2 + 2.4, 0, -size.Y / 2 - 1)
 	for i, color in ipairs(rodColors) do
-		decor({ Name = "RackRod", Size = Vector3.new(0.35, 7, 0.35), CFrame = stallCf * CFrame.new(6.4, 3.6, -1.6 + i * 0.7) * CFrame.Angles(0, 0, math.rad(10)), Color = color, Parent = hub })
+		decor({ Name = "RackRod", Size = Vector3.new(0.35, 7, 0.35), CFrame = rack * CFrame.new(0, 3.6, -2.1 + i * 0.7) * CFrame.Angles(0, 0, math.rad(10)), Color = color, Parent = hub })
 	end
-	PropKit.studs(decor({ Name = "Rack", Size = Vector3.new(1, 0.6, 4.2), CFrame = stallCf * CFrame.new(6.4, 1.2, 0.5), Color = PC.WOOD_DARK, Parent = hub }))
-	reserve(v(18, -32), 8)
+	PropKit.studs(decor({ Name = "Rack", Size = Vector3.new(1, 0.6, 4.2), CFrame = rack * CFrame.new(0, 1.2, 0), Color = PC.WOOD_DARK, Parent = hub }))
+	reserve(H.tackle, 12)
 
-	-- Patch 16: the Nest beacon is a Tide Gate like every other extraction point
+	-- NORTH-EAST: the Nest beacon (a Tide Gate like every other extraction point) beside a lily pond
 	PropKit.extractionGate(hub, 0, v(26, 22), TOP, plaza, { name = "NestBeacon", title = "Nest Beacon", subtitle = "Bank your haul" })
 	reserve(v(26, 22), 10)
+	PropKit.iceSheet(hub, v(42, 42), 14, 12, TOP + 0.3, rng)
+	for _, spec in ipairs({ { v(42, 48.6), Vector3.new(16.4, 0.7, 1.2) }, { v(42, 35.4), Vector3.new(16.4, 0.7, 1.2) }, { v(34.6, 42), Vector3.new(1.2, 0.7, 12) }, { v(49.4, 42), Vector3.new(1.2, 0.7, 12) } }) do
+		PropKit.studs(decor({ Name = "PondRim", Size = spec[2], CFrame = CFrame.new(spec[1].X, TOP + 0.35, spec[1].Z), Color = PC.PAVER_DARK, Parent = hub }))
+	end
+	reserve(v(42, 42), 9)
 
-	-- log cabins on the four corners
-	for _, spec in ipairs({ { v(40, 34), v(40, 0) }, { v(40, -34), v(40, 0) }, { v(-36, 42), v(-36, 0) }, { v(-36, -42), v(-36, 0) } }) do
-		PropKit.logCabin(hub, at(spec[1], TOP), at(spec[2], TOP), 13, 10, 9, rng)
-		reserve(spec[1], 10)
+	-- lamps along the roads
+	for _, p in ipairs({ v(7.5, 26), v(-7.5, 26), v(26, -7.5), v(26, 7.5), v(-26, 7.5), v(-26, -7.5), v(7.5, -30), v(-7.5, -31) }) do
+		local road = (math.abs(p.X) < 10) and v(0, p.Z) or v(p.X, 0)
+		K.lampPost(hub, at(p, TOP), at(road, TOP))
+		reserve(p, 2)
 	end
-	-- lamps, benches round the fountain, pines and crystals in the corners, snow mounds
-	for _, p in ipairs({ v(-12, 30), v(32, -18), v(8, -42), v(-14, -40), v(-2, 48) }) do
-		if free(p, 1.5) then
-			PropKit.gallowsLamp(hub, at(p, TOP), at(plaza, TOP))
-			reserve(p, 2)
+	-- white picket fences along the outer halves of the roads, with gaps where people walk in
+	for _, seg in ipairs({
+		{ v(-7, 36), v(-7, 52) }, { v(7, 34), v(7, 52) }, { v(34, 7), v(52, 7) },
+		{ v(-34, 7), v(-52, 7) }, { v(-34, -7), v(-52, -7) }, { v(7, -36), v(7, -52) }, { v(-7, -34), v(-7, -52) },
+	}) do
+		PropKit.picketFence(hub, seg[1], seg[2], TOP)
+	end
+	-- cube trees, bushes, glowing mushrooms and flower beds in the gaps
+	local flowerColors = { Color3.fromRGB(255, 90, 110), Color3.fromRGB(255, 220, 80), Color3.fromRGB(190, 120, 255), Color3.fromRGB(255, 255, 255) }
+	for _, p in ipairs({ v(48, 22), v(18, 48), v(50, -14), v(20, -50), v(-20, -48), v(-50, -22), v(-22, 50), v(32, 50), v(52, 30) }) do
+		if free(p, 4) then
+			K.voxelTree(hub, at(p, TOP), rng, rng:NextNumber(1, 1.3))
+			reserve(p, 4)
 		end
 	end
-	for i = 0, 3 do
-		local a = math.rad(i * 90 + 45)
-		local p = v(math.cos(a) * 17, math.sin(a) * 17)
+	for _, p in ipairs({ v(14, 26), v(26, 12), v(14, -24), v(24, -16), v(-20, 14), v(-14, -14), v(-48, 30), v(46, -28) }) do
 		if free(p, 2) then
-			local cf = CFrame.lookAt(at(p, TOP), at(plaza, TOP))
-			PropKit.studs(decor({ Name = "BenchSeat", Size = Vector3.new(4, 0.5, 1.4), CFrame = cf * CFrame.new(0, 1.3, 0), Color = PC.WOOD, Parent = hub }))
-			decor({ Name = "BenchBack", Size = Vector3.new(4, 1.4, 0.4), CFrame = cf * CFrame.new(0, 2.2, 0.6), Color = PC.WOOD, Parent = hub })
-			for _, x in ipairs({ -1.6, 1.6 }) do
-				decor({ Name = "BenchLeg", Size = Vector3.new(0.4, 1.1, 1.2), CFrame = cf * CFrame.new(x, 0.55, 0), Color = PC.WOOD_DARK, Parent = hub })
+			if rng:NextNumber() < 0.5 then
+				PropKit.snowMound(hub, at(p, TOP), rng, rng:NextNumber(0.8, 1.1))
+			else
+				local bed = PropKit.studs(decor({ Name = "FlowerBed", Size = Vector3.new(5, 0.8, 3), CFrame = CFrame.new(p.X, TOP + 0.4, p.Z) * CFrame.Angles(0, rng:NextInteger(0, 3) * math.pi / 2, 0), Color = PC.WOOD, Parent = hub }))
+				decor({ Name = "Soil", Size = Vector3.new(4.4, 0.3, 2.4), CFrame = bed.CFrame * CFrame.new(0, 0.45, 0), Color = SOIL, Parent = hub })
+				for i = 1, 6 do
+					local f = bed.CFrame * CFrame.new(-1.8 + ((i - 1) % 3) * 1.8, 0.9, -0.6 + math.floor((i - 1) / 3) * 1.2)
+					decor({ Name = "Stem", Size = Vector3.new(0.2, 0.8, 0.2), CFrame = f, Color = Color3.fromRGB(60, 150, 60), Parent = hub })
+					decor({ Name = "Flower", Size = Vector3.new(0.7, 0.5, 0.7), CFrame = f * CFrame.new(0, 0.55, 0), Color = flowerColors[rng:NextInteger(1, #flowerColors)], Parent = hub })
+				end
 			end
-			reserve(p, 2.5)
-		end
-	end
-	for _, p in ipairs({ v(48, 48), v(-48, 48), v(48, -48), v(-48, -48), v(50, 12), v(-50, 8) }) do
-		if free(p, 3) then
-			K.pineTree(hub, at(p, TOP), rng:NextNumber(1.2, 1.5))
-			PropKit.snowMound(hub, at(p + v(3, 2), TOP), rng, 0.9)
 			reserve(p, 3)
 		end
 	end
-	for _, p in ipairs({ v(-8, 46), v(46, -6), v(-46, -6) }) do
+	for _, p in ipairs({ v(-50, 46), v(50, -48), v(-12, 46) }) do
 		if free(p, 3) then
-			PropKit.iceCrystal(hub, at(p, TOP), rng, 1.2)
+			PropKit.iceCrystal(hub, at(p, TOP), rng, 1)
 			reserve(p, 3)
 		end
 	end
@@ -1084,7 +1148,7 @@ local function buildBackdrop(parent, rng)
 		end
 		for _ = 1, 4 do
 			local p = peak[1] + v(rng:NextNumber(-50, 50), rng:NextNumber(-40, 40))
-			K.pineTree(folder, at(p, rng:NextNumber(20, top * 0.5)), rng:NextNumber(1.5, 2.5))
+			K.voxelTree(folder, at(p, rng:NextNumber(20, top * 0.5)), rng, rng:NextNumber(1.5, 2.5))
 		end
 	end
 end
@@ -1121,24 +1185,6 @@ local function build(root)
 	for _, x in ipairs({ -5, 5 }) do
 		part({ Name = "SignPost", Size = Vector3.new(0.8, 5, 0.8), CFrame = sign.CFrame * CFrame.new(x, -4, 0.2), Color = WOOD_DARK, Parent = root })
 	end
-
-	-- big soft snowflakes drifting over the whole town (the references' winter town)
-	local snow = decor({ Name = "Snowfall", Size = Vector3.new(440, 1, 440), CFrame = CFrame.new(0, 80, 0), Transparency = 1, Parent = root })
-	K.particles(snow, {
-		Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(220, 236, 255)),
-		LightEmission = 0.3,
-		Rate = 140,
-		Lifetime = NumberRange.new(14, 18),
-		Speed = NumberRange.new(3, 5),
-		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(0.5, 0.7), NumberSequenceKeypoint.new(1, 0.4) }),
-		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.9, 0.2), NumberSequenceKeypoint.new(1, 1) }),
-		Rotation = NumberRange.new(0, 360),
-		RotSpeed = NumberRange.new(-60, 60),
-		EmissionDirection = Enum.NormalId.Bottom,
-		SpreadAngle = Vector2.new(15, 15),
-		Drag = 0.4,
-		WindAffectsDrag = true,
-	})
 end
 
 function TownBuilder.build(world)

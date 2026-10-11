@@ -34,6 +34,7 @@ local function template()
 		pity = {
 			TideEgg = { EpicPlus = 0, LegendaryPlus = 0, MythicPlus = 0, CelestialPlus = 0 },
 			DashCapsule = { EpicPlus = 0, LegendaryPlus = 0, MythicPlus = 0, CelestialPlus = 0 }, -- Patch 20
+			TideChest = { EpicPlus = 0, LegendaryPlus = 0, MythicPlus = 0, CelestialPlus = 0 }, -- Patch 23
 		},
 		-- Patch 20: dash moves owned (DashMoves key = copies), the ones equipped, and capsules to open
 		dashes = { Zoomies = 1 },

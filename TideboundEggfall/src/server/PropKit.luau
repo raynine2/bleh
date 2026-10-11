@@ -7,6 +7,9 @@
 --   green hub     brick houses with tiled roofs and big glowing windows; white picket fences; paving inlays and
 --                 loose tiles set into the floor; striped market stalls
 -- Builders call these with world positions; `facing` is the point a building's front looks at.
+-- Patch 23: the town is now the bright summer town of the Catch a Brainrot reference: grass where the snow was,
+-- orange studded brick, coloured tile roofs, cube trees, glowing mushrooms where the ice crystals were, bushes
+-- where the snow mounds were, plus the Tide Lab, the Tide Center, shop houses and letters carved in the paths.
 
 local CollectionService = game:GetService("CollectionService")
 
@@ -19,8 +22,11 @@ local PropKit = {}
 
 -- palette (sampled by eye from the references)
 local C = {
-	SNOW = Color3.fromRGB(176, 190, 214), -- Patch 15: a soft blue-grey, so it never glares
-	SNOW_SHADE = Color3.fromRGB(150, 166, 196),
+	-- Patch 23: the summer town from the Catch a Brainrot reference. The old snow keys now hold the grass greens, so
+	-- every builder that laid snow lays studded grass instead.
+	SNOW = Color3.fromRGB(104, 196, 74),
+	SNOW_SHADE = Color3.fromRGB(82, 168, 62),
+	ROOFS = { Color3.fromRGB(70, 130, 230), Color3.fromRGB(220, 70, 60), Color3.fromRGB(240, 150, 50), Color3.fromRGB(60, 170, 120), Color3.fromRGB(150, 90, 210) },
 	LOG = Color3.fromRGB(150, 88, 60),
 	LOG_DARK = Color3.fromRGB(112, 64, 46),
 	LOG_END = Color3.fromRGB(196, 140, 96),
@@ -32,10 +38,10 @@ local C = {
 	WINDOW_WARM = Color3.fromRGB(255, 230, 170),
 	ICE = Color3.fromRGB(120, 220, 255),
 	ICE_DEEP = Color3.fromRGB(60, 150, 230),
-	PAVER = Color3.fromRGB(150, 160, 178),
-	PAVER_DARK = Color3.fromRGB(112, 122, 142),
-	CLIFF = Color3.fromRGB(96, 120, 186),
-	CLIFF_DARK = Color3.fromRGB(70, 90, 156),
+	PAVER = Color3.fromRGB(232, 150, 74), -- Patch 23: the reference's orange studded brick paths
+	PAVER_DARK = Color3.fromRGB(196, 116, 56),
+	CLIFF = Color3.fromRGB(150, 102, 66), -- earth cliffs under grass ledges
+	CLIFF_DARK = Color3.fromRGB(118, 80, 52),
 	NEON_RED = Color3.fromRGB(226, 60, 90),
 	WHITE = Color3.fromRGB(214, 218, 228),
 	LANTERN = Color3.fromRGB(230, 160, 90),
@@ -87,7 +93,7 @@ function PropKit.gallowsLamp(parent, base, facing)
 	sdecor({ Name = "LampPost", Size = Vector3.new(1.2, 13, 1.2), CFrame = cf * CFrame.new(0, 7, 0), Color = C.WOOD, Parent = parent })
 	sdecor({ Name = "LampArm", Size = Vector3.new(1, 1, 5), CFrame = cf * CFrame.new(0, 12.4, -2.2), Color = C.WOOD, Parent = parent })
 	decor({ Name = "LampBrace", Size = Vector3.new(0.6, 0.6, 3.6), CFrame = cf * CFrame.new(0, 10.8, -1.3) * CFrame.Angles(math.rad(45), 0, 0), Color = C.WOOD_DARK, Parent = parent })
-	decor({ Name = "LampCap", Size = Vector3.new(1.6, 0.6, 1.6), CFrame = cf * CFrame.new(0, 13.7, 0), Color = C.SNOW, Parent = parent })
+	decor({ Name = "LampCap", Size = Vector3.new(1.6, 0.6, 1.6), CFrame = cf * CFrame.new(0, 13.7, 0), Color = C.WOOD_DARK, Parent = parent })
 	decor({ Name = "Chain", Size = Vector3.new(0.2, 1.4, 0.2), CFrame = cf * CFrame.new(0, 11.2, -4.2), Color = Color3.fromRGB(60, 60, 66), Parent = parent })
 	lantern(parent, cf * CFrame.new(0, 10.5, -4.2), 1)
 end
@@ -129,14 +135,11 @@ end
 
 -- Buildings -----------------------------------------------------------------------------------------------------
 
--- Snow on a roof: a thick white slab with a soft overhang and icicles hanging off the eave.
+-- Patch 23: the roof's top layer: a cap of coloured tiles with a darker trim along the eave (no more snow).
 local function snowRoof(parent, cf, w, length, rng)
-	sdecor({ Name = "RoofSnow", Size = Vector3.new(w + 0.6, 1.2, length + 0.4), CFrame = cf * CFrame.new(0, 0.9, 0), Color = C.SNOW, Parent = parent })
-	sdecor({ Name = "RoofSnowLump", Size = Vector3.new(w * 0.6, 0.7, length * 0.5), CFrame = cf * CFrame.new(rng:NextNumber(-w * 0.15, w * 0.15), 1.7, rng:NextNumber(-length * 0.2, length * 0.2)), Color = C.SNOW, Parent = parent })
-	for x = -w / 2 + 0.8, w / 2 - 0.8, 1.6 do
-		local len = rng:NextNumber(0.6, 1.8)
-		decor({ Name = "Icicle", Size = Vector3.new(0.35, len, 0.35), CFrame = cf * CFrame.new(x, 0.2 - len / 2, length / 2 + 0.1), Color = Color3.fromRGB(200, 236, 255), Material = Enum.Material.Glass, Transparency = 0.15, Parent = parent })
-	end
+	local color = C.ROOFS[rng:NextInteger(1, #C.ROOFS)]
+	sdecor({ Name = "RoofTiles", Size = Vector3.new(w + 0.6, 0.7, length + 0.4), CFrame = cf * CFrame.new(0, 0.7, 0), Color = color, Parent = parent })
+	decor({ Name = "RoofTrim", Size = Vector3.new(w + 0.8, 0.5, 0.6), CFrame = cf * CFrame.new(0, 0.4, length / 2 + 0.1), Color = color:Lerp(Color3.new(0, 0, 0), 0.35), Parent = parent })
 end
 
 -- The reference's log cabin: a stone base, walls of stacked studded logs with lighter crossed ends at the
@@ -168,7 +171,7 @@ function PropKit.logCabin(parent, center, facing, w, d, h, rng)
 			decor({ Name = "Lattice", Size = Vector3.new(0.16, wh * 1.42, 0.2), CFrame = at * CFrame.new(k * ww / 5, 0, -0.3) * CFrame.Angles(0, 0, math.rad(45)), Color = C.WOOD_DARK, Parent = model })
 			decor({ Name = "Lattice", Size = Vector3.new(0.16, wh * 1.42, 0.2), CFrame = at * CFrame.new(k * ww / 5, 0, -0.3) * CFrame.Angles(0, 0, math.rad(-45)), Color = C.WOOD_DARK, Parent = model })
 		end
-		sdecor({ Name = "SillSnow", Size = Vector3.new(ww + 1.2, 0.4, 0.8), CFrame = at * CFrame.new(0, -wh / 2 - 0.5, -0.4), Color = C.SNOW, Parent = model })
+		sdecor({ Name = "FlowerBox", Size = Vector3.new(ww + 1.2, 0.6, 0.8), CFrame = at * CFrame.new(0, -wh / 2 - 0.5, -0.4), Color = C.SNOW, Parent = model })
 	end
 	for _, x in ipairs({ -w / 3.2, w / 3.2 }) do
 		window(cf * CFrame.new(x, 1.2 + h * 0.55, -d / 2 - 0.55), 2.6, 2.6)
@@ -183,7 +186,7 @@ function PropKit.logCabin(parent, center, facing, w, d, h, rng)
 	decor({ Name = "DoorWindow", Size = Vector3.new(1.2, 1.2, 0.2), CFrame = door * CFrame.new(0, 1, -0.3), Color = C.WINDOW_WARM, Material = Enum.Material.Neon, Parent = model })
 	sbrick({ Name = "Step", Size = Vector3.new(4.4, 0.6, 1.6), CFrame = cf * CFrame.new(0, 0.3, -d / 2 - 1.4), Color = C.PAVER, Parent = model })
 	sdecor({ Name = "Porch", Size = Vector3.new(5, 0.5, 2.4), CFrame = cf * CFrame.new(0, 1.2 + 5.2, -d / 2 - 1.3), Color = C.WOOD_DARK, Parent = model })
-	sdecor({ Name = "PorchSnow", Size = Vector3.new(5.2, 0.5, 2.6), CFrame = cf * CFrame.new(0, 1.2 + 5.7, -d / 2 - 1.3), Color = C.SNOW, Parent = model })
+	sdecor({ Name = "PorchRoof", Size = Vector3.new(5.2, 0.5, 2.6), CFrame = cf * CFrame.new(0, 1.2 + 5.7, -d / 2 - 1.3), Color = C.ROOFS[rng:NextInteger(1, #C.ROOFS)], Parent = model })
 	lantern(model, cf * CFrame.new(2.6, 1.2 + 5, -d / 2 - 1.2), 0.7)
 	-- the roof: two slopes of studded planks under a thick layer of snow, gables filled with logs
 	local half = d / 2 + 1.4
@@ -204,7 +207,7 @@ function PropKit.logCabin(parent, center, facing, w, d, h, rng)
 		end
 	end
 	local chimney = sdecor({ Name = "Chimney", Size = Vector3.new(2, rise + 4, 2), CFrame = cf * CFrame.new(w / 3, 1.2 + h + (rise + 4) / 2, d / 5), Color = Color3.fromRGB(110, 110, 124), Parent = model })
-	sdecor({ Name = "ChimneySnow", Size = Vector3.new(2.4, 0.6, 2.4), CFrame = chimney.CFrame * CFrame.new(0, (rise + 4) / 2 + 0.3, 0), Color = C.SNOW, Parent = model })
+	sdecor({ Name = "ChimneyCap", Size = Vector3.new(2.4, 0.6, 2.4), CFrame = chimney.CFrame * CFrame.new(0, (rise + 4) / 2 + 0.3, 0), Color = Color3.fromRGB(80, 80, 92), Parent = model })
 	particles(chimney, {
 		Color = ColorSequence.new(Color3.fromRGB(236, 240, 250)),
 		Rate = 4,
@@ -286,7 +289,7 @@ function PropKit.brickHouse(parent, center, facing, w, d, h, roofColor)
 	part({ Name = "Dormer", Size = Vector3.new(3.6, 3, 2.6), CFrame = dormer, Color = C.BRICK, Parent = model })
 	decor({ Name = "DormerWindow", Size = Vector3.new(2, 1.8, 0.3), CFrame = dormer * CFrame.new(0, 0, -1.4), Color = C.WINDOW, Material = Enum.Material.Neon, Parent = model })
 	sdecor({ Name = "DormerRoof", Size = Vector3.new(4.4, 0.6, 3.4), CFrame = dormer * CFrame.new(0, 1.8, 0), Color = roofColor, Parent = model })
-	return cf
+	return cf, model
 end
 
 -- The snow town's neon shop: white studded walls, a thick red frame round a huge glowing cyan window, a red
@@ -421,59 +424,67 @@ end
 
 -- Nature --------------------------------------------------------------------------------------------------------
 
--- A cluster of glowing ice crystals: tall prisms leaning out from a common base.
+-- Patch 23: a cluster of glowing mushrooms (the reference forest's cyan ones): white stems, glowing caps with
+-- pale spots. Still called iceCrystal so every builder that placed crystals now places mushrooms.
 function PropKit.iceCrystal(parent, base, rng, scale)
 	scale = scale or 1
 	local s = scale
-	for i = 1, rng:NextInteger(4, 7) do
-		local h = rng:NextNumber(3, 8) * s * (i == 1 and 1.6 or 1)
-		local w = rng:NextNumber(0.9, 1.8) * s
-		local tilt = CFrame.Angles(rng:NextNumber(-0.35, 0.35), rng:NextNumber(0, math.pi), rng:NextNumber(-0.35, 0.35))
-		local cf = CFrame.new(base) * tilt * CFrame.new(0, h / 2, 0)
-		decor({ Name = "Crystal", Size = Vector3.new(w, h, w), CFrame = cf, Color = (i % 2 == 0) and C.ICE or C.ICE_DEEP, Material = Enum.Material.Glass, Transparency = 0.15, Parent = parent })
-		decor({ Name = "CrystalCore", Size = Vector3.new(w * 0.45, h * 0.85, w * 0.45), CFrame = cf, Color = Color3.fromRGB(200, 250, 255), Material = Enum.Material.Neon, Transparency = 0.25, Parent = parent })
-		decor({ Name = "CrystalTip", Size = Vector3.new(w * 0.7, w * 0.7, w * 0.7), CFrame = cf * CFrame.new(0, h / 2, 0) * CFrame.Angles(math.rad(45), 0, math.rad(45)), Color = C.ICE, Material = Enum.Material.Glass, Transparency = 0.15, Parent = parent })
+	local caps = { Color3.fromRGB(90, 230, 255), Color3.fromRGB(120, 255, 220), Color3.fromRGB(150, 200, 255) }
+	for i = 1, rng:NextInteger(3, 6) do
+		local h = rng:NextNumber(1.2, 3.2) * s * (i == 1 and 1.5 or 1)
+		local w = rng:NextNumber(1.6, 3) * s * (i == 1 and 1.4 or 1)
+		local off = Vector3.new(rng:NextNumber(-1.6, 1.6) * s, 0, rng:NextNumber(-1.6, 1.6) * s)
+		local tilt = CFrame.Angles(rng:NextNumber(-0.15, 0.15), 0, rng:NextNumber(-0.15, 0.15))
+		local stem = CFrame.new(base + off) * tilt
+		sdecor({ Name = "MushroomStem", Size = Vector3.new(w * 0.32, h, w * 0.32), CFrame = stem * CFrame.new(0, h / 2, 0), Color = Color3.fromRGB(236, 236, 226), Parent = parent })
+		local capColor = caps[rng:NextInteger(1, #caps)]
+		decor({ Name = "MushroomCap", Size = Vector3.new(w, w * 0.4, w), CFrame = stem * CFrame.new(0, h + w * 0.15, 0), Color = capColor, Material = Enum.Material.Neon, Transparency = 0.05, Parent = parent })
+		decor({ Name = "MushroomCapTop", Size = Vector3.new(w * 0.6, w * 0.25, w * 0.6), CFrame = stem * CFrame.new(0, h + w * 0.42, 0), Color = capColor, Material = Enum.Material.Neon, Parent = parent })
+		for k = 1, 3 do
+			local a = k / 3 * math.pi * 2 + rng:NextNumber(0, 1)
+			decor({ Name = "MushroomSpot", Size = Vector3.new(w * 0.16, w * 0.08, w * 0.16), CFrame = stem * CFrame.new(math.cos(a) * w * 0.3, h + w * 0.36, math.sin(a) * w * 0.3), Color = Color3.fromRGB(240, 255, 255), Material = Enum.Material.Neon, Parent = parent })
+		end
 	end
-	local glow = decor({ Name = "CrystalLight", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(base + Vector3.new(0, 3 * s, 0)), Transparency = 1, Parent = parent })
-	light(glow, Color3.fromRGB(120, 220, 255), 18 * s, 1.4)
-	K.sparkles(glow, Color3.fromRGB(210, 250, 255), 3)
+	local glow = decor({ Name = "MushroomLight", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(base + Vector3.new(0, 2.5 * s, 0)), Transparency = 1, Parent = parent })
+	light(glow, Color3.fromRGB(100, 230, 255), 14 * s, 1.2)
+	K.sparkles(glow, Color3.fromRGB(200, 255, 255), 2)
 end
 
--- A stepped mound of snow blocks.
+-- Patch 23: a bush (where the snow mounds were): stacked leafy blocks with a few flowers.
 function PropKit.snowMound(parent, base, rng, scale)
 	scale = scale or 1
 	local s = scale
-	local layers = rng:NextInteger(2, 3)
-	for i = 0, layers - 1 do
-		local w = (5 - i * 1.6) * s * rng:NextNumber(0.9, 1.2)
-		local d = (4 - i * 1.2) * s * rng:NextNumber(0.9, 1.2)
-		sbrick({ Name = "SnowMound", Size = Vector3.new(w, 1.1 * s, d), CFrame = CFrame.new(base + Vector3.new(rng:NextNumber(-0.4, 0.4) * s, (0.55 + i * 1.1) * s, rng:NextNumber(-0.4, 0.4) * s)) * CFrame.Angles(0, rng:NextNumber(0, 0.4), 0), Color = (i % 2 == 0) and C.SNOW or C.SNOW_SHADE, CanCollide = i == 0, Parent = parent })
+	local greens = { Color3.fromRGB(76, 168, 64), Color3.fromRGB(96, 190, 72), Color3.fromRGB(62, 146, 58) }
+	for i = 0, rng:NextInteger(2, 3) do
+		local w = (4.2 - i * 1.1) * s * rng:NextNumber(0.85, 1.15)
+		sdecor({ Name = "Bush", Size = Vector3.new(w, 1.6 * s, w * rng:NextNumber(0.8, 1.1)), CFrame = CFrame.new(base + Vector3.new(rng:NextNumber(-0.6, 0.6) * s, (0.8 + i * 1.2) * s, rng:NextNumber(-0.6, 0.6) * s)) * CFrame.Angles(0, rng:NextNumber(0, 1.5), 0), Color = greens[(i % #greens) + 1], Parent = parent })
+	end
+	local flowers = { Color3.fromRGB(255, 110, 160), Color3.fromRGB(255, 230, 90), Color3.fromRGB(250, 250, 255), Color3.fromRGB(180, 130, 255) }
+	for _ = 1, rng:NextInteger(2, 4) do
+		decor({ Name = "Flower", Size = Vector3.new(0.6, 0.6, 0.6) * s, CFrame = CFrame.new(base + Vector3.new(rng:NextNumber(-1.8, 1.8) * s, rng:NextNumber(1.4, 3.2) * s, rng:NextNumber(-1.8, 1.8) * s)), Color = flowers[rng:NextInteger(1, #flowers)], Parent = parent })
 	end
 end
 
--- An igloo: a stepped dome of snow-block rings with a little tunnel entrance facing `facing`.
+-- Patch 23: a striped camping tent with a little campfire (where the igloos were).
 function PropKit.igloo(parent, base, facing, scale)
 	scale = scale or 1
 	local s = scale
 	local cf = look(base, facing)
-	for ring = 0, 4 do
-		local r = (6 - ring * 1.2) * s
-		local y = (0.7 + ring * 1.3) * s
-		local n = math.max(6, math.floor(r * 2.2))
-		for i = 0, n - 1 do
-			local a = i / n * math.pi * 2
-			if not (ring < 2 and math.abs(math.sin(a)) < 0.3 and math.cos(a) > 0) then
-				sdecor({ Name = "IglooBlock", Size = Vector3.new(r * 2 * math.pi / n + 0.1, 1.3 * s, 1.4 * s), CFrame = cf * CFrame.new(math.sin(a) * r, y, -math.cos(a) * r) * CFrame.Angles(0, -a, 0), Color = (ring + i) % 2 == 0 and C.SNOW or C.SNOW_SHADE, Parent = parent }).CanCollide = true
-			end
+	local colors = { Color3.fromRGB(230, 80, 70), Color3.fromRGB(250, 245, 235) }
+	for i = 0, 5 do
+		local x = (i - 2.5) * 1.3 * s
+		for _, side in ipairs({ -1, 1 }) do
+			decor({ Name = "TentCloth", Size = Vector3.new(1.32 * s, 0.3, 6 * s), CFrame = cf * CFrame.new(x, 2.4 * s, side * 1.9 * s) * CFrame.Angles(side * math.rad(52), 0, 0), Color = colors[(i % 2) + 1], Parent = parent })
 		end
 	end
-	sdecor({ Name = "IglooTop", Size = Vector3.new(2.6, 0.8, 2.6) * s, CFrame = cf * CFrame.new(0, 6.9 * s, 0), Color = C.SNOW, Parent = parent })
-	for _, x in ipairs({ -1.6, 1.6 }) do
-		sdecor({ Name = "Tunnel", Size = Vector3.new(1, 3, 3) * s, CFrame = cf * CFrame.new(x * s, 1.5 * s, -6.6 * s), Color = C.SNOW, Parent = parent })
+	sdecor({ Name = "TentRidge", Size = Vector3.new(8.4 * s, 0.5, 0.5), CFrame = cf * CFrame.new(0, 4.8 * s, 0), Color = Color3.fromRGB(120, 80, 50), Parent = parent })
+	local fire = cf * CFrame.new(0, 0, -6 * s)
+	for k = 0, 3 do
+		decor({ Name = "FireLog", Size = Vector3.new(2.2 * s, 0.5 * s, 0.5 * s), CFrame = fire * CFrame.new(0, 0.3 * s, 0) * CFrame.Angles(0, k * math.pi / 4, 0), Color = Color3.fromRGB(110, 70, 44), Parent = parent })
 	end
-	sdecor({ Name = "TunnelTop", Size = Vector3.new(4.2, 1, 3) * s, CFrame = cf * CFrame.new(0, 3.4 * s, -6.6 * s), Color = C.SNOW, Parent = parent })
-	local glow = decor({ Name = "IglooGlow", Size = Vector3.new(2, 2, 0.2) * s, CFrame = cf * CFrame.new(0, 1.4 * s, -4.8 * s), Color = C.LANTERN, Material = Enum.Material.Neon, Transparency = 0.3, Parent = parent })
-	light(glow, C.LANTERN, 12, 1)
+	local flame = decor({ Name = "Flame", Size = Vector3.new(0.9, 1.4, 0.9) * s, CFrame = fire * CFrame.new(0, 1 * s, 0), Color = Color3.fromRGB(255, 160, 60), Material = Enum.Material.Neon, Parent = parent })
+	light(flame, Color3.fromRGB(255, 170, 90), 12, 1.2)
+	particles(flame, { Color = ColorSequence.new(Color3.fromRGB(255, 200, 90), Color3.fromRGB(255, 90, 40)), LightEmission = 0.8, Rate = 12, Lifetime = NumberRange.new(0.4, 0.7), Speed = NumberRange.new(2, 4), Size = NumberSequence.new(0.6, 0), SpreadAngle = Vector2.new(15, 15), EmissionDirection = Enum.NormalId.Top })
 end
 
 -- A stepped voxel cliff or mountain: stacked studded blocks shrinking as they rise, each layer jittered, snow on
@@ -508,23 +519,14 @@ end
 
 -- A sheet of glowing ice with white crack lines across it (the reference's frozen water). `y` is its top.
 function PropKit.iceSheet(parent, center, w, d, y, rng)
-	local sheet = part({ Name = "Ice", Size = Vector3.new(w, 1, d), CFrame = CFrame.new(center.X, y - 0.5, center.Z), Color = Color3.fromRGB(110, 210, 250), Material = Enum.Material.Glass, Transparency = 0.25, Parent = parent })
-	decor({ Name = "IceGlow", Size = Vector3.new(w - 0.4, 0.2, d - 0.4), CFrame = CFrame.new(center.X, y - 1.2, center.Z), Color = Color3.fromRGB(40, 200, 255), Material = Enum.Material.Neon, Transparency = 0.2, Parent = parent })
-	-- a web of cracks: random walks of short white neon segments
-	for _ = 1, math.floor(w * d / 60) do
-		local p = Vector3.new(center.X + rng:NextNumber(-w / 2 + 2, w / 2 - 2), y + 0.02, center.Z + rng:NextNumber(-d / 2 + 2, d / 2 - 2))
-		local a = rng:NextNumber(0, math.pi * 2)
-		for _ = 1, rng:NextInteger(3, 6) do
-			a += rng:NextNumber(-1, 1)
-			local len = rng:NextNumber(2, 5)
-			local q = p + Vector3.new(math.cos(a) * len, 0, math.sin(a) * len)
-			if math.abs(q.X - center.X) < w / 2 - 0.5 and math.abs(q.Z - center.Z) < d / 2 - 0.5 then
-				decor({ Name = "Crack", Size = Vector3.new(0.25, 0.06, len), CFrame = CFrame.lookAt((p + q) / 2, q), Color = Color3.fromRGB(235, 250, 255), Material = Enum.Material.Neon, Transparency = 0.1, Parent = parent })
-				p = q
-			end
-		end
+	-- Patch 23: a pond of clear blue water (it was ice), lily pads and a few sparkles
+	local sheet = part({ Name = "Pond", Size = Vector3.new(w, 1, d), CFrame = CFrame.new(center.X, y - 0.6, center.Z), Color = Color3.fromRGB(70, 170, 235), Material = Enum.Material.Glass, Transparency = 0.2, Parent = parent })
+	decor({ Name = "PondFloor", Size = Vector3.new(w - 0.4, 0.2, d - 0.4), CFrame = CFrame.new(center.X, y - 1.4, center.Z), Color = Color3.fromRGB(40, 110, 170), Parent = parent })
+	for _ = 1, math.floor(w * d / 90) do
+		local p = Vector3.new(center.X + rng:NextNumber(-w / 2 + 2, w / 2 - 2), y - 0.05, center.Z + rng:NextNumber(-d / 2 + 2, d / 2 - 2))
+		decor({ Name = "LilyPad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.15, 2, 2), CFrame = CFrame.new(p) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(80, 180, 70), Parent = parent })
 	end
-	light(sheet, Color3.fromRGB(110, 220, 255), 16, 0.8)
+	K.sparkles(sheet, Color3.fromRGB(220, 250, 255), 3)
 	return sheet
 end
 
@@ -776,6 +778,186 @@ end
 function PropKit.grassy(p)
 	CollectionService:AddTag(p, "TideboundGrass")
 	return p
+end
+
+-- Patch 23: the Catch a Brainrot town's buildings ------------------------------------------------------------------
+
+-- Letters carved into the brick paths, as in the reference ("CATCH A BRAINROT" spelled out along the road): each
+-- letter is a 5x7 grid of raised darker bricks. `start` is the bottom-left of the first letter; the text runs
+-- along `dir` (a flat unit vector) with letters `pixel` studs per cell.
+local FONT = {
+	A = { "01110", "10001", "10001", "11111", "10001", "10001", "10001" },
+	B = { "11110", "10001", "10001", "11110", "10001", "10001", "11110" },
+	C = { "01111", "10000", "10000", "10000", "10000", "10000", "01111" },
+	D = { "11110", "10001", "10001", "10001", "10001", "10001", "11110" },
+	E = { "11111", "10000", "10000", "11110", "10000", "10000", "11111" },
+	G = { "01111", "10000", "10000", "10111", "10001", "10001", "01111" },
+	H = { "10001", "10001", "10001", "11111", "10001", "10001", "10001" },
+	I = { "11111", "00100", "00100", "00100", "00100", "00100", "11111" },
+	L = { "10000", "10000", "10000", "10000", "10000", "10000", "11111" },
+	N = { "10001", "11001", "10101", "10011", "10001", "10001", "10001" },
+	O = { "01110", "10001", "10001", "10001", "10001", "10001", "01110" },
+	R = { "11110", "10001", "10001", "11110", "10100", "10010", "10001" },
+	S = { "01111", "10000", "10000", "01110", "00001", "00001", "11110" },
+	T = { "11111", "00100", "00100", "00100", "00100", "00100", "00100" },
+	U = { "10001", "10001", "10001", "10001", "10001", "10001", "01110" },
+	W = { "10001", "10001", "10001", "10101", "10101", "10101", "01010" },
+	Y = { "10001", "10001", "01010", "00100", "00100", "00100", "00100" },
+	["!"] = { "00100", "00100", "00100", "00100", "00100", "00000", "00100" },
+}
+function PropKit.carvedText(parent, text, start, dir, y, pixel, color)
+	local right = dir
+	local up = Vector3.new(dir.Z, 0, -dir.X) -- the letters' "up" points across the road, away from the reader
+	local cursor = 0
+	for ch in text:gmatch(".") do
+		local glyph = FONT[ch:upper()]
+		if glyph then
+			for row = 1, 7 do
+				local line = glyph[row]
+				for col = 1, 5 do
+					if line:sub(col, col) == "1" then
+						local p = start + right * ((cursor + col - 0.5) * pixel) + up * ((7 - row + 0.5) * pixel)
+						sdecor({ Name = "CarvedBrick", Size = Vector3.new(pixel * 0.94, 0.5, pixel * 0.94), CFrame = CFrame.lookAt(Vector3.new(p.X, y + 0.25, p.Z), Vector3.new(p.X, y + 0.25, p.Z) + right), Color = color or C.PAVER_DARK, Parent = parent })
+					end
+				end
+			end
+		end
+		cursor += 6
+	end
+end
+
+-- A sign board on posts with big text.
+local function signBoard(parent, cf, w, h, text, bg, fg)
+	local board = decor({ Name = "Sign", Size = Vector3.new(w, h, 0.5), CFrame = cf, Color = bg, Parent = parent })
+	surfaceText(board, text, fg)
+	return board
+end
+
+-- The Tide Lab (the reference's Rot Lab): a clean white building with blue trim, a blue roof, a big glowing sign,
+-- a glass front, and inside a tall containment tube glowing green with something floating in it.
+function PropKit.tideLab(parent, center, facing, w, d, h)
+	local cf = look(center, facing)
+	local model = Instance.new("Model")
+	model.Name = "TideLab"
+	model.Parent = parent
+	local blue = Color3.fromRGB(60, 130, 230)
+	sbrick({ Name = "Base", Size = Vector3.new(w + 2, 1, d + 2), CFrame = cf * CFrame.new(0, 0.5, 0), Color = Color3.fromRGB(200, 210, 224), Parent = model })
+	-- walls: white with blue bands; the front is glass between white pillars
+	for _, spec in ipairs({ { Vector3.new(w, h, 1), CFrame.new(0, 1 + h / 2, d / 2) }, { Vector3.new(1, h, d), CFrame.new(-w / 2, 1 + h / 2, 0) }, { Vector3.new(1, h, d), CFrame.new(w / 2, 1 + h / 2, 0) } }) do
+		sbrick({ Name = "Wall", Size = spec[1], CFrame = cf * spec[2], Color = Color3.fromRGB(244, 246, 250), Parent = model })
+	end
+	for _, x in ipairs({ -w / 2, -w / 6, w / 6, w / 2 }) do
+		sbrick({ Name = "Pillar", Size = Vector3.new(1.4, h, 1.4), CFrame = cf * CFrame.new(x, 1 + h / 2, -d / 2), Color = Color3.fromRGB(244, 246, 250), Parent = model })
+	end
+	part({ Name = "Glass", Size = Vector3.new(w - 1, h - 2.4, 0.4), CFrame = cf * CFrame.new(0, 1 + (h - 2.4) / 2, -d / 2), Color = Color3.fromRGB(170, 220, 255), Material = Enum.Material.Glass, Transparency = 0.55, Parent = model })
+	for _, yy in ipairs({ 1.6, h - 0.4 }) do
+		decor({ Name = "Band", Size = Vector3.new(w + 1.4, 0.8, d + 1.4), CFrame = cf * CFrame.new(0, yy, 0), Color = blue, Parent = model })
+	end
+	decor({ Name = "NeonStrip", Size = Vector3.new(w + 1.5, 0.25, d + 1.5), CFrame = cf * CFrame.new(0, h - 1, 0), Color = Color3.fromRGB(120, 220, 255), Material = Enum.Material.Neon, Parent = model })
+	-- the floor inside: white and blue tiles
+	for x = -w / 2 + 2, w / 2 - 2, 4 do
+		for z = -d / 2 + 2, d / 2 - 2, 4 do
+			decor({ Name = "Tile", Size = Vector3.new(3.9, 0.2, 3.9), CFrame = cf * CFrame.new(x, 1.1, z), Color = ((math.floor(x / 4) + math.floor(z / 4)) % 2 == 0) and Color3.fromRGB(240, 244, 250) or Color3.fromRGB(150, 196, 240), Parent = model })
+		end
+	end
+	-- the roof: a flat blue slab with a raised rim
+	sbrick({ Name = "Roof", Size = Vector3.new(w + 2, 1, d + 2), CFrame = cf * CFrame.new(0, 1 + h + 0.5, 0), Color = blue, Parent = model })
+	sdecor({ Name = "RoofRim", Size = Vector3.new(w + 2.4, 0.6, d + 2.4), CFrame = cf * CFrame.new(0, 1 + h + 1.3, 0), Color = Color3.fromRGB(40, 100, 200), Parent = model })
+	-- the containment tube: a glass cylinder full of green light with a creature floating inside
+	local tube = cf * CFrame.new(0, 1, d / 2 - 4)
+	sbrick({ Name = "TubeBase", Size = Vector3.new(5, 1.2, 5), CFrame = tube * CFrame.new(0, 0.6, 0), Color = Color3.fromRGB(90, 100, 120), Parent = model })
+	local glow = decor({ Name = "TubeLiquid", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h - 3.4, 3.4, 3.4), CFrame = tube * CFrame.new(0, 1.2 + (h - 3.4) / 2, 0) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(110, 255, 140), Material = Enum.Material.Neon, Transparency = 0.45, Parent = model })
+	decor({ Name = "TubeGlass", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h - 3.2, 4, 4), CFrame = tube * CFrame.new(0, 1.2 + (h - 3.2) / 2, 0) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(200, 255, 220), Material = Enum.Material.Glass, Transparency = 0.6, Parent = model })
+	sbrick({ Name = "TubeTop", Size = Vector3.new(5, 1, 5), CFrame = tube * CFrame.new(0, h - 1.6, 0), Color = Color3.fromRGB(90, 100, 120), Parent = model })
+	decor({ Name = "Specimen", Size = Vector3.new(1.6, 2, 1.2), CFrame = tube * CFrame.new(0, h / 2, 0), Color = Color3.fromRGB(255, 170, 60), Parent = model })
+	light(glow, Color3.fromRGB(110, 255, 150), 18, 1.6)
+	particles(glow, { Color = ColorSequence.new(Color3.fromRGB(200, 255, 210)), LightEmission = 1, Rate = 6, Lifetime = NumberRange.new(1, 2), Speed = NumberRange.new(1, 2), Size = NumberSequence.new(0.25, 0), EmissionDirection = Enum.NormalId.Right })
+	-- consoles along the side walls
+	for _, side in ipairs({ -1, 1 }) do
+		local console = cf * CFrame.new(side * (w / 2 - 2), 1, 0)
+		sbrick({ Name = "Console", Size = Vector3.new(2.4, 3.2, 6), CFrame = console * CFrame.new(0, 1.6, 0), Color = Color3.fromRGB(70, 80, 100), Parent = model })
+		decor({ Name = "Screen", Size = Vector3.new(0.2, 2, 4.6), CFrame = console * CFrame.new(-side * 1.25, 3.2, 0), Color = Color3.fromRGB(80, 200, 255), Material = Enum.Material.Neon, Parent = model })
+	end
+	-- the sign over the door
+	signBoard(model, cf * CFrame.new(0, 1 + h + 3.6, -d / 2 - 0.4), w * 0.7, 4, "TIDE LAB", Color3.fromRGB(40, 100, 200), Color3.fromRGB(255, 255, 255))
+	return cf, model
+end
+
+-- The Tide Center (the reference's Rot Center): red and white with a big rounded sign, a red roof, white walls,
+-- glass doors, and a red-and-white tiled floor with a counter inside.
+function PropKit.tideCenter(parent, center, facing, w, d, h)
+	local cf = look(center, facing)
+	local model = Instance.new("Model")
+	model.Name = "TideCenter"
+	model.Parent = parent
+	local red = Color3.fromRGB(226, 56, 70)
+	sbrick({ Name = "Base", Size = Vector3.new(w + 2, 1, d + 2), CFrame = cf * CFrame.new(0, 0.5, 0), Color = Color3.fromRGB(230, 220, 222), Parent = model })
+	for _, spec in ipairs({ { Vector3.new(w, h, 1), CFrame.new(0, 1 + h / 2, d / 2) }, { Vector3.new(1, h, d), CFrame.new(-w / 2, 1 + h / 2, 0) }, { Vector3.new(1, h, d), CFrame.new(w / 2, 1 + h / 2, 0) } }) do
+		sbrick({ Name = "Wall", Size = spec[1], CFrame = cf * spec[2], Color = Color3.fromRGB(250, 246, 246), Parent = model })
+	end
+	-- the front: red lower half with glass doors in the middle, white upper half
+	for _, x in ipairs({ -1, 1 }) do
+		sbrick({ Name = "FrontWall", Size = Vector3.new(w / 2 - 3, h, 1), CFrame = cf * CFrame.new(x * (w / 4 + 1.5), 1 + h / 2, -d / 2), Color = Color3.fromRGB(250, 246, 246), Parent = model })
+		sdecor({ Name = "RedBand", Size = Vector3.new(w / 2 - 3 + 0.2, h * 0.4, 1.2), CFrame = cf * CFrame.new(x * (w / 4 + 1.5), 1 + h * 0.2, -d / 2), Color = red, Parent = model })
+	end
+	part({ Name = "Doors", Size = Vector3.new(6, h * 0.6, 0.4), CFrame = cf * CFrame.new(0, 1 + h * 0.3, -d / 2), Color = Color3.fromRGB(200, 236, 255), Material = Enum.Material.Glass, Transparency = 0.5, Parent = model })
+	sdecor({ Name = "Lintel", Size = Vector3.new(7, h * 0.4, 1.2), CFrame = cf * CFrame.new(0, 1 + h * 0.8, -d / 2), Color = Color3.fromRGB(250, 246, 246), Parent = model })
+	-- the floor inside: red and white tiles, and a counter
+	for x = -w / 2 + 2, w / 2 - 2, 4 do
+		for z = -d / 2 + 2, d / 2 - 2, 4 do
+			decor({ Name = "Tile", Size = Vector3.new(3.9, 0.2, 3.9), CFrame = cf * CFrame.new(x, 1.1, z), Color = ((math.floor(x / 4) + math.floor(z / 4)) % 2 == 0) and Color3.fromRGB(250, 246, 246) or Color3.fromRGB(240, 120, 130), Parent = model })
+		end
+	end
+	sbrick({ Name = "Counter", Size = Vector3.new(w * 0.6, 3, 2.4), CFrame = cf * CFrame.new(0, 2.5, d / 2 - 4), Color = red, Parent = model })
+	-- the roof: red, stepped, with a white rim
+	sbrick({ Name = "Roof", Size = Vector3.new(w + 2, 1, d + 2), CFrame = cf * CFrame.new(0, 1 + h + 0.5, 0), Color = red, Parent = model })
+	sbrick({ Name = "RoofTop", Size = Vector3.new(w * 0.6, 1.4, d * 0.6), CFrame = cf * CFrame.new(0, 1 + h + 1.7, 0), Color = Color3.fromRGB(196, 40, 56), Parent = model })
+	sdecor({ Name = "RoofRim", Size = Vector3.new(w + 2.4, 0.5, d + 2.4), CFrame = cf * CFrame.new(0, 1 + h + 1.2, 0), Color = Color3.fromRGB(250, 246, 246), Parent = model })
+	-- the round sign: a red disc with a white plus
+	local disc = cf * CFrame.new(0, 1 + h + 4.6, -d / 2 - 0.6)
+	decor({ Name = "SignDisc", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.6, 6.4, 6.4), CFrame = disc * CFrame.Angles(0, math.rad(90), 0), Color = red, Parent = model })
+	decor({ Name = "SignRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 7.2, 7.2), CFrame = disc * CFrame.new(0, 0, 0.1) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(250, 246, 246), Parent = model })
+	for _, size in ipairs({ Vector3.new(3.6, 1.1, 0.4), Vector3.new(1.1, 3.6, 0.4) }) do
+		decor({ Name = "SignPlus", Size = size, CFrame = disc * CFrame.new(0, 0, -0.4), Color = Color3.fromRGB(255, 255, 255), Material = Enum.Material.Neon, Parent = model })
+	end
+	signBoard(model, cf * CFrame.new(0, 1 + h - 1.2, -d / 2 - 0.7), w * 0.55, 2.6, "TIDE CENTER", red, Color3.fromRGB(255, 255, 255))
+	return cf, model
+end
+
+-- A small shop house: brick walls, a coloured tiled roof, a striped awning over a counter at the front, and a sign.
+function PropKit.shopHouse(parent, center, facing, w, d, h, roofColor, title)
+	local cf, model = PropKit.brickHouse(parent, center, facing, w, d, h, roofColor)
+	local counter = sbrick({ Name = "Counter", Size = Vector3.new(w * 0.7, 3, 2.4), CFrame = cf * CFrame.new(0, 1.5, -d / 2 - 3), Color = C.WOOD, Parent = model })
+	for i = 0, 7 do
+		decor({ Name = "Awning", Size = Vector3.new(w * 0.8 / 8 + 0.05, 0.3, 3.6), CFrame = cf * CFrame.new(-w * 0.4 + (i + 0.5) * w * 0.8 / 8, 6.6, -d / 2 - 1.8) * CFrame.Angles(math.rad(-20), 0, 0), Color = (i % 2 == 0) and roofColor or Color3.fromRGB(250, 248, 240), Parent = model })
+	end
+	signBoard(model, cf * CFrame.new(0, 8.6, -d / 2 - 0.6), w * 0.8, 2.4, title, Color3.fromRGB(30, 24, 40), Color3.fromRGB(255, 230, 120))
+	return cf, counter
+end
+
+-- A voxel treasure chest on a little stand (the chest gacha): a wooden body with metal bands, a domed lid, a gold
+-- lock, and a soft golden glow spilling out of the seam.
+function PropKit.treasureChest(parent, base, facing, scale)
+	scale = scale or 1
+	local s = scale
+	local cf = look(base, facing)
+	local model = Instance.new("Model")
+	model.Name = "TreasureChest"
+	model.Parent = parent
+	local wood, woodDark, metal, gold = Color3.fromRGB(170, 104, 56), Color3.fromRGB(126, 74, 40), Color3.fromRGB(150, 156, 170), Color3.fromRGB(255, 206, 70)
+	local body = sbrick({ Name = "Body", Size = Vector3.new(6, 3.4, 4) * s, CFrame = cf * CFrame.new(0, 1.7 * s + 1, 0), Color = wood, Parent = model })
+	for _, x in ipairs({ -2.4, 0, 2.4 }) do
+		decor({ Name = "Band", Size = Vector3.new(0.5, 3.5, 4.1) * s, CFrame = cf * CFrame.new(x * s, 1.7 * s + 1, 0), Color = metal, Parent = model })
+	end
+	for i = 0, 2 do
+		decor({ Name = "Lid", Size = Vector3.new(6.1, 0.8, 4.1 - i * 1.1) * s, CFrame = cf * CFrame.new(0, (3.8 + i * 0.7) * s + 1, 0), Color = (i % 2 == 0) and woodDark or wood, Parent = model })
+	end
+	decor({ Name = "Lock", Size = Vector3.new(1.2, 1.4, 0.4) * s, CFrame = cf * CFrame.new(0, 3.3 * s + 1, -2.1 * s), Color = gold, Material = Enum.Material.Neon, Parent = model })
+	local seam = decor({ Name = "Seam", Size = Vector3.new(5.6, 0.2, 3.6) * s, CFrame = cf * CFrame.new(0, 3.45 * s + 1, 0), Color = Color3.fromRGB(255, 230, 140), Material = Enum.Material.Neon, Parent = model })
+	light(seam, Color3.fromRGB(255, 210, 120), 12, 1.4)
+	K.sparkles(seam, Color3.fromRGB(255, 240, 170), 4)
+	sbrick({ Name = "Stand", Size = Vector3.new(8, 1, 6) * s, CFrame = cf * CFrame.new(0, 0.5, 0), Color = Color3.fromRGB(90, 100, 120), Parent = model })
+	return body, model
 end
 
 return PropKit
