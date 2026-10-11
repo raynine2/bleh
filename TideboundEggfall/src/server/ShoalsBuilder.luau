@@ -21,7 +21,7 @@ local PropKit = require(script.Parent:WaitForChild("PropKit"))
 
 local ShoalsBuilder = {}
 
-local VERSION = 5
+local VERSION = 6
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -1031,7 +1031,7 @@ local function build(root)
 		reserve(nest.at, 5)
 	end
 	for _, b in ipairs(L.beacons) do
-		reserve(b, 8)
+		reserve(b, 11) -- a Tide Gate's platform
 	end
 	for _, c in ipairs(L.tideCaches) do
 		reserve(c, 8)
@@ -1125,7 +1125,8 @@ local function build(root)
 	beacons.Name = "Beacons"
 	beacons.Parent = gameplay
 	for i, b in ipairs(L.beacons) do
-		D.beacon(beacons, 200 + i, b, TOP, 1)
+		local island = nearestIsland(b)
+		D.beacon(beacons, 200 + i, b, TOP, 1, island and island.pos or nil)
 	end
 
 	for i, c in ipairs(L.tideCaches) do

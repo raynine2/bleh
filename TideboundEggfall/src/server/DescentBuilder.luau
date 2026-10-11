@@ -13,11 +13,12 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local WorldBuilder = require(script.Parent:WaitForChild("WorldBuilder"))
+local PropKit = require(script.Parent:WaitForChild("PropKit"))
 local Config = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild("Config"))
 
 local DescentBuilder = {}
 
-local VERSION = 3
+local VERSION = 4
 
 local K = WorldBuilder.kit
 local P = K.color
@@ -162,17 +163,15 @@ local function fishingSpot(parent, index, at, y, biome)
 	return spot
 end
 
-local function beacon(parent, index, at, y, depth)
-	part({ Name = "BeaconBase" .. index, Size = Vector3.new(6, 1.5, 6), CFrame = CFrame.new(at.X, y + 0.75, at.Z), Color = P.MINT_ROCK, Parent = parent })
-	studded({ Name = "BeaconPad" .. index, Size = Vector3.new(12, 0.5, 12), CFrame = CFrame.new(at.X, y + 0.25, at.Z), Color = Color3.fromRGB(240, 196, 70), Parent = parent })
-	local crystal = part({ Name = "ExtractionBeacon" .. index, Size = Vector3.new(2.6, 8, 2.6), CFrame = CFrame.new(at.X, y + 5.5, at.Z) * CFrame.Angles(0, math.rad(45), 0), Color = P.BEACON, Transparency = 0.1, Parent = parent })
-	crystal:SetAttribute("Depth", depth)
-	light(crystal, P.BEACON, 16, 1.2)
-	prompt(crystal, "Extract", "Extraction Beacon", { Action = "Extract" }, 1, 12)
-	billboard(crystal, "EXTRACT", nil, 6)
-	-- a pillar of light you can see across the map
-	decor({ Name = "BeaconColumn", Size = Vector3.new(3, 120, 3), CFrame = CFrame.new(at.X, y + 68, at.Z), Color = P.BEACON, Material = Enum.Material.Neon, Transparency = 0.82, CastShadow = false, Parent = parent })
-	return crystal
+-- Patch 16: every extraction point is a Tide Gate (PropKit): a stone arch round a swirling portal, with the
+-- crystal you hold on a pedestal in front. It faces `facing` (the island's middle; the nave in the Kelp).
+local function beacon(parent, index, at, y, depth, facing)
+	facing = facing or (depth == 2 and Vector3.new(KC.X, 0, KC.Z) or Vector3.new(0, 0, 0))
+	return PropKit.extractionGate(parent, index, at, y, facing, {
+		depth = depth,
+		title = depth == 2 and "Kelp Tide Gate" or "Tide Gate",
+		stone = depth == 2 and Color3.fromRGB(120, 140, 130) or nil,
+	})
 end
 
 -- Two curved boardwalk halves between islands, in the Shoals style (REF 2).

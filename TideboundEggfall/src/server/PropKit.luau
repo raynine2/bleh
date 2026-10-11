@@ -581,6 +581,197 @@ function PropKit.scaffold(parent, a, b, y, height)
 	end
 end
 
+-- Patch 16: the Tide Gate, every extraction point. A stepped studded platform; two stacked stone pillars with
+-- lanterns and banners; a voxel arch with a glowing rune keystone; inside it a standing portal of swirling tide
+-- light (rings that turn on the client about the gate's facing, foam, rising motes); a crystal on a pedestal in
+-- front that you hold to extract (the server recolours it when beacons close); and a thin pillar of light up into
+-- the sky so you can find it from far away. Returns the crystal (the prompt's parent).
+function PropKit.extractionGate(parent, index, at, y, facing, opts)
+	opts = opts or {}
+	local color = opts.color or Color3.fromRGB(90, 255, 200)
+	local stone = opts.stone or Color3.fromRGB(150, 160, 178)
+	local stoneDark = stone:Lerp(Color3.new(0, 0, 0), 0.22)
+	local base = Vector3.new(at.X, y, at.Z)
+	local dir = Vector3.new(facing.X - at.X, 0, facing.Z - at.Z)
+	if dir.Magnitude < 0.1 then
+		dir = Vector3.new(0, 0, -1)
+	end
+	local cf = CFrame.lookAt(base, base + dir.Unit)
+	local model = Instance.new("Model")
+	model.Name = "TideGate" .. index
+	model.Parent = parent
+	-- the stepped platform
+	for i, r in ipairs({ { 9, 0.6 }, { 7.6, 1.2 }, { 6.2, 1.8 } }) do
+		K.voxelDisk(model, "GatePlatform", base, r[1], y - 0.4, y + r[2], i % 2 == 0 and stoneDark or stone, 2)
+	end
+	local top = y + 1.8
+	-- pillars of stacked blocks, each course a little offset, with caps
+	for _, side in ipairs({ -1, 1 }) do
+		for course = 0, 4 do
+			local w = 2.6 - (course % 2) * 0.3
+			sbrick({ Name = "GatePillar", Size = Vector3.new(w, 2, w), CFrame = cf * CFrame.new(side * 5.4, top - y + 1 + course * 2, 0) * CFrame.Angles(0, (course % 2) * math.rad(45), 0), Color = (course % 2 == 0) and stone or stoneDark, Parent = model })
+		end
+		sbrick({ Name = "PillarCap", Size = Vector3.new(3.4, 0.8, 3.4), CFrame = cf * CFrame.new(side * 5.4, top - y + 10.4, 0), Color = stoneDark, Parent = model })
+		lantern(model, cf * CFrame.new(side * 7.2, top - y + 8.4, 0), 0.8)
+		decor({ Name = "LanternArm", Size = Vector3.new(2, 0.4, 0.4), CFrame = cf * CFrame.new(side * 6.4, top - y + 8.6, 0), Color = C.WOOD_DARK, Parent = model })
+		K.windy(decor({ Name = "GateBanner", Size = Vector3.new(1.8, 5, 0.15), CFrame = cf * CFrame.new(side * 5.4, top - y + 6, -1.45), Color = color:Lerp(Color3.fromRGB(30, 60, 90), 0.55), Parent = model }))
+		decor({ Name = "BannerStripe", Size = Vector3.new(1.85, 0.5, 0.18), CFrame = cf * CFrame.new(side * 5.4, top - y + 4.2, -1.47), Color = color, Material = Enum.Material.Neon, Parent = model })
+	end
+	-- the voxel arch over the top, with a glowing rune keystone
+	for k = -3, 3 do
+		local x = k * 1.6
+		local h = 11.2 + (3 - math.abs(k)) * 0.9
+		sbrick({ Name = "Arch", Size = Vector3.new(1.8, 1.6, 2.4), CFrame = cf * CFrame.new(x, top - y + h, 0), Color = (k % 2 == 0) and stone or stoneDark, Parent = model })
+	end
+	local key = sbrick({ Name = "Keystone", Size = Vector3.new(2.4, 2.4, 2.8), CFrame = cf * CFrame.new(0, top - y + 14.6, 0), Color = stoneDark, Parent = model })
+	decor({ Name = "Rune", Size = Vector3.new(1.4, 1.4, 0.2), CFrame = key.CFrame * CFrame.new(0, 0, -1.45) * CFrame.Angles(0, 0, math.rad(45)), Color = color, Material = Enum.Material.Neon, Parent = model })
+	-- the portal: a standing disc of tide light with turning rings and foam
+	local portalCenter = (cf * CFrame.new(0, top - y + 5.8, 0)).Position
+	local portalCf = CFrame.lookAt(portalCenter, portalCenter + cf.LookVector) * CFrame.Angles(0, math.rad(90), 0)
+	local disc = decor({ Name = "Portal", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 8.6, 8.6), CFrame = portalCf, Color = color:Lerp(Color3.fromRGB(40, 120, 200), 0.4), Material = Enum.Material.Neon, Transparency = 0.45, CastShadow = false, Parent = model })
+	for i, r in ipairs({ 4.3, 3.3, 2.2 }) do
+		local ring = decor({ Name = "PortalRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4 + i * 0.05, r * 2, r * 2), CFrame = portalCf * CFrame.new(-0.1 - i * 0.05, 0, 0), Color = (i % 2 == 0) and Color3.fromRGB(230, 255, 250) or color, Material = Enum.Material.Neon, Transparency = 0.55 + i * 0.08, CastShadow = false, Parent = model })
+		ring:SetAttribute("Pivot", portalCenter)
+		ring:SetAttribute("Axis", cf.LookVector)
+		ring:SetAttribute("SpinSpeed", (i % 2 == 0 and -1 or 1) * (0.6 + i * 0.4))
+		CollectionService:AddTag(ring, "TideboundSpin")
+		for j = 1, 3 do
+			local a = j / 3 * math.pi * 2 + i
+			local foamAt = portalCenter + cf.RightVector * math.cos(a) * r * 0.85 + Vector3.new(0, math.sin(a) * r * 0.85, 0) - cf.LookVector * 0.3
+			local foam = decor({ Name = "PortalFoam", Size = Vector3.new(0.3, 0.3, r * 0.8), CFrame = CFrame.lookAt(foamAt, foamAt + cf.LookVector) * CFrame.Angles(0, 0, a) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(240, 255, 255), Material = Enum.Material.Neon, Transparency = 0.2, CastShadow = false, Parent = model })
+			foam:SetAttribute("Pivot", portalCenter)
+			foam:SetAttribute("Axis", cf.LookVector)
+			foam:SetAttribute("SpinSpeed", (i % 2 == 0 and -1 or 1) * (0.6 + i * 0.4))
+			CollectionService:AddTag(foam, "TideboundSpin")
+		end
+	end
+	particles(disc, {
+		Color = ColorSequence.new(color, Color3.fromRGB(230, 255, 255)),
+		LightEmission = 0.8,
+		Rate = 10,
+		Lifetime = NumberRange.new(1.5, 2.5),
+		Speed = NumberRange.new(1, 2.5),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) }),
+		Acceleration = Vector3.new(0, 3, 0),
+		SpreadAngle = Vector2.new(60, 60),
+	})
+	light(disc, color, 26, 1.6)
+	-- the crystal on its pedestal in front of the gate: hold here to extract
+	local pedestal = cf * CFrame.new(0, top - y, -5)
+	sbrick({ Name = "BeaconPedestal", Size = Vector3.new(3, 2.4, 3), CFrame = pedestal * CFrame.new(0, 1.2, 0), Color = stoneDark, Parent = model })
+	decor({ Name = "PedestalRing", Size = Vector3.new(3.4, 0.4, 3.4), CFrame = pedestal * CFrame.new(0, 2.5, 0), Color = color, Material = Enum.Material.Neon, Parent = model })
+	local crystal = part({ Name = opts.name or ("ExtractionBeacon" .. index), Size = Vector3.new(1.8, 4.4, 1.8), CFrame = pedestal * CFrame.new(0, 5, 0) * CFrame.Angles(0, math.rad(45), 0), Color = color, Material = Enum.Material.Neon, Transparency = 0.1, Parent = model })
+	if opts.depth then
+		crystal:SetAttribute("Depth", opts.depth)
+	end
+	light(crystal, color, 14, 1.2)
+	K.prompt(crystal, "Extract", opts.title or "Tide Gate", { Action = "Extract" }, 1, 12)
+	K.billboard(crystal, "EXTRACT", opts.subtitle or "Hold to leave with your haul", 5)
+	-- the pillar of light into the sky
+	decor({ Name = "BeaconColumn", Size = Vector3.new(2, 160, 2), CFrame = CFrame.new(portalCenter + Vector3.new(0, 86, 0)), Color = color, Material = Enum.Material.Neon, Transparency = 0.8, CastShadow = false, Parent = model })
+	return crystal
+end
+
+-- Patch 16: the plaza's monument, the Eggfall Egg. A huge voxel Tide Egg, cracked down the front with light
+-- pouring out, sat in a giant nest of twigs on a stepped dais in a ring of glowing ice; little eggs orbit it.
+function PropKit.eggMonument(parent, center, y, rng)
+	local model = Instance.new("Model")
+	model.Name = "EggfallMonument"
+	model.Parent = parent
+	local c = Vector3.new(center.X, y, center.Z)
+	-- the dais: three studded steps, and a ring of glowing ice round its foot
+	K.voxelDisk(model, "Dais", c, 14, y - 0.5, y + 0.8, C.PAVER_DARK, 2)
+	K.voxelDisk(model, "Dais", c, 12, y + 0.8, y + 1.6, C.PAVER, 2)
+	K.voxelDisk(model, "Dais", c, 10, y + 1.6, y + 2.4, C.PAVER_DARK, 2)
+	local iceRing = K.voxelDisk(model, "IceRing", c, 14.6, y + 0.3, y + 0.85, Color3.fromRGB(110, 210, 250), 2, 12.4)
+	for _, p in ipairs(iceRing) do
+		p.Material = Enum.Material.Glass
+		p.Transparency = 0.2
+	end
+	local base = y + 2.4
+	-- the nest: a bed of straw and big twigs leaning out all round
+	K.voxelDisk(model, "Straw", c, 8, base, base + 0.8, Color3.fromRGB(214, 180, 100), 1.5)
+	for i = 1, 16 do
+		local a = i / 16 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
+		local inner = c + Vector3.new(math.cos(a) * 5, base + 1.2, math.sin(a) * 5)
+		local outer = c + Vector3.new(math.cos(a + 0.5) * 9, base + rng:NextNumber(2.2, 3.4), math.sin(a + 0.5) * 9)
+		sdecor({ Name = "Twig", Size = Vector3.new(1.2, 1, (outer - inner).Magnitude + 1), CFrame = CFrame.lookAt((inner + outer) / 2, outer), Color = (i % 2 == 0) and C.LOG or C.LOG_END, Parent = model })
+	end
+	-- the egg: stacked crosses of studded blocks in an egg profile, pale with blue spots
+	local H = 18
+	local R = 6.2
+	local layers = 13
+	local shell = Color3.fromRGB(226, 236, 248)
+	local shade = Color3.fromRGB(196, 212, 232)
+	for i = 0, layers - 1 do
+		local s = (i + 0.5) / layers
+		local yy = base + 0.6 + s * H
+		local t = s * 2 - 1
+		local r = R * math.sqrt(math.max(0, 1 - t * t)) * (1 - 0.2 * math.max(0, t))
+		if r > 0.6 then
+			local h = H / layers + 0.05
+			local color = (i % 2 == 0) and shell or shade
+			sbrick({ Name = "EggShell", Size = Vector3.new(r * 2, h, r * 1.4), CFrame = CFrame.new(c.X, yy, c.Z), Color = color, Parent = model })
+			sbrick({ Name = "EggShell", Size = Vector3.new(r * 1.4, h, r * 2), CFrame = CFrame.new(c.X, yy, c.Z), Color = color, Parent = model })
+			sbrick({ Name = "EggShell", Size = Vector3.new(r * 1.72, h, r * 1.72), CFrame = CFrame.new(c.X, yy, c.Z), Color = shell, Parent = model })
+		end
+	end
+	for _ = 1, 14 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local s = rng:NextNumber(0.15, 0.85)
+		local t = s * 2 - 1
+		local r = R * math.sqrt(math.max(0, 1 - t * t)) * (1 - 0.2 * math.max(0, t))
+		local size = rng:NextNumber(1, 1.8)
+		sdecor({ Name = "EggSpot", Size = Vector3.new(size, size, size), CFrame = CFrame.new(c + Vector3.new(math.cos(a) * r * 0.86, base + 0.6 + s * H - y, math.sin(a) * r * 0.86)), Color = Color3.fromRGB(70, 160, 230), Parent = model })
+	end
+	-- the crack: a glowing zig-zag down the front, light and sparkles pouring out
+	local crackPoints = { Vector3.new(0.4, 0.86, 0), Vector3.new(-0.8, 0.72, 0), Vector3.new(0.6, 0.6, 0), Vector3.new(-0.5, 0.46, 0), Vector3.new(0.7, 0.33, 0), Vector3.new(-0.2, 0.2, 0) }
+	local previous = nil
+	for _, cp in ipairs(crackPoints) do
+		local t = cp.Y * 2 - 1
+		local r = R * math.sqrt(math.max(0, 1 - t * t)) * (1 - 0.2 * math.max(0, t))
+		local p = c + Vector3.new(cp.X * 2.2, base + 0.6 + cp.Y * H - y, -r * 0.98)
+		if previous then
+			decor({ Name = "Crack", Size = Vector3.new(0.6, 0.6, (p - previous).Magnitude + 0.4), CFrame = CFrame.lookAt((p + previous) / 2, p), Color = Color3.fromRGB(150, 255, 240), Material = Enum.Material.Neon, Parent = model })
+		end
+		previous = p
+	end
+	local glow = decor({ Name = "EggGlow", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(c + Vector3.new(0, base + H * 0.55 - y, -R - 0.5)), Transparency = 1, Parent = model })
+	light(glow, Color3.fromRGB(140, 255, 230), 30, 2)
+	particles(glow, {
+		Color = ColorSequence.new(Color3.fromRGB(160, 255, 240), Color3.fromRGB(255, 255, 255)),
+		LightEmission = 1,
+		Rate = 14,
+		Lifetime = NumberRange.new(1.2, 2.2),
+		Speed = NumberRange.new(2, 5),
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 0) }),
+		SpreadAngle = Vector2.new(40, 60),
+		EmissionDirection = Enum.NormalId.Front,
+		Acceleration = Vector3.new(0, 2, 0),
+	})
+	-- little eggs orbiting it, turning on the client
+	local orbitPivot = c + Vector3.new(0, base + H * 0.7 - y, 0)
+	local colors = { Color3.fromRGB(255, 120, 150), Color3.fromRGB(255, 220, 90), Color3.fromRGB(120, 220, 255), Color3.fromRGB(170, 120, 255), Color3.fromRGB(120, 255, 160), Color3.fromRGB(255, 160, 80) }
+	for i = 1, 6 do
+		local a = i / 6 * math.pi * 2
+		local egg = K.eggShape(model, "OrbitEgg", CFrame.new(orbitPivot + Vector3.new(math.cos(a) * 10, math.sin(a * 2) * 1.5, math.sin(a) * 10)), Vector3.new(1.6, 2.1, 1.6), colors[i])
+		egg.Material = Enum.Material.Neon
+		egg:SetAttribute("Pivot", orbitPivot)
+		egg:SetAttribute("SpinSpeed", 0.35)
+		CollectionService:AddTag(egg, "TideboundSpin")
+	end
+	-- lantern posts round the dais and a plaque
+	for i = 1, 4 do
+		local a = i / 4 * math.pi * 2 + math.pi / 4
+		local p = c + Vector3.new(math.cos(a) * 12.2, 0, math.sin(a) * 12.2)
+		sbrick({ Name = "DaisPost", Size = Vector3.new(1.2, 5, 1.2), CFrame = CFrame.new(p.X, y + 1.6 + 2.5, p.Z), Color = C.WOOD, Parent = model })
+		lantern(model, CFrame.new(p.X, y + 1.6 + 6.6, p.Z), 0.8)
+	end
+	local plaque = sbrick({ Name = "Plaque", Size = Vector3.new(8, 2.4, 1), CFrame = CFrame.new(c + Vector3.new(0, 2.6, -11.6)) * CFrame.Angles(math.rad(-20), 0, 0), Color = C.PAVER_DARK, Parent = model })
+	surfaceText(plaque, "EGGFALL", Color3.fromRGB(255, 226, 140), Enum.NormalId.Front)
+	return model
+end
+
 -- Tag ground for TideboundFoliage (frosted or green grass grows on it).
 function PropKit.grassy(p)
 	CollectionService:AddTag(p, "TideboundGrass")

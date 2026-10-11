@@ -23,7 +23,7 @@ local PC = PropKit.color
 
 local TownBuilder = {}
 
-local VERSION = 6
+local VERSION = 7
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -944,24 +944,9 @@ local function buildHub(parent, rng)
 		PropKit.studs(decor({ Name = "PlazaPath", Size = Vector3.new(spec[2].X, 0.25, spec[2].Z), CFrame = CFrame.new(spec[1].X, TOP + 0.12, spec[1].Z), Color = PC.PAVER, Parent = hub })).CanQuery = true
 	end
 
-	-- the frozen fountain: a stepped studded basin, glowing ice inside, an ice crystal and a gold egg on a column
-	K.voxelDisk(hub, "FountainStep", plaza, 12, TOP - 0.5, TOP + 0.8, PC.PAVER_DARK, 2)
-	K.voxelDisk(hub, "FountainRim", plaza, 10.5, TOP + 0.8, TOP + 2.6, Color3.fromRGB(176, 186, 206), 1.5, 8.5)
-	local ice = K.voxelDisk(hub, "FountainIce", plaza, 8.6, TOP + 0.8, TOP + 1.8, Color3.fromRGB(110, 210, 250), 1.5)
-	for _, p in ipairs(ice) do
-		p.Material = Enum.Material.Glass
-		p.Transparency = 0.2
-	end
-	local glow = decor({ Name = "FountainGlow", Size = Vector3.new(14, 0.2, 14), CFrame = CFrame.new(0, TOP + 1, 0), Color = Color3.fromRGB(60, 200, 255), Material = Enum.Material.Neon, Transparency = 0.3, Parent = hub })
-	light(glow, Color3.fromRGB(110, 220, 255), 24, 1)
-	PropKit.iceCrystal(hub, Vector3.new(0, TOP + 1.8, 0), rng, 1.3)
-	PropKit.studs(part({ Name = "EggColumn", Size = Vector3.new(3, 9, 3), CFrame = CFrame.new(0, TOP + 6.3, 4.5), Color = Color3.fromRGB(176, 186, 206), Parent = hub }))
-	local goldEgg = K.eggShape(hub, "GoldEgg", CFrame.new(0, TOP + 13.4, 4.5), Vector3.new(3.4, 4.4, 3.4), Color3.fromRGB(255, 200, 70))
-	goldEgg.Material = Enum.Material.Neon
-	goldEgg.Transparency = 0.1
-	light(goldEgg, Color3.fromRGB(255, 200, 90), 18, 1.2)
-	K.sparkles(goldEgg, Color3.fromRGB(255, 230, 140), 4)
-	reserve(plaza, 13)
+	-- Patch 16: the plaza's own monument, the Eggfall Egg (a giant cracked Tide Egg in a nest on a dais)
+	PropKit.eggMonument(hub, plaza, TOP, rng)
+	reserve(plaza, 15)
 
 	-- the EGG SHOP (the reference's glass SELL building) and the Tide Egg shrine in front of it
 	PropKit.glassShop(hub, at(v(-42, 16), TOP), at(plaza, TOP), 16, 12, 11, "TIDE EGGS", Color3.fromRGB(240, 196, 50))
@@ -1015,18 +1000,9 @@ local function buildHub(parent, rng)
 	PropKit.studs(decor({ Name = "Rack", Size = Vector3.new(1, 0.6, 4.2), CFrame = stallCf * CFrame.new(6.4, 1.2, 0.5), Color = PC.WOOD_DARK, Parent = hub }))
 	reserve(v(18, -32), 8)
 
-	-- the Nest beacon on a studded platform with a glowing ring
-	local beaconAt = at(v(26, 22), TOP)
-	K.voxelDisk(hub, "BeaconPlatform", v(26, 22), 5, TOP - 0.3, TOP + 1, PC.PAVER_DARK, 1)
-	local ring = decor({ Name = "BeaconRing", Size = Vector3.new(11, 0.2, 11), CFrame = CFrame.new(beaconAt + Vector3.new(0, 1.05, 0)), Color = Color3.fromRGB(90, 255, 200), Material = Enum.Material.Neon, Transparency = 0.6, Parent = hub })
-	ring.Shape = Enum.PartType.Cylinder
-	ring.Size = Vector3.new(0.2, 11, 11)
-	ring.CFrame = CFrame.new(beaconAt + Vector3.new(0, 1.05, 0)) * CFrame.Angles(0, 0, math.rad(90))
-	local beacon = part({ Name = "NestBeacon", Size = Vector3.new(2.6, 8, 2.6), CFrame = CFrame.new(beaconAt + Vector3.new(0, 5.5, 0)) * CFrame.Angles(0, math.rad(45), 0), Color = Color3.fromRGB(90, 255, 200), Material = Enum.Material.Neon, Transparency = 0.1, Parent = hub })
-	light(beacon, Color3.fromRGB(90, 255, 200), 16, 1.2)
-	K.prompt(beacon, "Extract", "Nest Beacon", { Action = "Extract" }, 1, 12)
-	K.billboard(beacon, "EXTRACT", "Bank your haul", 6)
-	reserve(v(26, 22), 7)
+	-- Patch 16: the Nest beacon is a Tide Gate like every other extraction point
+	PropKit.extractionGate(hub, 0, v(26, 22), TOP, plaza, { name = "NestBeacon", title = "Nest Beacon", subtitle = "Bank your haul" })
+	reserve(v(26, 22), 10)
 
 	-- log cabins on the four corners
 	for _, spec in ipairs({ { v(40, 34), v(40, 0) }, { v(40, -34), v(40, 0) }, { v(-36, 42), v(-36, 0) }, { v(-36, -42), v(-36, 0) } }) do
@@ -1034,7 +1010,7 @@ local function buildHub(parent, rng)
 		reserve(spec[1], 10)
 	end
 	-- lamps, benches round the fountain, pines and crystals in the corners, snow mounds
-	for _, p in ipairs({ v(14, 18), v(-12, 30), v(32, -18), v(8, -42), v(-14, -40), v(30, 44) }) do
+	for _, p in ipairs({ v(-12, 30), v(32, -18), v(8, -42), v(-14, -40), v(-2, 48) }) do
 		if free(p, 1.5) then
 			PropKit.gallowsLamp(hub, at(p, TOP), at(plaza, TOP))
 			reserve(p, 2)
