@@ -72,7 +72,7 @@ local function refreshFilter()
 			table.insert(list, p.Character)
 		end
 	end
-	for _, name in ipairs({ "TideboundFX", "TideboundMobs", "TideboundLife", "TideboundSky", "TideboundRodFX", "TideboundHatchFX" }) do
+	for _, name in ipairs({ "TideboundFX", "TideboundMobs", "TideboundLife", "TideboundRodFX", "TideboundHatchFX" }) do
 		local f = workspace:FindFirstChild(name)
 		if f then
 			table.insert(list, f)
