@@ -26,9 +26,6 @@ local HatchScene = {}
 local PIXEL = Enum.Font.Arcade
 local WHITE = Color3.new(1, 1, 1)
 local GOLD = Color3.fromRGB(255, 220, 70)
-local SHELL = Color3.fromRGB(232, 246, 255)
-local SHELL_SHADE = Color3.fromRGB(190, 222, 244)
-local SPOT = Color3.fromRGB(70, 170, 230)
 local TAU = math.pi * 2
 
 local function smooth(s)
@@ -90,7 +87,31 @@ end
 
 local PROFILE = { { -2.4, 2.2 }, { -1.6, 3.2 }, { -0.8, 3.8 }, { 0, 4.0 }, { 0.8, 3.9 }, { 1.6, 3.4 }, { 2.4, 2.6 }, { 3.1, 1.6 } }
 
-local function buildEgg(parent)
+-- Every hatch picks a different egg: shell, shading, spots and the "?" (the rarity never shows until it opens).
+local EGG_STYLES = {
+	{ shell = Color3.fromRGB(232, 246, 255), shade = Color3.fromRGB(190, 222, 244), spot = Color3.fromRGB(70, 170, 230), mark = Color3.fromRGB(255, 236, 120) }, -- tide
+	{ shell = Color3.fromRGB(220, 50, 60), shade = Color3.fromRGB(170, 30, 44), spot = Color3.fromRGB(40, 20, 26), mark = Color3.fromRGB(255, 230, 120) }, -- demon
+	{ shell = Color3.fromRGB(120, 220, 110), shade = Color3.fromRGB(80, 180, 90), spot = Color3.fromRGB(250, 230, 90), mark = Color3.fromRGB(255, 255, 255) }, -- jungle
+	{ shell = Color3.fromRGB(190, 130, 255), shade = Color3.fromRGB(150, 90, 230), spot = Color3.fromRGB(255, 150, 220), mark = Color3.fromRGB(255, 240, 160) }, -- void
+	{ shell = Color3.fromRGB(255, 170, 70), shade = Color3.fromRGB(230, 130, 40), spot = Color3.fromRGB(255, 240, 200), mark = Color3.fromRGB(120, 40, 20) }, -- sunset
+	{ shell = Color3.fromRGB(255, 214, 80), shade = Color3.fromRGB(230, 180, 50), spot = Color3.fromRGB(255, 255, 230), mark = Color3.fromRGB(200, 90, 30) }, -- gold
+	{ shell = Color3.fromRGB(255, 160, 200), shade = Color3.fromRGB(240, 120, 170), spot = Color3.fromRGB(255, 255, 255), mark = Color3.fromRGB(255, 240, 120) }, -- candy
+	{ shell = Color3.fromRGB(60, 70, 90), shade = Color3.fromRGB(40, 46, 62), spot = Color3.fromRGB(110, 255, 230), mark = Color3.fromRGB(110, 255, 230) }, -- abyss
+	{ shell = Color3.fromRGB(110, 230, 240), shade = Color3.fromRGB(70, 190, 220), spot = Color3.fromRGB(30, 90, 160), mark = Color3.fromRGB(255, 255, 255) }, -- lagoon
+	{ shell = Color3.fromRGB(250, 250, 250), shade = Color3.fromRGB(220, 220, 226), spot = Color3.fromRGB(30, 30, 36), mark = Color3.fromRGB(255, 80, 80) }, -- cow
+}
+
+local function randomStyle(rng)
+	local base = EGG_STYLES[rng:NextInteger(1, #EGG_STYLES)]
+	-- a little hue jitter so even the same pattern never looks quite the same twice
+	local function jitter(c)
+		local h, sat, val = c:ToHSV()
+		return Color3.fromHSV((h + rng:NextNumber(-0.03, 0.03)) % 1, math.clamp(sat + rng:NextNumber(-0.08, 0.08), 0, 1), math.clamp(val + rng:NextNumber(-0.06, 0.06), 0, 1))
+	end
+	return { shell = jitter(base.shell), shade = jitter(base.shade), spot = jitter(base.spot), mark = base.mark, stripes = rng:NextNumber() < 0.35 }
+end
+
+local function buildEgg(parent, style, rng)
 	local model = Instance.new("Model")
 	model.Name = "HatchEgg"
 	local pieces = {}
@@ -99,20 +120,31 @@ local function buildEgg(parent)
 	end
 	for i, row in ipairs(PROFILE) do
 		local y, w = row[1], row[2]
-		add(newPart(model, "Shell", Vector3.new(w, 0.82, w), (i % 2 == 0) and SHELL or SHELL_SHADE), CFrame.new(0, y, 0))
-		add(newPart(model, "ShellX", Vector3.new(w * 0.8, 0.82, w * 1.08), SHELL), CFrame.new(0, y, 0))
-		add(newPart(model, "ShellZ", Vector3.new(w * 1.08, 0.82, w * 0.8), SHELL), CFrame.new(0, y, 0))
+		local band = style.stripes and (i % 3 == 0)
+		add(newPart(model, "Shell", Vector3.new(w, 0.82, w), band and style.spot or ((i % 2 == 0) and style.shell or style.shade)), CFrame.new(0, y, 0))
+		add(newPart(model, "ShellX", Vector3.new(w * 0.8, 0.82, w * 1.08), band and style.spot or style.shell), CFrame.new(0, y, 0))
+		add(newPart(model, "ShellZ", Vector3.new(w * 1.08, 0.82, w * 0.8), band and style.spot or style.shell), CFrame.new(0, y, 0))
 	end
-	-- blue spots poking out of the shell
-	for _, spec in ipairs({ { 1.9, 0.4, 0.2 }, { -1.7, -0.6, 0.6 }, { 1.2, 1.5, -1.3 }, { -1.0, 1.9, 1.0 }, { 0.3, -1.5, -1.8 }, { -1.9, 0.9, -0.8 } }) do
-		add(newPart(model, "Spot", Vector3.new(0.9, 0.9, 0.9), SPOT, Enum.Material.SmoothPlastic), CFrame.new(spec[1], spec[2], spec[3]))
+	-- spots poking out of the shell, scattered differently every time
+	for _ = 1, rng:NextInteger(5, 9) do
+		local a = rng:NextNumber(0, TAU)
+		local y = rng:NextNumber(-1.8, 2.2)
+		local w = 0
+		for _, row in ipairs(PROFILE) do
+			if math.abs(row[1] - y) < 0.5 then
+				w = row[2]
+			end
+		end
+		local r = math.max(w, 2.2) / 2
+		local size = rng:NextNumber(0.6, 1.1)
+		add(newPart(model, "Spot", Vector3.new(size, size, size), style.spot, Enum.Material.SmoothPlastic), CFrame.new(math.sin(a) * r, y, math.cos(a) * r) * CFrame.Angles(0, a, 0))
 	end
 	-- the "?" on a plate on its face
-	local face = newPart(model, "Face", Vector3.new(2.6, 2.6, 0.2), SHELL)
+	local face = newPart(model, "Face", Vector3.new(2.6, 2.6, 0.2), style.shell)
 	face.Transparency = 1
 	add(face, CFrame.new(0, 0.2, -2.06))
 	local gui = new("SurfaceGui", { Face = Enum.NormalId.Front, LightInfluence = 0, Brightness = 2, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 50, Parent = face })
-	local mark = pixelText({ parent = gui, text = "?", size = UDim2.fromScale(1, 1), color = Color3.fromRGB(255, 236, 120), stroke = Color3.fromRGB(150, 60, 20), thickness = 6 })
+	local mark = pixelText({ parent = gui, text = "?", size = UDim2.fromScale(1, 1), color = style.mark, stroke = style.mark:Lerp(Color3.new(0, 0, 0), 0.6), thickness = 6 })
 	local glow = Instance.new("PointLight")
 	glow.Range = 14
 	glow.Brightness = 0
@@ -150,6 +182,59 @@ local function addCrack(egg, seed, color)
 	end
 end
 
+-- The shell bursts apart: every block flies off spinning, then fades.
+local function shatter(egg, center)
+	for _, piece in ipairs(egg.pieces) do
+		local p = piece.part
+		if p.Name ~= "Face" then
+			p.Anchored = false
+			p.CanCollide = true
+			p.Massless = false
+			local out = p.Position - center
+			if out.Magnitude < 0.1 then
+				out = Vector3.new(0, 1, 0)
+			end
+			p.AssemblyLinearVelocity = out.Unit * math.random(30, 55) + Vector3.new(0, math.random(25, 45), 0)
+			p.AssemblyAngularVelocity = Vector3.new(math.random(-15, 15), math.random(-15, 15), math.random(-15, 15))
+			TweenService:Create(p, TweenInfo.new(1.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+		else
+			p:Destroy()
+		end
+	end
+	for _, d in ipairs(egg.model:GetDescendants()) do
+		if d:IsA("Light") then
+			d.Enabled = false
+		end
+	end
+end
+
+-- A neon thing that grows and fades (the burst's light column and shock dome).
+local function swell(parent, shape, color, cframe, fromSize, toSize, seconds, transparency)
+	local p = newPart(parent, "Swell", fromSize, color, Enum.Material.Neon, shape)
+	p.CFrame = cframe
+	p.CastShadow = false
+	p.Transparency = transparency or 0.2
+	TweenService:Create(p, TweenInfo.new(seconds, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), { Size = toSize }):Play()
+	TweenService:Create(p, TweenInfo.new(seconds, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+	task.delay(seconds + 0.1, function()
+		p:Destroy()
+	end)
+	return p
+end
+
+-- Little sparks of energy streaking in toward the egg while it charges.
+local function gather(parent, center, color)
+	local a, b = math.random() * TAU, (math.random() - 0.3) * 1.2
+	local from = center + Vector3.new(math.cos(a) * math.cos(b), math.sin(b), math.sin(a) * math.cos(b)) * math.random(9, 14)
+	local p = newPart(parent, "Spark", Vector3.new(0.35, 0.35, 1.6), color, Enum.Material.Neon)
+	p.CastShadow = false
+	p.CFrame = CFrame.lookAt(from, center)
+	TweenService:Create(p, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = CFrame.lookAt(center, center + (center - from)), Size = Vector3.new(0.1, 0.1, 0.4) }):Play()
+	task.delay(0.5, function()
+		p:Destroy()
+	end)
+end
+
 -- Screen pieces --------------------------------------------------------------------------------------------
 
 local function buildGui(playerGui)
@@ -170,10 +255,17 @@ local function buildGui(playerGui)
 	local subtitle = pixelText({ parent = gui, text = "", size = UDim2.new(0.7, 0, 0, 40), position = UDim2.new(0.5, 0, 0.66, 56), anchor = Vector2.new(0.5, 0.5), z = 12, thickness = 4 })
 	local badge = pixelText({ parent = gui, text = "", size = UDim2.new(0, 160, 0, 40), position = UDim2.new(0.5, 0, 0.66, -60), anchor = Vector2.new(0.5, 0.5), z = 12, color = GOLD, thickness = 4 })
 	local hint = pixelText({ parent = gui, text = "", size = UDim2.new(0.5, 0, 0, 22), position = UDim2.new(0.5, 0, 1, -40), anchor = Vector2.new(0.5, 0.5), z = 12, thickness = 2 })
+	-- a burst of light rays across the whole screen at the moment it opens
+	local burst = new("Frame", { Name = "Burst", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromScale(2.2, 2.2), SizeConstraint = Enum.SizeConstraint.RelativeXX, BackgroundTransparency = 1, Visible = false, ZIndex = 15, Parent = gui })
+	for i = 1, 16 do
+		new("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0.03, 0, 0.5, 0), Rotation = i * 22.5, BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 15, Parent = burst }, {
+			new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.7, 0.4), NumberSequenceKeypoint.new(1, 0) }) }),
+		})
+	end
 	for _, label in ipairs({ title, subtitle, badge }) do
 		new("UIScale", { Name = "Pop", Parent = label })
 	end
-	return { gui = gui, tint = tint, flash = flash, bar = bar, strip = strip, pointer = pointer, title = title, subtitle = subtitle, badge = badge, hint = hint }
+	return { gui = gui, tint = tint, flash = flash, bar = bar, strip = strip, pointer = pointer, title = title, subtitle = subtitle, badge = badge, hint = hint, burst = burst }
 end
 
 local COIN = 80
@@ -286,7 +378,9 @@ function HatchScene.play(result)
 	local floorY = groundBelow(spot, { character, folder, Fx.folder() })
 	local eggBase = Vector3.new(spot.X, floorY, spot.Z)
 	local facing = CFrame.lookAt(eggBase, Vector3.new(root.Position.X, floorY, root.Position.Z))
-	local egg = buildEgg(folder)
+	local eggRng = Random.new()
+	local style = randomStyle(eggRng)
+	local egg = buildEgg(folder, style, eggRng)
 	local anchor = newPart(folder, "Anchor", Vector3.new(0.2, 0.2, 0.2), WHITE)
 	anchor.Transparency = 1
 
@@ -338,22 +432,24 @@ function HatchScene.play(result)
 		shot(behind, eggBase + Vector3.new(0, 3, 0), 62, 0.6)
 		TweenService:Create(ui.bar, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, 0, 0, 24) }):Play()
 		TweenService:Create(ui.tint, TweenInfo.new(0.6), { BackgroundTransparency = 0.75 }):Play()
-		-- the slot strip: random creatures, landing on yours
-		local slots = 44
-		local landing = slots - 3
-		for i = 1, slots do
-			local t = (i == landing) and tierIndex or math.clamp(Random.new(i * 31 + tierIndex):NextInteger(1, 5), 1, #Config.Tiers)
+		-- the slot strip: random creatures from every tier, spinning on a loop. Your creature isn't on it at
+		-- all until the egg opens, so the wheel can't give it away.
+		local slots = 24
+		local coins = {}
+		local wheelRng = Random.new()
+		for i = 1, slots * 2 do
+			-- the second half repeats the first, so the loop wraps without a jump
+			local twin = coins[i - slots]
+			local t = twin and twin.tier or wheelRng:NextInteger(1, #Config.Tiers)
 			local names = Config.Tiers[t].creatures
-			local name = (i == landing) and result.creature or names[(i % #names) + 1]
-			coin(ui.strip, i, t, name)
+			local name = twin and twin.name or names[wheelRng:NextInteger(1, #names)]
+			coins[i] = { tier = t, name = name, frame = coin(ui.strip, i, t, name) }
 		end
-		ui.strip.Size = UDim2.new(0, slots * COIN, 1, 0)
-		local endX = -((landing - 1) * COIN + COIN / 2) + 230
-		ui.strip.Position = UDim2.new(0, 230 - COIN / 2, 0, 0)
+		ui.strip.Size = UDim2.new(0, slots * 2 * COIN, 1, 0)
+		local wheelX = 0
+		local wheelSpeed = 900
 
 		local dropStart = os.clock()
-		local spinTween = TweenService:Create(ui.strip, TweenInfo.new(3.9, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Position = UDim2.new(0, endX, 0, 0) })
-		spinTween:Play()
 		local lastCoin = 0
 		Audio.play("Whoosh", root)
 
@@ -374,8 +470,12 @@ function HatchScene.play(result)
 			local dt = RunService.RenderStepped:Wait()
 			local t = os.clock() - dropStart
 			local u = os.clock() - stageAt
+			-- the wheel keeps spinning, faster as the egg gets closer to opening
+			wheelSpeed += ((stage == "charge" and 1500 or 900) - wheelSpeed) * math.min(1, dt * 2)
+			wheelX = (wheelX + wheelSpeed * dt) % (slots * COIN)
+			ui.strip.Position = UDim2.new(0, -wheelX, 0, 0)
 			-- the coins tick as they pass the pointer
-			local passed = math.floor((-(ui.strip.Position.X.Offset) + 230) / COIN)
+			local passed = math.floor((wheelX + 230) / COIN)
 			if passed ~= lastCoin then
 				lastCoin = passed
 				ui.pointer.UIStroke.Color = (passed % 2 == 0) and WHITE or GOLD
@@ -388,7 +488,7 @@ function HatchScene.play(result)
 				eggPivot = facing * CFrame.new(0, 2.4 + h, 0)
 				if s >= 1 then
 					Fx.ring(eggBase + Vector3.new(0, 0.2, 0), WHITE, 7, 0.5, 0.4)
-					Fx.cubes(eggBase + Vector3.new(0, 0.5, 0), { WHITE, SHELL_SHADE }, { spread = 6, size = 0.5, life = 0.5, up = 0.3, count = 16, material = Enum.Material.SmoothPlastic })
+					Fx.cubes(eggBase + Vector3.new(0, 0.5, 0), { WHITE, style.shade }, { spread = 6, size = 0.5, life = 0.5, up = 0.3, count = 16, material = Enum.Material.SmoothPlastic })
 					shake(0.5)
 					Audio.play("LandHeavy", root)
 					setStage("wait")
@@ -401,13 +501,13 @@ function HatchScene.play(result)
 					setStage("shake")
 					u = 0
 					addCrack(egg, shook * 13 + tierIndex, shook == 3 and color or Color3.fromRGB(255, 250, 220))
-					Fx.cubes(eggPivot.Position, { SHELL, SHELL_SHADE, SPOT }, { spread = 4 + shook * 2, size = 0.5, life = 0.5, up = 0.8, count = 8 + shook * 4, material = Enum.Material.SmoothPlastic })
+					Fx.cubes(eggPivot.Position, { style.shell, style.shade, style.spot }, { spread = 4 + shook * 2, size = 0.5, life = 0.5, up = 0.8, count = 8 + shook * 4, material = Enum.Material.SmoothPlastic })
 					Fx.ring(eggBase + Vector3.new(0, 0.2, 0), shook == 3 and color or WHITE, 6 + shook * 2, 0.4, 0.3)
 					shake(0.35 + shook * 0.3)
 					Audio.play("HitThud", root)
 					-- the camera pushes in a little closer each time
-					local d = 13 - shook * 2.2
-					shot(eggBase + (root.Position - eggBase).Unit * d + right * (2.5 - shook * 0.6) + Vector3.new(0, 4.2 - shook * 0.5, 0), eggPivot.Position, 60 - shook * 4, 0.35)
+					local d = 16 - shook * 1.2
+					shot(eggBase + (root.Position - eggBase).Unit * d + right * (3 - shook * 0.5) + Vector3.new(0, 5 - shook * 0.3, 0), eggPivot.Position + Vector3.new(0, 1, 0), 66 - shook * 2, 0.35)
 				end
 				local strength = 0.18 + shook * 0.14
 				wobble = (stage == "shake" and u < 0.55) and math.sin(u * 38) * strength * (1 - u / 0.55) or wobble * 0.85
@@ -423,7 +523,7 @@ function HatchScene.play(result)
 						crack.Color = color
 					end
 					egg.light.Color = color
-					shot(eggBase + (root.Position - eggBase).Unit * 8.5 + right * 1.2 + Vector3.new(0, 2.6, 0), eggBase + Vector3.new(0, 5, 0), 50, 0.9)
+					shot(eggBase + (root.Position - eggBase).Unit * 15 + right * 2 + Vector3.new(0, 4.5, 0), eggBase + Vector3.new(0, 5.5, 0), 62, 0.9)
 					TweenService:Create(ui.tint, TweenInfo.new(0.8), { BackgroundTransparency = 0.45 }):Play()
 					Audio.play("RevealHum", root)
 				end
@@ -453,6 +553,13 @@ function HatchScene.play(result)
 				if os.clock() % 0.18 < dt then
 					Fx.cubes(eggPivot.Position, { color, WHITE }, { spread = 3 + 6 * s, size = 0.35, life = 0.4, up = 1, count = 3 })
 				end
+				-- energy streaks in from all around, faster and faster
+				if math.random() < 0.35 + 0.6 * s then
+					gather(folder, eggPivot.Position, math.random() < 0.5 and color or WHITE)
+				end
+				if os.clock() % 0.4 < dt then
+					Fx.ring(Vector3.new(eggBase.X, floorY + 0.25, eggBase.Z), color, 5 + 6 * s, 0.4, 0.3)
+				end
 				if s >= 1 then
 					break
 				end
@@ -463,14 +570,55 @@ function HatchScene.play(result)
 
 		-- 3. BURST: flash, shell chunks, a storm of yellow sparkles, lightning and shock rings
 		local burstAt = eggPivot.Position
-		egg.model:Destroy()
+		shatter(egg, burstAt)
 		if ringBoard then
 			ringBoard:Destroy()
+		end
+		-- only now does the wheel stop, on your creature: it lands on the coin under the pointer
+		local centerIndex = math.floor((wheelX + 230) / COIN) + 1
+		local landing = coins[centerIndex]
+		if landing then
+			landing.frame:Destroy()
+		end
+		local final = coin(ui.strip, centerIndex, tierIndex, result.creature)
+		final.ZIndex = 7
+		local finalScale = new("UIScale", { Scale = 1.5, Parent = final })
+		TweenService:Create(finalScale, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1.15 }):Play()
+		TweenService:Create(ui.strip, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0, -((centerIndex - 1) * COIN + COIN / 2) + 230, 0, 0) }):Play()
+		ui.pointer.UIStroke.Color = color
+		ui.pointer.UIStroke.Thickness = 7
+		-- a column of light, a shock dome, a burst of rays across the screen
+		swell(folder, Enum.PartType.Cylinder, color, CFrame.new(burstAt.X, floorY + 40, burstAt.Z) * CFrame.Angles(0, 0, math.rad(90)), Vector3.new(80, 2, 2), Vector3.new(80, 14, 14), 1.2, 0.25)
+		swell(folder, Enum.PartType.Cylinder, WHITE, CFrame.new(burstAt.X, floorY + 40, burstAt.Z) * CFrame.Angles(0, 0, math.rad(90)), Vector3.new(80, 1, 1), Vector3.new(80, 6, 6), 0.8, 0.1)
+		swell(folder, Enum.PartType.Ball, color, CFrame.new(burstAt), Vector3.new(2, 2, 2), Vector3.new(40, 40, 40), 0.7, 0.4)
+		swell(folder, Enum.PartType.Ball, WHITE, CFrame.new(burstAt), Vector3.new(1, 1, 1), Vector3.new(18, 18, 18), 0.4, 0.1)
+		ui.burst.Visible = true
+		ui.burst.Rotation = 0
+		for _, ray in ipairs(ui.burst:GetChildren()) do
+			if ray:IsA("Frame") then
+				ray.BackgroundColor3 = (ray.Rotation % 45 == 0) and color or WHITE
+				ray.BackgroundTransparency = 0
+				TweenService:Create(ray, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
+			end
+		end
+		TweenService:Create(ui.burst, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Rotation = 30 }):Play()
+		task.delay(0.95, function()
+			ui.burst.Visible = false
+		end)
+		-- a ring of sparkles round the spot it stood, then a fountain of glittering cubes
+		for i = 1, 12 do
+			local a = i / 12 * TAU
+			Fx.stars(Vector3.new(burstAt.X + math.cos(a) * 7, floorY + 1, burstAt.Z + math.sin(a) * 7), 1, (i % 2 == 0) and GOLD or color)
+		end
+		for i = 1, 4 do
+			task.delay(i * 0.12, function()
+				Fx.cubes(burstAt + Vector3.new(0, 2, 0), { GOLD, WHITE, color, Color3.fromRGB(255, 140, 210) }, { spread = 14 + i * 3, size = 0.5, life = 1.2, up = 1, count = 18 })
+			end)
 		end
 		ui.flash.BackgroundTransparency = 0
 		TweenService:Create(ui.flash, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
 		TweenService:Create(ui.tint, TweenInfo.new(0.5), { BackgroundTransparency = 0.7 }):Play()
-		Fx.cubes(burstAt, { SHELL, SHELL_SHADE, SPOT, WHITE }, { spread = 22, size = 1.2, life = 1.1, up = 0.9, count = 40, material = Enum.Material.SmoothPlastic })
+		Fx.cubes(burstAt, { style.shell, style.shade, style.spot, WHITE }, { spread = 22, size = 1.2, life = 1.1, up = 0.9, count = 40, material = Enum.Material.SmoothPlastic })
 		Fx.cubes(burstAt, { GOLD, Color3.fromRGB(255, 250, 160), color }, { spread = 26, size = 0.7, life = 1.3, up = 1, count = 50 })
 		Fx.stars(burstAt, rare and 18 or 12, GOLD)
 		Fx.bolts(burstAt, rare and 10 or 6)
@@ -483,7 +631,7 @@ function HatchScene.play(result)
 		Audio.play("Tier" .. tier.id, root)
 		shake(rare and 2.4 or 1.6)
 		-- the camera kicks back, then settles into a slow orbit round the creature
-		shot(burstAt + (root.Position - eggBase).Unit * 15 + Vector3.new(0, 4, 0), burstAt, 76, 0.12)
+		shot(burstAt + (root.Position - eggBase).Unit * 20 + Vector3.new(0, 5, 0), burstAt, 78, 0.12)
 		task.wait(0.15)
 
 		-- 4. the creature: spinning in the light, rays behind it, its rarity and name in big letters
@@ -494,9 +642,9 @@ function HatchScene.play(result)
 		local rays, raySpin = rayBurst(anchor, color)
 		anchor.CFrame = CFrame.new(creatureAt - (camera.CFrame.Position - creatureAt).Unit * 3)
 		local toCam = (root.Position - eggBase).Unit
-		cam.orbit = { center = creatureAt, radius = 11, height = 2.5, angle = math.atan2(toCam.Z, toCam.X), speed = 0.35, lookY = 0.5 }
+		cam.orbit = { center = creatureAt, radius = 15, height = 3.5, angle = math.atan2(toCam.Z, toCam.X), speed = 0.35, lookY = 0.5 }
 		camGoal = nil
-		cam.fov = 60
+		cam.fov = 66
 		ui.title.Text = tier.id:upper() .. "!"
 		ui.title.TextColor3 = color
 		ui.subtitle.Text = result.creature
