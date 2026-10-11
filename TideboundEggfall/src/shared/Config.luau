@@ -227,6 +227,26 @@ Config.Mobs = {
 }
 
 -- Patch 10: the rod swipe (left click or F on land, outside a cast). Elites and guardians shrug it off.
+-- Patch 18: stamina, a smooth sprint and the dash. Sprinting (Shift) drains stamina and eases in and out; at
+-- empty you're winded (a panting pose) until it refills to `recoverAt`. Q (or DASH, or B on a gamepad) dashes
+-- the way you're moving: a burst of `dashSpeed` that eases back down to your run over `dashTime`, in one of three
+-- goofy styles everyone sees (a lean-back arms-behind run, a penguin belly slide, cartoon wheel legs).
+Config.Stamina = {
+	max = 100,
+	sprintDrain = 16, -- per second while sprinting
+	regen = 22, -- per second, after `regenDelay`
+	regenStill = 1.6, -- multiplier when standing still
+	regenDelay = 0.7,
+	recoverAt = 35, -- winded until stamina is back up to this
+	sprintEase = 5, -- how quickly the sprint speed eases in (per second)
+	sprintFov = 6, -- extra field of view at full sprint
+	dashCost = 22,
+	dashCooldown = 0.8,
+	dashSpeed = 72,
+	dashTime = 0.26,
+	dashFov = 9,
+}
+
 -- Patch 17: a 3-hit combo. Swing again within `window` seconds of a hit's `wait` to carry on: Bonk (an overhead
 -- chop), Whirl (a spin that hits all round you) and the Big Fish Slap (a leap and a slam with a giant fish).
 -- Each hit lands `delay` seconds after the click, when the animation connects; the slam needs a breather after.

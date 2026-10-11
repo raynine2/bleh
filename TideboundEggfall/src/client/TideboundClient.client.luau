@@ -1638,7 +1638,7 @@ do
 		("%s: Phase 1 when you steal your %drd egg (it guards the exit), Phase 2 at heat 75 (it chases; break sight for %d s), Phase 3 at heat 100 (faster). Every strike winds up for %.1f s: step aside."):format(G.name, G.triggerEggs, R.lockLoseSight, G.tell),
 		("Extract: hold %d s at a beacon, then choose within %d s. EXTRACT NOW, or PUSH DEEPER for +%d%% cargo, +%d heat and an angrier %s, then extract at a different beacon. No choice means extract."):format(R.beaconChannel, Config.Greed.choiceSeconds, math.round(Config.Greed.cargoPct * 100), Config.Greed.heat, G.name),
 		"Elites: dodge a Barnacle Brute's charge (it stuns you) or a Snapjaw Moray's bite, then loot their bait while they're dazed.",
-		("Each carried egg costs %d WalkSpeed unless a companion carries it. Hold Shift (or SPRINT) to run. Clean Extraction streak: +1 Ember per %d in a row, up to +%d."):format(R.carrySlowPerEgg, R.streakEmberEvery, R.streakEmberMax),
+		("Each carried egg costs %d WalkSpeed unless a companion carries it. Hold Shift (or SPRINT) to run, Q (or DASH) to dash: both use stamina. Clean Extraction streak: +1 Ember per %d in a row, up to +%d."):format(R.carrySlowPerEgg, R.streakEmberEvery, R.streakEmberMax),
 	}, "\n"))
 	local runStats = note(divePage, "")
 
@@ -2094,9 +2094,85 @@ do
 
 	-- Sprint: Shift on keyboard, a SPRINT toggle on touch screens
 	local sprintHeld, sprintToggle = false, false
+	-- Patch 18: stamina (Config.Stamina) and the dash: Q, the DASH button, or B on a gamepad
+	local ST = Config.Stamina
+	local stamina, winded, lastDrain = ST.max, false, 0
+	local sprintBlend = 0
+	local dashStart, dashReadyAt, dashDir = 0, 0, Vector3.new(0, 0, -1)
+	local dashMover = nil
+	local dashEvent = Shared:WaitForChild("Remotes"):WaitForChild("Dash")
+
+	-- the stamina bar: a slim pill at the bottom of the screen that only shows while it isn't full
+	local staminaBar = new("Frame", { Name = "Stamina", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -26), Size = UDim2.new(0, 230, 0, 12), BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.25, Visible = false, Parent = gui }, {
+		new("UICorner", { CornerRadius = UDim.new(1, 0) }),
+		new("UIStroke", { Color = Color3.fromRGB(255, 255, 255), Transparency = 0.7, Thickness = 1.5 }),
+	})
+	local staminaFill = new("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(120, 230, 120), BorderSizePixel = 0, Parent = staminaBar }, {
+		new("UICorner", { CornerRadius = UDim.new(1, 0) }),
+		new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(200, 200, 200)), Rotation = 90 }),
+	})
+	local staminaIcon = new("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0), Size = UDim2.new(0, 20, 0, 20), Text = "⚡", TextScaled = true, Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(255, 230, 90), Parent = staminaBar })
+	local staminaShownAt = 0
+
+	local function canMove(humanoid)
+		return state and humanoid.Health > 0 and workspace:GetServerTimeNow() >= state.stunUntil and not FishingFeel.frozen and not MotionBus.cutscene and FishingFeel.phase == "" and not humanoid.Sit
+	end
+
+	local function dash()
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not humanoid or not root or not canMove(humanoid) then
+			return
+		end
+		local now = os.clock()
+		if now < dashReadyAt or winded or stamina < ST.dashCost * 0.5 then
+			if winded then
+				staminaShownAt = now -- flash the bar so you can see why
+			end
+			return
+		end
+		local dir = humanoid.MoveDirection
+		if dir.Magnitude < 0.1 then
+			dir = root.CFrame.LookVector
+		end
+		dir = Vector3.new(dir.X, 0, dir.Z)
+		if dir.Magnitude < 0.01 then
+			return
+		end
+		dashDir = dir.Unit
+		stamina = math.max(0, stamina - ST.dashCost)
+		lastDrain = now
+		dashStart, dashReadyAt = now, now + ST.dashCooldown
+		local kind = math.random(1, 3)
+		MotionBus.dash[character] = { start = now, kind = kind }
+		MotionBus.kick = { at = now, amount = ST.dashFov, length = 0.45 }
+		dashEvent:FireServer("dash", kind)
+		-- the push: a horizontal velocity that eases from the burst back down to your run (gravity still acts)
+		local attachment = root:FindFirstChild("DashAttachment") or new("Attachment", { Name = "DashAttachment", Parent = root })
+		if dashMover then
+			dashMover:Destroy()
+		end
+		dashMover = new("LinearVelocity", {
+			Name = "DashVelocity",
+			Attachment0 = attachment,
+			RelativeTo = Enum.ActuatorRelativeTo.World,
+			ForceLimitMode = Enum.ForceLimitMode.PerAxis,
+			MaxAxesForce = Vector3.new(1, 0, 1) * 60000,
+			VectorVelocity = dashDir * ST.dashSpeed,
+			Parent = root,
+		})
+		root.CFrame = CFrame.lookAt(root.Position, root.Position + dashDir)
+	end
+
 	UserInputService.InputBegan:Connect(function(input, processed)
-		if not processed and (input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonL3) then
+		if processed then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.ButtonL3 then
 			sprintHeld = true
+		elseif input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.ButtonB then
+			dash()
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
@@ -2110,6 +2186,53 @@ do
 			sprintToggle = not sprintToggle
 			restyle(sprintButton, sprintToggle and "gold" or "grey")
 		end)
+		button({ Text = "DASH", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -244, 1, -40), Size = UDim2.new(0, 84, 0, 44), TextSize = 15, Parent = gui }, "grey", dash)
+	end
+
+	player.CharacterAdded:Connect(function()
+		stamina, winded, sprintBlend = ST.max, false, 0
+		if dashMover then
+			dashMover:Destroy()
+			dashMover = nil
+		end
+		dashEvent:FireServer("tired", false)
+	end)
+
+	-- stamina drains while you sprint, refills after a short rest (faster standing still)
+	local function updateStamina(dt, humanoid, wantSprint)
+		local now = os.clock()
+		local moving = humanoid.MoveDirection.Magnitude > 0.1
+		local sprinting = wantSprint and moving and not winded and stamina > 0
+		if sprinting then
+			stamina = math.max(0, stamina - ST.sprintDrain * dt)
+			lastDrain = now
+			if stamina <= 0 then
+				winded = true
+				MotionBus.tired[humanoid.Parent] = true
+				dashEvent:FireServer("tired", true)
+			end
+		elseif now - lastDrain > ST.regenDelay then
+			stamina = math.min(ST.max, stamina + ST.regen * (moving and 1 or ST.regenStill) * dt)
+			if winded and stamina >= ST.recoverAt then
+				winded = false
+				MotionBus.tired[humanoid.Parent] = nil
+				dashEvent:FireServer("tired", false)
+			end
+		end
+		-- the bar
+		if stamina < ST.max - 0.5 then
+			staminaShownAt = now
+		end
+		local show = now - staminaShownAt < 1.2
+		staminaBar.Visible = show
+		if show then
+			local frac = stamina / ST.max
+			staminaFill.Size = UDim2.new(math.max(frac, 0.04), 0, 1, 0)
+			local color = winded and Color3.fromRGB(255, 80, 80) or (frac > 0.5 and Color3.fromRGB(120, 230, 120) or frac > 0.25 and Color3.fromRGB(255, 210, 70) or Color3.fromRGB(255, 120, 60))
+			staminaFill.BackgroundColor3 = winded and color:Lerp(Color3.new(1, 1, 1), 0.3 + 0.3 * math.sin(now * 12)) or color
+			staminaIcon.TextColor3 = winded and Color3.fromRGB(255, 90, 90) or Color3.fromRGB(255, 230, 90)
+		end
+		return sprinting
 	end
 
 	-- every frame: WalkSpeed (carry slowdown, treadmill, sprint, stun, anemone), riptide pull, camera
@@ -2120,8 +2243,20 @@ do
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if humanoid and root and state then
-			local sprinting = (sprintHeld or sprintToggle) and humanoid.MoveDirection.Magnitude > 0.1
-			local speed = state.walkSpeed + (sprinting and Config.Risk.sprintBonus or 0)
+			local sprinting = updateStamina(dt, humanoid, sprintHeld or sprintToggle)
+			-- Patch 18: the sprint eases in and out instead of snapping
+			sprintBlend += ((sprinting and 1 or 0) - sprintBlend) * math.min(1, dt * (sprinting and ST.sprintEase or ST.sprintEase * 1.6))
+			local speed = state.walkSpeed + Config.Risk.sprintBonus * sprintBlend
+			-- the dash push eases from the burst back down to your run
+			if dashMover then
+				local u = (os.clock() - dashStart) / ST.dashTime
+				if u >= 1 or not canMove(humanoid) then
+					dashMover:Destroy()
+					dashMover = nil
+				else
+					dashMover.VectorVelocity = dashDir * (speed + (ST.dashSpeed - speed) * (1 - u) ^ 2)
+				end
+			end
 			if workspace:GetServerTimeNow() < state.stunUntil or FishingFeel.frozen or MotionBus.cutscene then
 				speed = 0
 			elseif onPatch(root, "TideboundAnemone") then
@@ -2151,7 +2286,19 @@ do
 			end
 			currentFov += (target - currentFov) * math.min(1, dt * 4)
 			-- Master Patch 5: +4 FOV for 6 frames as the cast releases
-			camera.FieldOfView = currentFov + (os.clock() < FishingFeel.kickUntil and 4 or 0)
+			local extra = os.clock() < FishingFeel.kickUntil and 4 or 0
+			-- Patch 18: the sprint widens the view a little; dashes and slams punch it
+			extra += ST.sprintFov * sprintBlend
+			local kick = MotionBus.kick
+			if kick then
+				local u = (os.clock() - kick.at) / kick.length
+				if u >= 1 then
+					MotionBus.kick = nil
+				else
+					extra += kick.amount * (1 - u) ^ 2
+				end
+			end
+			camera.FieldOfView = currentFov + extra
 		end
 		local heat = state and state.heat or 0
 		local color, alpha = C.bad, 1

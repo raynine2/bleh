@@ -74,6 +74,7 @@ local FishingEvent = remote("RemoteEvent", "Fishing")
 local HazardEvent = remote("RemoteEvent", "Hazard")
 local CueEvent = remote("RemoteEvent", "Cue") -- feel cues (Delta Section 10): animations, camera, screen effects
 local SwipeEvent = remote("RemoteEvent", "Swipe") -- Patch 10: the client asks to swipe its rod
+local DashEvent = remote("RemoteEvent", "Dash") -- Patch 18: the client dashed (or got winded); everyone sees it
 
 local R = Config.Risk
 local G = Config.Guardian
@@ -779,6 +780,29 @@ SwipeEvent.OnServerEvent:Connect(function(player)
 end)
 Players.PlayerRemoving:Connect(function(player)
 	swipeTokens[player] = nil
+end)
+
+-- Patch 18: a dash (the client moves itself; this only shows it to everyone) or being winded.
+local lastDash = {}
+DashEvent.OnServerEvent:Connect(function(player, what, value)
+	if what == "tired" then
+		mark(player, "Tired", value == true or nil)
+		return
+	end
+	local run = runs[player]
+	local t = now()
+	if not run or t - (lastDash[player] or 0) < Config.Stamina.dashCooldown * 0.8 then
+		return
+	end
+	if run.session or t < math.max(run.travelUntil, run.stunUntil) then
+		return
+	end
+	lastDash[player] = t
+	mark(player, "DashKind", (type(value) == "number" and value >= 1 and value <= 3) and math.floor(value) or 1)
+	mark(player, "DashAt", t)
+end)
+Players.PlayerRemoving:Connect(function(player)
+	lastDash[player] = nil
 end)
 
 -- World actions (ProximityPrompts) -------------------------------------------

@@ -61,6 +61,10 @@ local Audio = {
 		FishSlap = { id = WATER, volume = 1, pitch = 1.7, note = "Hit 3 lands: a wet fish slap" },
 		SlamBoom = { id = THUD, volume = 1, pitch = 0.45, note = "Hit 3 lands: the ground shakes" },
 		SlamDing = { id = PING, volume = 0.45, pitch = 0.9, note = "Hit 3 lands: stars ring" },
+		-- Patch 18: the dash
+		DashWhoosh = { id = LUNGE, volume = 0.55, pitch = 0.8, note = "The dash takes off" },
+		DashPop = { id = PING, volume = 0.25, pitch = 2.2, note = "A cartoon pop as the dust cloud is left behind" },
+		DashSkid = { id = SLASH, volume = 0.4, pitch = 0.55, note = "Skidding to a stop" },
 	},
 }
 

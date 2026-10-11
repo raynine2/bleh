@@ -14,6 +14,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 
 local Shared = ReplicatedStorage:WaitForChild("Tidebound")
 local Animations = require(Shared:WaitForChild("Animations"))
@@ -28,6 +30,7 @@ local TAU = math.pi * 2
 local SPRINT_SPEED = 19 -- above this (walk 16 + sprint 6, minus carried eggs) the run becomes a sprint
 local FX_RANGE = 90 -- footstep puffs and trails only for characters this close to the camera
 local POSE_RANGE = 260 -- characters further away keep the default animations
+local DASH_LENGTH = 0.62 -- Patch 18: the dash pose, skid included (seconds)
 
 -- Joint name, the part it sits in, and the pose keys that drive it
 local JOINTS = {
@@ -436,6 +439,35 @@ local function slamPose(u)
 	return p
 end
 
+-- Patch 18: the dash, in one of three goofy styles (the server picks nothing: your client rolls DashKind).
+--   1: leaning way forward, arms flung straight back, legs a blur
+--   2: a penguin belly slide, arms out in front, feet fluttering
+--   3: cartoon wheel legs, arms windmilling
+local function dashPose(kind, u)
+	local ph = u * 48
+	if kind == 2 then
+		local flutter = math.sin(u * 40) * 0.15
+		return { rootX = -1.42, rootUp = -2.0, rootZ = 0.08 * math.sin(u * 22), waistX = 0.15, neckX = 0.85, shRX = 3.0, shRZ = 0.25, elRX = 0.05, shLX = 3.0, shLZ = -0.25, elLX = 0.05, hipRX = -0.15 + flutter, kneeRX = -0.1, ankRX = -0.7, hipLX = -0.15 - flutter, kneeLX = -0.1, ankLX = -0.7 }
+	elseif kind == 3 then
+		return { rootX = -0.4, rootUp = 0.15 * math.sin(ph * 2), waistY = 0.15 * math.sin(ph), waistX = -0.1, neckX = 0.35, shRX = 1.4 + 1.6 * math.sin(ph * 0.6), shRZ = 0.5, elRX = 0.3, shLX = 1.4 - 1.6 * math.sin(ph * 0.6), shLZ = -0.5, elLX = 0.3, hipRX = 1.3 * math.sin(ph), kneeRX = -0.9 - 0.9 * math.cos(ph), hipLX = -1.3 * math.sin(ph), kneeLX = -0.9 + 0.9 * math.cos(ph) }
+	end
+	return { rootX = -0.8, rootUp = -0.2, waistX = -0.15, neckX = 0.6, shRX = -1.35, shRZ = 0.25, elRX = 0.05, shLX = -1.35, shLZ = -0.25, elLX = 0.05, hipRX = 1.1 * math.sin(ph), kneeRX = -0.8 - 0.7 * math.cos(ph), hipLX = -1.1 * math.sin(ph), kneeLX = -0.8 + 0.7 * math.cos(ph) }
+end
+
+-- Every dash ends in the same skid: leaning back, front foot braced toe-up, arms flailing for balance.
+local function skidPose(t)
+	local flail = math.sin(t * 22)
+	return { rootX = 0.32, rootUp = -0.45, waistX = 0.18, neckX = -0.15, shRX = 0.6, shRZ = 1.25 + 0.35 * flail, elRX = 0.4, shLX = 0.6, shLZ = -(1.25 - 0.35 * flail), elLX = 0.4, hipRX = 0.85, kneeRX = -0.35, ankRX = -0.45, hipLX = -0.25, kneeLX = -1.05, ankLX = 0.3 }
+end
+
+-- Patch 18: winded (stamina empty): hands on knees, heaving for breath; on the move, a slumped jog.
+local TIRED_KEYS = { "waistX", "neckX", "shRX", "elRX", "shLX", "elLX" }
+local function tiredPose(t)
+	local heave = math.sin(t * 9)
+	return { rootUp = -0.45 + 0.06 * heave, waistX = -0.75 + 0.07 * heave, neckX = 0.45, shRX = 0.95, shRZ = 0.1, elRX = 0.25, shLX = 0.95, shLZ = -0.1, elLX = 0.25, hipRX = 0.55, kneeRX = -0.9, ankRX = 0.35, hipLX = 0.55, kneeLX = -0.9, ankLX = 0.35 }
+end
+local SLUMP = { waistX = -0.25, neckX = -0.35, shRX = 0.1, elRX = 0.3, shLX = 0.1, elLX = 0.3 }
+
 -- Patch 10: flying off a geyser: arms flung up, a tucked front flip at the top of the arc, then legs down to land.
 local function launchPose(s)
 	local p = { shRX = 2.8, shRZ = 0.55, elRX = 0.3, shLX = 2.8, shLZ = -0.55, elLX = 0.3, waistX = 0.2, neckX = 0.25, hipRX = -0.15, hipLX = 0.25, kneeRX = -0.35, kneeLX = -0.6 }
@@ -659,6 +691,104 @@ local function updateStars(rec, on, t)
 	end
 end
 
+-- Patch 18: dash effects. Clean and quick: a dust cloud left hanging where you were, a ring at your feet,
+-- see-through afterimages of your body along the way, and a spray of snow as you skid.
+local GHOSTS = { Color3.fromRGB(150, 230, 255), Color3.fromRGB(220, 240, 255), Color3.fromRGB(255, 200, 120) }
+local function fxPart(shape, size, cf, color, material)
+	local g = Instance.new("Part")
+	g.Anchored = true
+	g.CanCollide = false
+	g.CanQuery = false
+	g.CanTouch = false
+	g.CastShadow = false
+	g.Shape = shape
+	g.Material = material or Enum.Material.Neon
+	g.Color = color
+	g.Size = size
+	g.CFrame = cf
+	g.Parent = Fx.folder()
+	return g
+end
+
+local function afterimage(character, color)
+	for _, limb in ipairs(character:GetChildren()) do
+		if limb:IsA("BasePart") and limb.Name ~= "HumanoidRootPart" and limb.Transparency < 0.9 then
+			local g = fxPart(Enum.PartType.Block, limb.Size, limb.CFrame, color)
+			g.Transparency = 0.55
+			TweenService:Create(g, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 1, Size = limb.Size * 0.85 }):Play()
+			Debris:AddItem(g, 0.35)
+		end
+	end
+end
+
+local function dustCloud(at)
+	for i = 1, 5 do
+		local offset = Vector3.new(rng:NextNumber(-1.2, 1.2), rng:NextNumber(0, 1.4), rng:NextNumber(-1.2, 1.2))
+		local puff = fxPart(Enum.PartType.Ball, Vector3.one * 0.6, CFrame.new(at + offset), i % 2 == 0 and Color3.fromRGB(235, 240, 248) or Color3.new(1, 1, 1), Enum.Material.SmoothPlastic)
+		puff.Transparency = 0.1
+		local size = rng:NextNumber(2.4, 3.6)
+		TweenService:Create(puff, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = Vector3.one * size }):Play()
+		TweenService:Create(puff, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 0.2), { Size = Vector3.one * 0.3, Transparency = 1, CFrame = CFrame.new(at + offset * 1.4 + Vector3.new(0, 1, 0)) }):Play()
+		Debris:AddItem(puff, 0.6)
+	end
+end
+
+local function dashFx(rec, character, root, dash)
+	if not rec.near then
+		return
+	end
+	local seen = rec.dashFx
+	local feet = root.Position - Vector3.new(0, rec.hipOffset or 3, 0)
+	if not seen or seen.key ~= dash.key then
+		seen = { key = dash.key, ghosts = 0, skid = false }
+		rec.dashFx = seen
+		if dash.u < 0.2 then
+			dustCloud(feet + Vector3.new(0, 1, 0))
+			Fx.ring(feet + Vector3.new(0, 0.2, 0), Color3.new(1, 1, 1), 5, 0.3, 0.25)
+			Audio.play("DashWhoosh", root, rng:NextNumber(0.9, 1.1))
+			Audio.play("DashPop", root, rng:NextNumber(0.9, 1.15))
+		end
+	end
+	-- afterimages at 0.06, 0.12, 0.18 and 0.24 seconds
+	local due = math.floor(math.clamp(dash.u, 0, 0.25) / 0.06)
+	while seen.ghosts < due do
+		seen.ghosts += 1
+		afterimage(character, GHOSTS[dash.kind] or GHOSTS[1])
+	end
+	if not seen.skid and dash.u > 0.25 and dash.u < 0.5 then
+		seen.skid = true
+		local color = rec.floorColor or Color3.fromRGB(240, 245, 255)
+		Fx.cubes(feet + root.CFrame.LookVector * 1.2 + Vector3.new(0, 0.4, 0), { color, Color3.new(1, 1, 1) }, { spread = 3, size = 0.35, life = 0.35, count = 10, up = 0.5, material = Enum.Material.SmoothPlastic })
+		Audio.play("DashSkid", root, rng:NextNumber(0.9, 1.1))
+	end
+end
+
+-- Winded: sweat drops fly off your head, and your tongue hangs out while you stand and pant.
+local function tiredFx(rec, character, t, panting)
+	local head = character:FindFirstChild("Head")
+	if not head or not rec.near then
+		panting = false
+	end
+	if head and rec.near and t > (rec.nextSweat or 0) then
+		rec.nextSweat = t + 0.3
+		local side = rng:NextNumber() < 0.5 and -1 or 1
+		local start = head.CFrame * CFrame.new(side * 0.6, 0.5, 0)
+		local drop = fxPart(Enum.PartType.Ball, Vector3.one * 0.3, start, Color3.fromRGB(140, 210, 255))
+		drop.Transparency = 0.15
+		TweenService:Create(drop, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = start * CFrame.new(side * 1.3, -1.6, 0), Transparency = 1 }):Play()
+		Debris:AddItem(drop, 0.55)
+	end
+	if panting and head then
+		if not rec.tongue then
+			rec.tongue = fxPart(Enum.PartType.Block, Vector3.new(0.35, 0.08, 0.45), head.CFrame, Color3.fromRGB(255, 110, 140), Enum.Material.SmoothPlastic)
+		end
+		rec.tongue.CFrame = head.CFrame * CFrame.new(0, -0.38, -0.62) * CFrame.Angles(-0.5 + 0.25 * math.sin(t * 18), 0, 0)
+	elseif rec.tongue then
+		rec.tongue:Destroy()
+		rec.tongue = nil
+	end
+end
+
 -- Per character ---------------------------------------------------------------------------------------------
 
 local rigs = {} -- [Player] = record
@@ -692,6 +822,7 @@ local function newRecord(p, character)
 		swim = 0,
 		move = 0,
 		sprint = 0,
+		tired = 0,
 		carry = 0,
 		arms = 0,
 		turnLean = 0,
@@ -710,6 +841,12 @@ end
 
 local function clearRecord(rec)
 	updateStars(rec, false, 0)
+	if rec.tongue then
+		rec.tongue:Destroy()
+		rec.tongue = nil
+	end
+	MotionBus.dash[rec.character] = nil
+	MotionBus.tired[rec.character] = nil
 	MotionBus.arms[rec.character] = nil
 	MotionBus.pose[rec.character] = nil
 	if rec.eggs then
@@ -984,6 +1121,17 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 		end
 	end
 
+	-- Patch 18: winded
+	local tired = (p == player and MotionBus.tired[character]) or (p ~= player and character:GetAttribute("Tired"))
+	rec.tired += ((tired and 1 or 0) - rec.tired) * math.min(1, dt * 4)
+	if rec.tired > 0.01 then
+		mix(pose, tiredPose(t), rec.tired * (1 - rec.move) * (1 - rec.air))
+		mix(pose, SLUMP, rec.tired * rec.move * 0.6, TIRED_KEYS)
+		tiredFx(rec, character, t, rec.tired > 0.5 and rec.move < 0.3)
+	elseif rec.tongue then
+		tiredFx(rec, character, t, false)
+	end
+
 	-- the head follows your camera a little (your own character)
 	if p == player and rec.move < 0.5 then
 		local camera = workspace.CurrentCamera
@@ -1047,6 +1195,26 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 			mix(pose, swing, w * (step == 3 and 1 or (1 - 0.85 * math.clamp(rec.move, 0, 1))), LOWER)
 			pose.rootY = (pose.rootY or 0) + spin
 		end
+	end
+
+	-- Patch 18: the dash (your own plays at once; everyone else's comes through DashAt and DashKind)
+	local dash = nil
+	if p == player then
+		local own = MotionBus.dash[character]
+		if own then
+			dash = { key = own.start, u = os.clock() - own.start, kind = own.kind }
+		end
+	else
+		local dashAt = character:GetAttribute("DashAt")
+		if dashAt then
+			dash = { key = dashAt, u = serverNow - dashAt, kind = character:GetAttribute("DashKind") or 1 }
+		end
+	end
+	if dash and dash.u >= 0 and dash.u < DASH_LENGTH then
+		local dp = dashPose(dash.kind, dash.u)
+		mix(dp, skidPose(t), smooth((dash.u - 0.24) / 0.1))
+		mix(pose, dp, envelope(dash.u, DASH_LENGTH, 0.04, 0.22))
+		dashFx(rec, character, root, dash)
 	end
 
 	-- Patch 10: a geyser launch (TideboundTravel)

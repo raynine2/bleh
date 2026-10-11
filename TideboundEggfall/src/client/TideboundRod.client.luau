@@ -1186,13 +1186,8 @@ local function fishSlap(rec, root, isMe, start)
 		Audio.play("SlamDing", root, comboRng:NextNumber(0.95, 1.1))
 		if isMe then
 			FishingFeel.shake(0.4, 0.32)
-			-- a punch of the camera's zoom
-			local camera = workspace.CurrentCamera
-			if camera then
-				local fov = camera.FieldOfView
-				camera.FieldOfView = fov + 7
-				TweenService:Create(camera, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { FieldOfView = fov }):Play()
-			end
+			-- a punch of the camera's zoom (TideboundClient owns the field of view, so it goes through MotionBus)
+			MotionBus.kick = { at = os.clock(), amount = 7, length = 0.4 }
 		end
 	end)
 end
