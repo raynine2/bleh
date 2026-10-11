@@ -440,8 +440,11 @@ local function refreshHUD()
 		haulInfo.TextColor3 = C.muted
 	end
 	local parts = { ("HP %d/%d"):format(state.health, state.maxHealth) }
+	if state.started and (state.depth or 1) > 1 then
+		table.insert(parts, ("%s · depth %d"):format(state.biomeName, state.depth))
+	end
 	if state.phase > 0 then
-		table.insert(parts, ("Warden Phase %d"):format(state.phase))
+		table.insert(parts, ("%s Phase %d"):format(state.depth == 2 and "Leviathan" or "Warden", state.phase))
 	end
 	if state.locked then
 		table.insert(parts, "LOCKED ON")
@@ -994,13 +997,21 @@ for i, bait in ipairs(Config.Baits) do
 	baitRows[i] = { owned = owned, buy = buy, equip = equip }
 end
 divider(baitPage)
-section(baitPage, "SUNKEN SHOALS FISH ODDS · with your rod and bait")
-local fishOddsRows = {}
-for i, tier in ipairs(Config.Tiers) do
-	local row = rowFrame(baitPage, 28)
-	label({ Text = tier.id, Font = DISPLAY, TextColor3 = tier.color, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.24, 0, 1, 0), TextSize = 14, Parent = row })
-	fishOddsRows[i] = label({ Font = DISPLAY, Position = UDim2.new(0.26, 0, 0, 0), Size = UDim2.new(0.18, 0, 1, 0), TextSize = 14, Parent = row })
-	label({ Text = ("%s · %d Pearls"):format(table.concat(Config.Biomes[1].fish[i], ", "), tier.fishPearls), Position = UDim2.new(0.45, 0, 0, 0), Size = UDim2.new(0.55, -10, 1, 0), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
+local fishOddsRows = {} -- [biome index][tier index]: each built biome's odds (deeper biomes multiply your luck)
+for b, biome in ipairs(Config.Biomes) do
+	if biome.built and biome.fish then
+		if b > 1 then
+			divider(baitPage)
+		end
+		section(baitPage, ("%s FISH ODDS · with your rod and bait%s"):format(biome.name:upper(), (biome.luck or 1) ~= 1 and (" · luck x%.1f here"):format(biome.luck) or ""))
+		fishOddsRows[b] = {}
+		for i, tier in ipairs(Config.Tiers) do
+			local row = rowFrame(baitPage, 28)
+			label({ Text = tier.id, Font = DISPLAY, TextColor3 = tier.color, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.24, 0, 1, 0), TextSize = 14, Parent = row })
+			fishOddsRows[b][i] = label({ Font = DISPLAY, Position = UDim2.new(0.26, 0, 0, 0), Size = UDim2.new(0.18, 0, 1, 0), TextSize = 14, Parent = row })
+			label({ Text = ("%s · %d Pearls"):format(table.concat(biome.fish[i], ", "), tier.fishPearls), Position = UDim2.new(0.45, 0, 0, 0), Size = UDim2.new(0.55, -10, 1, 0), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
+		end
+	end
 end
 do
 	-- Master Patch 6: fish roll the same mutation table as eggs, so its odds are shown here too
@@ -1023,9 +1034,11 @@ refreshers.BAIT = function()
 	end
 	local rod = Config.RodsById[state.rod] or Config.Rods[1]
 	local bait = state.bait ~= "" and (state.baitInv[state.bait] or 0) > 0 and Config.BaitById[state.bait]
-	local fishOdds = Gacha.fishOdds(rod.luck * (bait and bait.luck or 1))
-	for i, labelInst in ipairs(fishOddsRows) do
-		labelInst.Text = pct(fishOdds[i])
+	for b, rows in pairs(fishOddsRows) do
+		local fishOdds = Gacha.fishOdds(rod.luck * (bait and bait.luck or 1) * (Config.Biomes[b].luck or 1))
+		for i, labelInst in ipairs(rows) do
+			labelInst.Text = pct(fishOdds[i])
+		end
 	end
 end
 
@@ -1093,19 +1106,21 @@ end
 local bestiaryPage = makePage("BESTIARY")
 local bestiaryHeader = label({ Font = DISPLAY, TextSize = 16, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = nextOrder(), Parent = bestiaryPage })
 local fishList = {}
-for tierIndex, names in ipairs(Config.Biomes[1].fish) do
-	for _, fishName in ipairs(names) do
-		table.insert(fishList, { name = fishName, tier = tierIndex })
+for b, biome in ipairs(Config.Biomes) do
+	for tierIndex, names in ipairs(biome.built and biome.fish or {}) do
+		for _, fishName in ipairs(names) do
+			table.insert(fishList, { name = fishName, tier = tierIndex, biome = b })
+		end
 	end
 end
 local fishTiles = tileGrid(bestiaryPage, #fishList)
 
 refreshers.BESTIARY = function()
-	local caught = 0
+	local caught = { 0, 0 }
 	for i, entry in ipairs(fishList) do
 		local t = fishTiles[i]
 		if state.bestiary[entry.name] then
-			caught += 1
+			caught[entry.biome] = (caught[entry.biome] or 0) + 1
 			retile(t, "blue")
 			t.caption.Text = entry.name
 		else
@@ -1113,7 +1128,8 @@ refreshers.BESTIARY = function()
 			t.caption.Text = Config.Tiers[entry.tier].id
 		end
 	end
-	bestiaryHeader.Text = ("SUNKEN SHOALS · %d/%d fish caught · %s %d/%d"):format(caught, #fishList, Config.Guardian.dropName .. "s", state.trophies[Config.Guardian.drop] or 0, Config.Guardian.dropsForPage)
+	local G, L = Config.Guardian, Config.Leviathan
+	bestiaryHeader.Text = ("SHOALS %d/12 · KELP %d/12 fish · %ss %d/%d · %ss %d/%d"):format(caught[1], caught[2], G.dropName, state.trophies[G.drop] or 0, G.dropsForPage, L.dropName, state.trophies[L.drop] or 0, L.dropsForPage)
 end
 
 do
@@ -1321,7 +1337,7 @@ do
 		end
 		local st = state.stats
 		local m = st.modes[boardMode]
-		myRecord.Text = ("%s: extractions %d · clean streak %d (best %d) · best Heat extracted %d · deepest push %d · rarest hatch %s\nAll dives: wipes %d · fish caught %d · hatched %d · %ss %d"):format(
+		myRecord.Text = ("%s: extractions %d · clean streak %d (best %d) · best Heat extracted %d · deepest push %d · rarest hatch %s\nAll dives: wipes %d · fish caught %d · hatched %d · %ss %d · %ss %d"):format(
 			boardMode,
 			m.extractions,
 			m.cleanStreak,
@@ -1333,7 +1349,9 @@ do
 			st.fishCaught,
 			st.hatched,
 			Config.Guardian.dropName,
-			state.trophies[Config.Guardian.drop] or 0
+			state.trophies[Config.Guardian.drop] or 0,
+			Config.Leviathan.dropName,
+			state.trophies[Config.Leviathan.drop] or 0
 		)
 	end
 	refreshers.BOARDS = refreshBoards
@@ -1493,7 +1511,7 @@ do
 			elseif i > rod.biomes then
 				labelInst.Text, labelInst.TextColor3 = ("Needs a rod that reaches %d biomes"):format(i), C.warn
 			else
-				labelInst.Text, labelInst.TextColor3 = ("OPEN · %s · %s"):format(biome.guardian, biome.hazard), C.good
+				labelInst.Text, labelInst.TextColor3 = ("OPEN · %s · %s%s"):format(biome.guardian, biome.hazard, i > 1 and (" · PUSH DEEPER at a beacon · luck x%.1f"):format(biome.luck or 1) or ""), C.good
 			end
 		end
 
@@ -1766,7 +1784,17 @@ local ZONES = {
 		grade = { Saturation = 0.28, TintColor = Color3.fromRGB(246, 255, 252) },
 		bloom = 0.55,
 	},
+	-- Big Update: Kelp Cathedral, a dim teal cavern where everything that glows really glows
+	Kelp = {
+		atmosphere = { Density = 0.45, Color = Color3.fromRGB(46, 120, 110), Decay = Color3.fromRGB(18, 60, 70), Haze = 2.2 },
+		grade = { Saturation = 0.3, TintColor = Color3.fromRGB(214, 255, 240) },
+		bloom = 1,
+		lighting = { Ambient = Color3.fromRGB(64, 104, 108), OutdoorAmbient = Color3.fromRGB(70, 120, 120), Brightness = 1.6 },
+	},
 }
+-- the Nest and Shoals keep the place's own lighting (read once here) and get it back when you come up
+ZONES.Nest.lighting = { Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient, Brightness = Lighting.Brightness }
+ZONES.Shoals.lighting = ZONES.Nest.lighting
 local currentZone = nil
 local function applyZone(name)
 	if currentZone == name then
@@ -1787,6 +1815,7 @@ local function applyZone(name)
 	if bloom then
 		TweenService:Create(bloom, info, { Intensity = zone.bloom }):Play()
 	end
+	TweenService:Create(Lighting, info, zone.lighting):Play()
 end
 
 local refreshGreed -- set in the block below
@@ -1851,8 +1880,11 @@ do
 		local G = Config.Greed
 		local elapsed = workspace:GetServerTimeNow() - choice.started
 		greedTitle.Text = ("EXTRACT OR PUSH DEEPER?  %ds"):format(math.max(0, math.ceil(G.choiceSeconds - elapsed)))
-		if choice.canPush then
-			greedText.Text = ("Extract now: bank your cargo at x%.1f. Push deeper: cargo x%.1f, +%d heat and the %s gets one phase angrier, then extract at a different beacon. No answer extracts."):format(state.cargoMult, state.cargoMult + G.cargoPct, G.heat, Config.Guardian.name)
+		if choice.canPush and state.depth == 1 then
+			local deeper = Config.Biomes[2]
+			greedText.Text = ("Extract now: bank your cargo at x%.1f. Push deeper: dive down the Maelstrom into %s (rarer fish, luck x%.1f) with cargo x%.1f and +%d heat, where the %s waits. No answer extracts."):format(state.cargoMult, deeper.name, deeper.luck, state.cargoMult + G.cargoPct, G.heat, Config.Leviathan.name)
+		elseif choice.canPush then
+			greedText.Text = ("Extract now: bank your cargo at x%.1f. Push deeper: cargo x%.1f, +%d heat and the %s gets one phase angrier, then extract at a different beacon. No answer extracts."):format(state.cargoMult, state.cargoMult + G.cargoPct, G.heat, state.guardianName or Config.Guardian.name)
 		else
 			greedText.Text = ("Your rod can't go deeper (%d of %d pushes used). Extract now to bank your cargo at x%.1f."):format(state.pushes, state.maxPushes, state.cargoMult)
 		end
@@ -1892,9 +1924,11 @@ do
 		end
 	end)
 
-	-- Stinging Anemone beds slow you while you stand in them (the server deals the sting)
-	local function onAnemone(root)
-		for _, bed in ipairs(CollectionService:GetTagged("TideboundAnemone")) do
+	-- Stinging Anemone beds (the server deals the sting) and Kelp Cathedral's grasping vines slow you while
+	-- you stand in them
+	local MotionBus = require(Shared:WaitForChild("MotionBus"))
+	local function onPatch(root, tag)
+		for _, bed in ipairs(CollectionService:GetTagged(tag)) do
 			if bed:IsA("BasePart") then
 				local p = bed.CFrame:PointToObjectSpace(root.Position)
 				if math.abs(p.X) < bed.Size.X / 2 + 0.3 and math.abs(p.Z) < bed.Size.Z / 2 + 0.3 and p.Y > -1 and p.Y < 7 then
@@ -1935,13 +1969,15 @@ do
 		if humanoid and root and state then
 			local sprinting = (sprintHeld or sprintToggle) and humanoid.MoveDirection.Magnitude > 0.1
 			local speed = state.walkSpeed + (sprinting and Config.Risk.sprintBonus or 0)
-			if workspace:GetServerTimeNow() < state.stunUntil or FishingFeel.frozen then
+			if workspace:GetServerTimeNow() < state.stunUntil or FishingFeel.frozen or MotionBus.cutscene then
 				speed = 0
-			elseif onAnemone(root) then
+			elseif onPatch(root, "TideboundAnemone") then
 				speed *= 1 - Config.Anemone.slow
+			elseif onPatch(root, "TideboundVines") then
+				speed *= 1 - Config.Kelp.vineSlow
 			end
 			humanoid.WalkSpeed = speed
-			if os.clock() < riptide.untilTime and humanoid.Health > 0 and not FishingFeel.frozen then
+			if os.clock() < riptide.untilTime and humanoid.Health > 0 and not FishingFeel.frozen and not MotionBus.cutscene then
 				root.CFrame += riptide.direction * riptide.speed * dt
 			end
 			if shakeUntil > os.clock() then
@@ -2007,7 +2043,7 @@ do
 			call("CATCH BANKED", C.good, 1.2)
 		elseif name == "WardenTell" then
 			shake(0.15, 0.6)
-			call("WARDEN STRIKE: DODGE!", C.bad, 0.8)
+			call(("%s: DODGE!"):format(tostring(payload or Config.Guardian.name):upper()), C.bad, 0.8)
 		elseif name == "EliteTell" then
 			shake(0.1, 0.4)
 			call(("%s: DODGE!"):format(tostring(payload or "ELITE"):upper()), C.warn, 0.9)
@@ -2019,7 +2055,9 @@ do
 		elseif name == "Phase" then
 			pulseHeat()
 			shake(0.25, 0.5)
-			call(("%s PHASE %d"):format(Config.Guardian.name:upper(), tonumber(payload) or 1), (tonumber(payload) or 1) >= 2 and C.bad or C.warn, 1.6)
+			local info = type(payload) == "table" and payload or { phase = tonumber(payload) or 1 }
+			local phase = tonumber(info.phase) or 1
+			call(("%s PHASE %d"):format(tostring(info.guardian or Config.Guardian.name):upper(), phase), phase >= 2 and C.bad or C.warn, 1.6)
 		elseif name == "LockLost" then
 			call("YOU SHOOK IT OFF", C.good, 1.2)
 		elseif name == "Snatched" then
@@ -2510,7 +2548,7 @@ task.spawn(function()
 		local character = player.Character
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if root then
-			applyZone((root.Position.X > 55 and not Config.safeZone(root.Position)) and "Shoals" or "Nest")
+			applyZone(Config.zoneOf(root.Position))
 		end
 	end
 end)

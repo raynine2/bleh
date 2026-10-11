@@ -60,7 +60,8 @@ local function template()
 		vials = { Mending = 0, Revive = 0 },
 		heatDebt = 0,
 		heatDebtRest = 0, -- seconds rested at your Home Nest toward clearing it
-		trophies = { ReefCore = 0 },
+		trophies = { ReefCore = 0, KelpScale = 0 },
+		seenIntro = false, -- Big Update: the opening cutscene plays once
 		-- Master Patch 1 step 4: two companion slots (creature names) and knock-out timers (os.time)
 		companions = { slots = { "", "" }, ko = {} },
 		-- Delta Section 7: Home Nest zones (true = unlocked) and upgrade levels (1 = first value)

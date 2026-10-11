@@ -339,7 +339,7 @@ Config.World = {
 	beaconClosedColor = Color3.fromRGB(255, 70, 70),
 }
 
--- Biome order is canon. Only Sunken Shoals is built so far.
+-- Biome order is canon. Sunken Shoals (depth 1) and Kelp Cathedral (depth 2) are built so far.
 Config.Biomes = {
 	{
 		id = "SunkenShoals",
@@ -347,6 +347,8 @@ Config.Biomes = {
 		hazard = "Riptide pull",
 		guardian = "Reef Warden",
 		built = true,
+		depth = 1,
+		luck = 1,
 		weather = "Glass Calm",
 		fish = {
 			{ "Sand Minnow", "Reef Sprat" },
@@ -358,11 +360,77 @@ Config.Biomes = {
 			{ "Eggfall Koi" },
 		},
 	},
-	{ id = "KelpCathedral", name = "Kelp Cathedral", hazard = "Grasping vines slow player", guardian = "Kelp Leviathan" },
+	{
+		id = "KelpCathedral",
+		name = "Kelp Cathedral",
+		hazard = "Grasping vines slow player",
+		guardian = "Kelp Leviathan",
+		built = true,
+		depth = 2,
+		luck = 1.3, -- deeper water, rarer bites: multiplies rod and bait luck on the rarity roll (shown in the game)
+		fish = {
+			{ "Kelp Darter", "Moss Goby" },
+			{ "Lantern Shrimp", "Vine Pipefish" },
+			{ "Glowfin Wrasse", "Choir Grouper" },
+			{ "Stained-Glass Ray", "Bishop Eel" },
+			{ "Cathedral Sturgeon", "Gilded Seahorse" },
+			{ "Hymnal Oarfish" },
+			{ "Halo Koi" },
+		},
+	},
 	{ id = "StormShelf", name = "Storm Shelf", hazard = "Lightning strikes random spots", guardian = "Storm Herald" },
 	{ id = "AbyssTrench", name = "Abyss Trench", hazard = "Sonar pulses reveal player to Warden", guardian = "Trench Maw" },
 	{ id = "AuroraRift", name = "Aurora Rift", hazard = "Gravity shifts + aurora ribbons blind vision", guardian = "Rift Sovereign" },
 }
+
+-- Big Update: the Descent. PUSH DEEPER at a Shoals beacon pulls you down the Maelstrom into Kelp Cathedral,
+-- a sunken cathedral of giant kelp in a cavern under the sea. Everything below `belowY` is the Kelp.
+Config.Kelp = {
+	center = Vector3.new(0, -320, 1000), -- the cavern floor's centre (the floor's top is at center.Y)
+	belowY = -150,
+	arrival = CFrame.lookAt(Vector3.new(0, -314, 812), Vector3.new(0, -314, 900)), -- on the Descent dais, facing down the nave (+Z)
+	ascend = CFrame.lookAt(Vector3.new(194, 10, -154), Vector3.new(244, 10, -176)), -- back up: Maelstrom Isle, facing the whirlpool
+	vineSlow = 0.4, -- Canon hazard: grasping vines slow you while you stand in them
+}
+
+-- Master Patch 3 guardian numbers for the second biome: 30 damage (Shoals 25, then 30/40/50/60), and every
+-- strike telegraphs for at least 0.6 s. Same phases as the Reef Warden: 3rd egg, heat 75, heat 100.
+Config.Leviathan = {
+	name = "Kelp Leviathan",
+	damage = 30,
+	triggerEggs = 3,
+	drop = "KelpScale",
+	dropName = "Leviathan Scale",
+	dropsForPage = 5,
+	tell = 0.7,
+	lungeRange = 12,
+	strikeRadius = 8,
+	recover = 2,
+	hoverY = -312,
+	noGoRadius = 34, -- around the Descent dais, so you land safely
+	speeds = { patrol = 11, guard = 14, chase = 15.5, fury = 17 },
+}
+
+-- Cutscenes (Big Update): when the server acts during each one, in seconds after it starts.
+Config.Cutscene = {
+	descentTeleport = 1.4, -- the Maelstrom swallows you, the screen goes dark, you arrive in the Kelp
+	extractTeleport = 2.8, -- the light column lifts you out, you arrive back in the Nest
+	wipeTeleport = 1.9, -- you collapse, the screen fades, you wake up in the Nest
+	wakeSeconds = 2.6, -- a guardian wakes: it pauses and can't hurt you while the camera shows it
+	diveSeconds = 2.4,
+}
+
+-- Which part of the world a position is in, for lighting, guardians and hazards: "Kelp", "Shoals" or "Nest"
+-- (the Harbor Ring counts as the Nest).
+function Config.zoneOf(position)
+	if position.Y < Config.Kelp.belowY then
+		return "Kelp"
+	end
+	if position.X > 55 and not Config.safeZone(position) then
+		return "Shoals"
+	end
+	return "Nest"
+end
 
 -- Safe zones: the Nest plaza and the Harbor Ring. No Warden, no Heat hazards, and hatching is allowed.
 function Config.safeZone(position)

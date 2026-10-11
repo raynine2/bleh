@@ -15,8 +15,18 @@ local SHAPES = {
 	["Riptide Marlin"] = "marlin",
 	["Lantern Puffer"] = "round",
 	["Eggfall Koi"] = "koi",
+	-- Kelp Cathedral (Big Update)
+	["Kelp Darter"] = "long",
+	["Vine Pipefish"] = "eel",
+	["Choir Grouper"] = "round",
+	["Stained-Glass Ray"] = "ray",
+	["Bishop Eel"] = "eel",
+	["Cathedral Sturgeon"] = "long",
+	["Gilded Seahorse"] = "seahorse",
+	["Hymnal Oarfish"] = "eel",
+	["Halo Koi"] = "koi",
 }
-local STRETCH = { eel = 1.6, long = 1.45, marlin = 1.8, round = 0.85, ray = 1.1, koi = 1.2 }
+local STRETCH = { eel = 1.6, long = 1.45, marlin = 1.8, round = 0.85, ray = 1.1, koi = 1.2, seahorse = 0.9 }
 
 -- Body length in studs: grows with the tier and the fish's shape.
 function FishModels.length(name, tierIndex)
@@ -128,6 +138,20 @@ function BUILD.round(model, L)
 	piece(model, "Lure", Vector3.new(0.12 * L, 0.12 * L, 0.12 * L), CFrame.new(0, 0.55 * L, -0.35 * L), -0.6, Enum.PartType.Ball)
 	piece(model, "Tail", Vector3.new(0.05 * L, 0.3 * L, 0.2 * L), CFrame.new(0, 0, 0.48 * L), 0.25)
 	eyes(model, 0.22 * L, 0.12 * L, -0.3 * L, 0.14 * L)
+end
+
+function BUILD.seahorse(model, L)
+	piece(model, "Body", Vector3.new(0.28 * L, 0.6 * L, 0.3 * L), CFrame.new(), 0, nil, true)
+	piece(model, "Belly", Vector3.new(0.2 * L, 0.45 * L, 0.2 * L), CFrame.new(0, -0.02 * L, -0.06 * L), -0.35, nil, true)
+	piece(model, "Head", Vector3.new(0.22 * L, 0.22 * L, 0.26 * L), CFrame.new(0, 0.36 * L, -0.05 * L), 0, nil, true)
+	piece(model, "Snout", Vector3.new(0.07 * L, 0.07 * L, 0.3 * L), CFrame.new(0, 0.33 * L, -0.28 * L), 0.15)
+	piece(model, "Crown", Vector3.new(0.05 * L, 0.12 * L, 0.1 * L), CFrame.new(0, 0.5 * L, 0), 0.25)
+	piece(model, "Fin", Vector3.new(0.03 * L, 0.2 * L, 0.12 * L), CFrame.new(0, 0.05 * L, 0.15 * L), 0.25)
+	-- the curled tail
+	piece(model, "Tail", Vector3.new(0.12 * L, 0.25 * L, 0.12 * L), CFrame.new(0, -0.38 * L, 0.05 * L) * CFrame.Angles(math.rad(-15), 0, 0), 0.1)
+	piece(model, "Tail", Vector3.new(0.1 * L, 0.1 * L, 0.18 * L), CFrame.new(0, -0.5 * L, 0.12 * L), 0.15)
+	piece(model, "Tail", Vector3.new(0.08 * L, 0.12 * L, 0.08 * L), CFrame.new(0, -0.44 * L, 0.2 * L), 0.2)
+	eyes(model, 0.1 * L, 0.4 * L, -0.12 * L, 0.06 * L)
 end
 
 -- Returns the model (PrimaryPart "Body", built around the origin) and its length in studs.

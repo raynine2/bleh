@@ -1,6 +1,6 @@
 -- Tidebound: Eggfall: the rod in motion (Master Patches 5 and 7), for every player on your screen.
--- Until the animator's ids are pasted into Animations.luau, this script poses the arms in code (it sets the
--- shoulder, elbow and waist joints right after the default animations each frame), bends the rod, draws the
+-- Until the animator's ids are pasted into Animations.luau, this script works out the arm pose for each step
+-- (TideboundMotion applies it to the shoulder, elbow and waist joints through MotionBus), bends the rod, draws the
 -- spring line to the bobber and plays each rod's sounds and effects. Once an id is filled in, that step
 -- plays the animation instead and this script only bends the rod and draws the line.
 -- Your own cast follows FishingFeel (the reel minigame in TideboundClient); other players' casts follow the
@@ -20,6 +20,8 @@ local RodModels = require(Shared:WaitForChild("RodModels"))
 local FishModels = require(Shared:WaitForChild("FishModels"))
 local FishingFeel = require(Shared:WaitForChild("FishingFeel"))
 local Audio = require(Shared:WaitForChild("Audio"))
+local MotionBus = require(Shared:WaitForChild("MotionBus"))
+local Fx = require(Shared:WaitForChild("Fx"))
 
 local player = Players.LocalPlayer
 local REVEAL = Config.Reveal
@@ -352,25 +354,6 @@ local AT_LANDING = { Rift = true, Aurora = true }
 
 local rigs = {} -- [Player] = record
 
-local function joints(character)
-	local function find(partName, jointName)
-		local p = character:FindFirstChild(partName)
-		local j = p and p:FindFirstChild(jointName)
-		return j and j:IsA("Motor6D") and j or nil
-	end
-	local set = {
-		shR = find("RightUpperArm", "RightShoulder"),
-		elR = find("RightLowerArm", "RightElbow"),
-		shL = find("LeftUpperArm", "LeftShoulder"),
-		elL = find("LeftLowerArm", "LeftElbow"),
-		waist = find("UpperTorso", "Waist"),
-	}
-	if set.shR and set.elR and set.shL and set.elL and set.waist then
-		return set
-	end
-	return nil -- R6 or a custom rig: the rod still shows, the arms keep their animations
-end
-
 local function clearVisuals(rec)
 	if rec.bobber then
 		rec.bobber:Destroy()
@@ -510,7 +493,7 @@ local function once(rec, key)
 	return true
 end
 
--- Poses (after the default animations, before physics) ---------------------------------------------------
+-- Poses (published to MotionBus every frame, before physics) ---------------------------------------------
 
 RunService.Stepped:Connect(function(_, dt)
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -520,7 +503,10 @@ RunService.Stepped:Connect(function(_, dt)
 			if rec then
 				clearVisuals(rec)
 			end
-			rec = { player = p, character = character, joints = joints(character), weight = 0, fired = {}, key = "", pose = POSE.rest, bend = 0, tension = 0 }
+			if rec then
+				MotionBus.arms[rec.character] = nil
+			end
+			rec = { player = p, character = character, weight = 0, fired = {}, key = "", pose = POSE.rest, bend = 0, tension = 0 }
 			rigs[p] = rec
 		end
 		if rec and character then
@@ -545,18 +531,12 @@ RunService.Stepped:Connect(function(_, dt)
 				rec.bend = 0
 				playStep(rec, nil)
 			end
+			-- TideboundMotion poses the arms from this (it owns every joint, both joint types)
 			local animated = rec.step and Animations[rec.step] and Animations[rec.step].id ~= ""
-			if not rec.joints and rec.weight > 0 then
-				rec.joints = joints(character) -- limbs can stream in after the character appears
-			end
-			if rec.joints and rec.weight > 0 and not animated then
-				local pose, w = rec.pose, rec.weight
-				local j = rec.joints
-				j.shR.Transform = j.shR.Transform:Lerp(CFrame.Angles(pose.shR, 0, pose.inR), w)
-				j.elR.Transform = j.elR.Transform:Lerp(CFrame.Angles(pose.elR, 0, 0), w)
-				j.shL.Transform = j.shL.Transform:Lerp(CFrame.Angles(pose.shL, 0, pose.inL), w)
-				j.elL.Transform = j.elL.Transform:Lerp(CFrame.Angles(pose.elL, 0, 0), w)
-				j.waist.Transform = j.waist.Transform:Lerp(CFrame.Angles(pose.waist, 0, 0), w)
+			if rec.weight > 0 and not animated then
+				MotionBus.arms[character] = { weight = rec.weight, pose = rec.pose }
+			else
+				MotionBus.arms[character] = nil
 			end
 			if rec.rod and (rec.weight > 0 or rec.bent) then
 				RodModels.setBend(rec.rod, rec.bend)
@@ -567,6 +547,7 @@ RunService.Stepped:Connect(function(_, dt)
 	for p, rec in pairs(rigs) do
 		if not p.Parent then
 			clearVisuals(rec)
+			MotionBus.arms[rec.character] = nil
 			rigs[p] = nil
 		end
 	end
@@ -625,6 +606,8 @@ local function updateCast(rec, look, rodId, spot, tipPos)
 		if step == "BiteTell" then
 			if once(rec, "tell") then
 				Audio.play("TickTick", rec.bobber.PrimaryPart)
+				-- the video's bite alert: a red "!" pops over the bobber
+				Fx.alert(rec.bobber.PrimaryPart, "!", Color3.fromRGB(255, 64, 64), 0.7, 2)
 			end
 			position -= Vector3.new(0, 0.3 * math.abs(math.sin(u / T.tell * math.pi * 2)), 0)
 			slackTarget = 0.4
@@ -692,6 +675,8 @@ local function updateLand(rec, spot)
 		Audio.play("Splash", root)
 		waterBurst(spot, 30, 14)
 		splashRing(spot, 5)
+		-- the video's chunky splash: water cubes fly out where the fish breaks the surface
+		Fx.cubes(spot, { Color3.fromRGB(120, 220, 255), Color3.fromRGB(220, 250, 255) }, { spread = 6, size = 0.6, life = 0.6, up = 1, count = 14, material = Enum.Material.SmoothPlastic })
 	end
 	local hands = handsOf(character)
 	if not hands then
@@ -717,12 +702,21 @@ local function updateLand(rec, spot)
 				Lifetime = NumberRange.new(0.4, 0.8),
 				LightEmission = 1,
 			})
+			Fx.stars(hands + Vector3.new(0, 0.6, 0), 5)
 		end
 		rec.fish:PivotTo(held)
 	end
 	-- dark silhouette until the reveal's climb reaches the fish's tier, then its colour
 	if clock >= showAt then
 		local color = Config.Tiers[tier] and Config.Tiers[tier].color or Color3.new(1, 1, 1)
+		if once(rec, "colour") then
+			-- the catch pops in its tier's colour: cubes, a ring, and gold bolts from Epic up
+			Fx.cubes(hands, { color, color:Lerp(Color3.new(1, 1, 1), 0.5) }, { spread = 4 + tier, size = 0.5, life = 0.7, up = 0.8, count = 8 + tier * 3 })
+			Fx.ring(hands - Vector3.new(0, 1.5, 0), color, 4 + tier, 0.5, 0.25)
+			if tier >= 4 then
+				Fx.bolts(hands, 3 + tier)
+			end
+		end
 		if tier >= #Config.Tiers then
 			FishModels.paint(rec.fish, Color3.fromHSV((os.clock() * 0.4) % 1, 0.4, 1):Lerp(color, 0.35), Enum.Material.Neon)
 		elseif not rec.painted then

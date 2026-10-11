@@ -1,11 +1,15 @@
 # Tidebound: Eggfall
 
-Cast. Steal. Hatch. Escape. Core-loop vertical slice built from Design Doc Part A, the Part A Delta, the Master Patch (Patches 1-8) and the Canon Sheet.
+Cast. Steal. Hatch. Escape. Core-loop vertical slice built from Design Doc Part A, the Part A Delta, the Master Patch (Patches 1-8), the Big Update and the Canon Sheet.
 
 ## What's in this slice
 
 - **Nest** (safe zone, the Spawn Plaza): Tide Egg Shrine (odds and buy), Incubator (hatch), Tackle Shop (rods and bait), Nest Beacon, the Tide Slide to the Harbor Ring, and NPCs Pinch, Old Harl, Sister Coralie and Gate Warden Sel.
 - **Sunken Shoals** (biome 1): 5 reefs joined by sandbars, 8 fishing spots, 5 wild egg nests (respawn 45s), 2 extraction beacons, the Tide Cache, 5 Stinging Anemone beds, 3 elite dens, the Reef Warden.
+- **Outer Shoals (Big Update)**: 3 more islands on boardwalks: Shipwreck Reef (a wrecked galleon with an egg in its hull), Lighthouse Isle (a sweeping beam and a third beacon) and Maelstrom Isle beside the Maelstrom, the whirlpool PUSH DEEPER drags you down. 5 more fishing spots and 2 more egg nests.
+- **Kelp Cathedral (Big Update, biome 2)**: PUSH DEEPER at a Shoals beacon plays the descent and drops you into a sunken cathedral in a cavern 480 studs across: a studded nave between stone pillars and giant kelp, a rose window over the apse, 3 holy-water pools (4 fishing spots, luck x1.3, 12 new fish), 4 ruined chapels and the apse with 5 wild eggs, a whale skeleton, a Tide Cache, 2 beacons, grasping vines (Canon hazard: 40% slower), glowing jellies, fish schools and light shafts. Its guardian, the Kelp Leviathan, hits for 30 with a 0.7 s tell and only hunts divers in the Kelp. The Current at the Descent dais takes you back up. Extracting anywhere lands you back in the Nest.
+- **Animation (Big Update)**: every player gets code-driven body motion until the animator's ids arrive: breathing idle with fidgets, a run that leans and strides with your speed, sprint, jump and fall, landing squash, swimming, carrying eggs, grabbing an egg, getting hit, stunned stars, going down, the extraction cheer, and the fishing arms. Voxel effects in the reference video's style: footstep puffs, landing rings, a red "!" over the bobber on a bite, cube splashes and tier-coloured bursts on a catch, guardian telegraph rings that fill before a strike, and roar bursts.
+- **Cutscenes (Big Update)**: a first-join flyover, the dive off the dock, a guardian waking (it can't hurt you while it plays), the descent and the ascent, extraction (a column of light, then a tally) and a wipe. Each one can be skipped once you've arrived.
 - **Diving (Master Patch 1)**: talk to Gate Warden Sel (DIVE tab) and pick DIVE SOLO (x1.15 Pearls) or DIVE WITH CREW (+5% per extra member, up to 4, invite only). Walking out of the Nest also starts a solo dive. Canon caps hold: 120 Pearls per fish, 400 per run payout. Solo and Crew dives have separate leaderboards.
 - **Contested Waters (opt-in PvP)**: OFF by default, set per dive, back to OFF after it. When ON, a rival behind you can hold 1 s to snatch one carried egg; never within 40 studs of a beacon; the victim gets 5 s immunity and a speed burst. Egg nests can hold a bonus egg (x1.20). Crewmates never snatch from each other.
 - **Companions**: pick 2 hatched creatures in the DIVE tab. They follow you, and each awake one carries an egg so it doesn't slow you. A Reef Warden hit knocks one out for 10 min (or use a Revive Vial).
@@ -53,9 +57,15 @@ Robux sells nothing in this slice; eggs, odds, pity, upgrades and power are all 
 | `src/client/TideboundRod.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundRod` (rod poses, bend, line, bobber and effects) |
 | `src/client/TideboundCreatures.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundCreatures` (tank, pen and companion motion) |
 | `src/client/TideboundClient.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundClient` |
+| `src/server/DescentBuilder.luau` | `ServerScriptService.Tidebound.DescentBuilder` (adds `TideboundWorld.Descent`: Outer Shoals and Kelp Cathedral) |
+| `src/shared/MotionBus.luau` | `ReplicatedStorage.Tidebound.MotionBus` (how client scripts share the body joints) |
+| `src/shared/Fx.luau` | `ReplicatedStorage.Tidebound.Fx` (voxel cube bursts, rings, bolts, stars, alerts) |
+| `src/client/TideboundMotion.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundMotion` (every player's body motion) |
+| `src/client/TideboundFX.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundFX` (moving world: lighthouse, Maelstrom, jellies, fish schools, the Leviathan's body, telegraphs) |
+| `src/client/TideboundCutscenes.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundCutscenes` (the cutscenes) |
 
-Sync with `rojo serve` (from this folder or the repo root) and the Rojo Studio plugin, or paste each file into the matching script. The Delta areas build into their own folder, so the existing Nest and Shoals are left exactly as they are.
+Sync with `rojo serve` (from this folder or the repo root) and the Rojo Studio plugin, or paste each file into the matching script. The Delta and Big Update areas build into their own folders, so the existing Nest and Shoals are left exactly as they are.
 
 ## Not built yet
 
-Biomes 2-5 and their guardians (so the Prestige Altar stays locked, and PUSH DEEPER keeps you in the Shoals), run modifiers, co-op heists, cosmetics and the Trading Post window, the season track, Shard Eggs, incubator timers (and so Heat Lamps and hatch rush), Feeding Trough, Rod Rack, Bait Locker, Visitor slots, prestige, real animations and audio (the hooks are in `Animations.luau` and `Audio.luau`), and the three "prior" Patch 8 fixes (the scale patch, the 600 x 600 plot and the hex lock), which have no spec yet.
+Biomes 3-5 and their guardians (so the Prestige Altar stays locked, and a push inside Kelp Cathedral keeps you there), run modifiers, co-op heists, cosmetics and the Trading Post window, the season track, Shard Eggs, incubator timers (and so Heat Lamps and hatch rush), Feeding Trough, Rod Rack, Bait Locker, Visitor slots, prestige, real animations and audio (the hooks are in `Animations.luau` and `Audio.luau`), and the three "prior" Patch 8 fixes (the scale patch, the 600 x 600 plot and the hex lock), which have no spec yet.

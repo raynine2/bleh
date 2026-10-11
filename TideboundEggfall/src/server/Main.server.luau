@@ -12,6 +12,10 @@
 --   Patches 5-7: casts are shown to everyone (attributes on the character, played by TideboundRod), each
 --            catch rolls a mutation and weight and plays a reveal you can't be hurt in, a Celestial catch is
 --            announced server-wide, and your rod rides on your back (Rods).
+--   Big Update: PUSH DEEPER at a Shoals beacon dives you into Kelp Cathedral (DescentBuilder) with its own
+--            fish and guardian, the Kelp Leviathan. Cutscenes play for the first join, every dive, a guardian
+--            waking, the descent, extraction (which lifts you home) and a wipe. Attributes on your character
+--            (HurtAt, StunUntil, CarryEggs, GrabAt, CheerAt, DownAt) drive everyone's TideboundMotion.
 -- Home Nests, hub boards and the base economy are in BaseService. Everything that grants currency or rolls
 -- odds happens here; the client only displays and asks.
 
@@ -32,10 +36,13 @@ local Crew = require(script.Parent:WaitForChild("Crew"))
 local Companions = require(script.Parent:WaitForChild("Companions"))
 local Threats = require(script.Parent:WaitForChild("Threats"))
 local Rods = require(script.Parent:WaitForChild("Rods"))
+local DescentBuilder = require(script.Parent:WaitForChild("DescentBuilder"))
 
 local world = WorldBuilder.build()
 local shoals = world:WaitForChild("SunkenShoals")
 local delta = ExpansionBuilder.build(world)
+local descent = DescentBuilder.build(world)
+local kelp = descent:WaitForChild("KelpCathedral")
 
 local remotes = Shared:FindFirstChild("Remotes") or Instance.new("Folder")
 remotes.Name = "Remotes"
@@ -63,12 +70,13 @@ local MODES = Config.Modes
 local DURA = Config.Durability
 local HC = Config.HeatCarry
 local REVEAL = Config.Reveal
+local CUT = Config.Cutscene
 local rng = Random.new()
 local runs = {} -- [Player] = run state: heat and the cargo at risk; lost on wipe, never saved
 local incomeCarry = {} -- [Player] = fractional Pearls of aquarium income
 local beaconsClosedUntil = 0
 local wardenActive = false
-local wardenPauseUntil = 0
+local guardianFor -- the guardian of the biome a run is in (set with the guardians below)
 
 local function now()
 	return workspace:GetServerTimeNow()
@@ -110,6 +118,10 @@ local function newRun()
 		stunUntil = 0,
 		vialsUsed = 0,
 		revealUntil = 0, -- Master Patch 6: no threat can hurt you while your fish reveal plays
+		depth = 1, -- Big Update: 1 = Sunken Shoals, 2 = Kelp Cathedral
+		maxDepth = 1,
+		travelUntil = 0, -- a descent, ascent or extraction cutscene is moving you; nothing can hurt you
+		woke = {}, -- [guardian id] = true once its wake cutscene played this run
 	}
 end
 
@@ -123,6 +135,14 @@ end
 
 local function cue(player, name, payload)
 	CueEvent:FireClient(player, name, payload)
+end
+
+-- Attributes on your character that every client's TideboundMotion plays (hurt, stun, carry, grab, cheer, down).
+local function mark(player, key, value)
+	local character = player.Character
+	if character then
+		character:SetAttribute(key, value)
+	end
 end
 
 -- Master Patch 5: everyone sees your cast. The phase rides on your character and TideboundRod plays it:
@@ -378,6 +398,11 @@ local function buildState(player)
 		companions = Companions.state(data),
 		carryHelp = Companions.carry(data),
 		weather = Threats.weather(),
+		-- Big Update
+		depth = run.depth,
+		biomeName = (Config.Biomes[run.depth] or Config.Biomes[1]).name,
+		guardianName = guardianFor(run).cfg.name,
+		seenIntro = data.seenIntro == true,
 	}
 end
 
@@ -387,6 +412,7 @@ local function push(player)
 		return
 	end
 	StateEvent:FireClient(player, state)
+	mark(player, "CarryEggs", state.carriedEggs)
 	local stats = player:FindFirstChild("leaderstats")
 	if stats then
 		stats.Pearls.Value = state.pearls
@@ -515,6 +541,30 @@ local function startRun(player, run, data)
 	notify(player, table.concat(lines, " "), run.contested and "warn" or "info")
 end
 
+-- Big Update: a cutscene moves you (the descent, the ascent, extraction, a wipe). Nothing can hurt you
+-- meanwhile; the teleport lands while the screen is dark, after the area around the destination has streamed in.
+local function travel(player, run, cframe, delay, depth)
+	run.travelUntil = now() + delay + 1.5
+	run.invulnerableUntil = math.max(run.invulnerableUntil, run.travelUntil)
+	task.delay(delay, function()
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not character or not humanoid or humanoid.Health <= 0 then
+			return
+		end
+		pcall(player.RequestStreamAroundAsync, player, cframe.Position, 4)
+		if player.Character ~= character then
+			return
+		end
+		character:PivotTo(cframe)
+		if depth and runs[player] == run then
+			run.depth = depth
+			run.maxDepth = math.max(run.maxDepth, depth)
+			push(player)
+		end
+	end)
+end
+
 local function wipe(player, reason)
 	local run = runs[player]
 	if not run then
@@ -548,11 +598,10 @@ local function wipe(player, reason)
 	end
 	notify(player, table.concat(lines, " "), "bad")
 	cue(player, "Down")
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if humanoid and humanoid.Health > 0 then
-		character:PivotTo(Config.World.spawnCFrame)
-	end
+	-- Big Update: you collapse where you fell, the screen fades, and you wake up in the Nest
+	mark(player, "DownAt", now())
+	cue(player, "Cutscene", { kind = "Wiped", reason = reason, lostPearls = lostPearls, lostEggs = lostEggs })
+	travel(player, runs[player], Config.World.spawnCFrame, CUT.wipeTeleport)
 	push(player)
 end
 
@@ -572,11 +621,13 @@ end
 -- knocks out a companion.
 local function damage(player, amount, fromPosition, label, guardian)
 	local run = runs[player]
-	if not run or not rootOf(player) or inNest(player) or now() < math.max(run.invulnerableUntil, run.revealUntil) then
+	if not run or not rootOf(player) or inNest(player) or now() < math.max(run.invulnerableUntil, run.revealUntil, run.travelUntil) then
 		return
 	end
 	run.health = math.max(0, run.health - amount)
 	run.invulnerableUntil = now() + R.hitInvulnerable
+	mark(player, "HurtAt", now())
+	mark(player, "HurtAmount", amount)
 	if run.health <= 0 then
 		wipe(player, ("The %s took you down!"):format(label))
 		return
@@ -604,10 +655,11 @@ end
 
 local function stun(player, seconds, fromPosition)
 	local run = runs[player]
-	if not run or inNest(player) or now() < run.stunUntil or now() < run.revealUntil then
+	if not run or inNest(player) or now() < run.stunUntil or now() < math.max(run.revealUntil, run.travelUntil) then
 		return
 	end
 	run.stunUntil = now() + seconds
+	mark(player, "StunUntil", run.stunUntil)
 	knockback(player, fromPosition)
 	cue(player, "Stun", seconds)
 	notify(player, ("A Barnacle Brute bowled you over! Stunned for %.1f s."):format(seconds), "bad")
@@ -671,12 +723,15 @@ local function onCast(player, prompt)
 		bait = Config.BaitById[data.bait]
 		data.baitInv[data.bait] -= 1
 	end
-	local luck = rod.luck * (bait and bait.luck or 1)
+	-- Big Update: each spot belongs to a biome; deeper biomes multiply your luck (Kelp Cathedral x1.3)
+	local biomeIndex = prompt:GetAttribute("Biome") or 1
+	local biome = Config.Biomes[biomeIndex] or Config.Biomes[1]
+	local luck = rod.luck * (bait and bait.luck or 1) * (biome.luck or 1)
 	local tierIndex = Gacha.rollFishTier(luck, rng)
 	if pier then
 		tierIndex = math.min(tierIndex, Config.Harbor.pier.maxTier)
 	end
-	local names = Config.Biomes[1].fish[tierIndex]
+	local names = biome.fish[tierIndex]
 	local fish = names[rng:NextInteger(1, #names)]
 	local biteWait = rng:NextNumber(Config.Fishing.biteMin, Config.Fishing.biteMax) / rod.lureSpeed
 	if not pier then
@@ -687,6 +742,7 @@ local function onCast(player, prompt)
 		tier = tierIndex,
 		fish = fish,
 		pier = pier,
+		biome = biomeIndex,
 		started = os.clock(),
 		minTime = biteWait + Config.Fishing.minReelSeconds,
 	}
@@ -729,6 +785,7 @@ local function onSteal(player, prompt)
 	run.carriedEggs += gained
 	run.steals += 1
 	run.lockDropped = false
+	mark(player, "GrabAt", now())
 	addHeat(player, Config.Heat.perSteal)
 	questProgress(player, data, "steal", 1)
 	cue(player, "Steal")
@@ -801,8 +858,10 @@ local function extract(player)
 		table.insert(lines, ("Greed paid x%.1f cargo."):format(mult))
 	end
 	if run.maxPhase >= 3 then
-		data.trophies[G.drop] = (data.trophies[G.drop] or 0) + 1
-		table.insert(lines, ("You escaped the %s's Phase 3: +1 %s for your Trophy Room (%d/%d for its Bestiary page)."):format(G.name, G.dropName, data.trophies[G.drop], G.dropsForPage))
+		-- the trophy comes from the deepest guardian you faced this run
+		local g = run.maxDepth >= 2 and Config.Leviathan or G
+		data.trophies[g.drop] = (data.trophies[g.drop] or 0) + 1
+		table.insert(lines, ("You escaped the %s's Phase 3: +1 %s for your Trophy Room (%d/%d for its Bestiary page)."):format(g.name, g.dropName, data.trophies[g.drop], g.dropsForPage))
 	end
 	if data.settings.contested then
 		data.settings.contested = false
@@ -810,14 +869,30 @@ local function extract(player)
 	end
 	notify(player, table.concat(lines, " "), "good")
 	cue(player, "Extract")
+	-- Big Update: a column of light lifts you out, the tally plays, and you land back in the Nest
+	mark(player, "CheerAt", now())
+	cue(player, "Cutscene", {
+		kind = "Extracted",
+		fishPearls = fishPearls,
+		payout = payout,
+		eggs = run.carriedEggs,
+		embers = embers,
+		streak = streak,
+		mult = mult,
+		biome = (Config.Biomes[run.depth] or Config.Biomes[1]).name,
+	})
 	local session = run.session
-	runs[player] = newRun()
-	runs[player].session = session
+	local fresh = newRun()
+	fresh.session = session
+	runs[player] = fresh
+	travel(player, fresh, Config.World.spawnCFrame, CUT.extractTeleport)
 	BaseService.refresh(player)
 	push(player)
 end
 
--- Push deeper: +40% cargo value, +25 heat, guardian one phase angrier, and this beacon is spent.
+-- Push deeper: +40% cargo value, +25 heat, guardian one phase angrier, and this beacon is spent. From the
+-- Shoals it dives you down the Maelstrom into Kelp Cathedral (Big Update); deeper biomes aren't built yet, so
+-- a push in the Kelp keeps you there and needs a different beacon.
 local function pushDeeper(player, run)
 	local beacon = run.choice and run.choice.beacon
 	run.choice = nil
@@ -826,10 +901,29 @@ local function pushDeeper(player, run)
 	if beacon then
 		run.spentBeacons[beacon] = true
 	end
-	notify(player, ("You pushed deeper: cargo x%.1f, heat +%d, and the %s gets angrier. Extract at a different beacon."):format(1 + run.pushes * GREED.cargoPct, GREED.heat, G.name), "warn")
+	local cargo = 1 + run.pushes * GREED.cargoPct
+	if run.depth == 1 then
+		local kelpBiome = Config.Biomes[2]
+		notify(player, ("You pushed deeper: the Maelstrom pulls you down into %s! Cargo x%.1f, heat +%d, rarer bites (luck x%.1f), and the %s is waiting."):format(kelpBiome.name, cargo, GREED.heat, kelpBiome.luck, Config.Leviathan.name), "warn")
+		cue(player, "Cutscene", { kind = "Descent", name = kelpBiome.name, depth = 2, guardian = Config.Leviathan.name, hazard = kelpBiome.hazard, luck = kelpBiome.luck })
+		travel(player, run, Config.Kelp.arrival, CUT.descentTeleport, 2)
+	else
+		notify(player, ("You pushed deeper: cargo x%.1f, heat +%d, and the %s gets angrier. Extract at a different beacon."):format(cargo, GREED.heat, guardianFor(run).cfg.name), "warn")
+	end
 	cue(player, "Push")
 	addHeat(player, GREED.heat)
 	push(player)
+end
+
+-- Big Update: the current at the Descent dais carries you back up to the Shoals (your cargo comes along).
+local function onAscend(player)
+	local run = runs[player]
+	if not run or now() < run.travelUntil then
+		return
+	end
+	notify(player, "The current carries you back up to the Sunken Shoals.", "info")
+	cue(player, "Cutscene", { kind = "Ascend", name = Config.Biomes[1].name, depth = 1, guardian = G.name, hazard = Config.Biomes[1].hazard })
+	travel(player, run, Config.Kelp.ascend, CUT.descentTeleport, 1)
 end
 
 local function onExtract(player, prompt)
@@ -937,6 +1031,8 @@ local function onPrompt(prompt, player)
 		onSnatch(player, prompt)
 	elseif action == "Travel" then
 		onTravel(player, prompt)
+	elseif action == "Ascend" then
+		onAscend(player)
 	elseif action == "Feed" then
 		BaseService.onFeed(player, prompt)
 	elseif action == "Admire" then
@@ -1035,7 +1131,7 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 	local climb = REVEAL.landSeconds + REVEAL.silhouette + session.tier * REVEAL.step + (nearMiss and REVEAL.nearMissHold + REVEAL.nearMissDrain or 0)
 	setFishPhase(player, "land", total, { FishTier = session.tier, FishName = session.fish, FishShowAt = now() + climb })
 	if session.tier == #Config.Tiers then
-		pendingAnnounce[player] = ("%s landed a CELESTIAL %s%s in the %s!"):format(player.DisplayName, named, session.fish, session.pier and "Harbor Lagoon" or Config.Biomes[1].name)
+		pendingAnnounce[player] = ("%s landed a CELESTIAL %s%s in the %s!"):format(player.DisplayName, named, session.fish, session.pier and "Harbor Lagoon" or Config.Biomes[session.biome].name)
 		task.delay(total, announce, player)
 	end
 	return {
@@ -1051,7 +1147,7 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 		isNew = isNew,
 		nearMiss = nearMiss,
 		reveal = reveal,
-		biome = session.pier and "Harbor Lagoon" or Config.Biomes[1].name,
+		biome = session.pier and "Harbor Lagoon" or Config.Biomes[session.biome].name,
 		note = table.concat(lines, " "),
 		noteKind = session.tier >= 4 and "rare" or "good",
 	}
@@ -1098,6 +1194,14 @@ function handlers.Dive(player, data, run, mode)
 	end
 	run.wantCrew = mode == "Crew"
 	player.Character:PivotTo(MODES.diveSpawn)
+	local biome = Config.Biomes[1]
+	cue(player, "Cutscene", { kind = "Dive", name = biome.name, depth = 1, guardian = G.name, hazard = biome.hazard, mode = mode })
+	return { ok = true }
+end
+
+-- Big Update: the opening cutscene played (or was skipped), so it won't play again.
+function handlers.IntroSeen(player, data)
+	data.seenIntro = true
 	return { ok = true }
 end
 
@@ -1386,14 +1490,234 @@ Request.OnServerInvoke = function(player, action, ...)
 	return result
 end
 
--- Once per second: dives, heat decay, riptide, the Greed Window, guardian phases, carried heat, snatch
--- prompts, companions and aquarium income ------------------------------------------------------------
+-- Guardians (Master Patch 3 Table A) ------------------------------------------------------------------------
+-- Each biome's guardian sleeps in its lair and patrols at heat 25 (Canon). Phase 1 guards the exit between you
+-- and your nearest beacon, Phase 2 chases (lock-on breaks after 6 s out of sight), Phase 3 chases faster.
+-- Every strike has a wind-up you can see (0.6 s for the Reef Warden, 0.7 s for the Kelp Leviathan), then it
+-- lunges up to 6 studs: step out of the way. A guardian only hunts divers in its own biome.
 
 local PHASE_TEXT = {
 	"Reef Warden Phase 1: it rises to guard the exit. Hide behind coral and dash between cover.",
 	"Reef Warden Phase 2: it has locked onto you. Break line of sight for 6 s to shake it.",
 	"Reef Warden Phase 3: full fury. It's faster than ever. Get to a beacon!",
 }
+local LEVIATHAN_TEXT = {
+	"Kelp Leviathan Phase 1: it uncoils to guard the exit. Weave between the kelp columns.",
+	"Kelp Leviathan Phase 2: it has your scent. Break line of sight for 6 s to shake it.",
+	"Kelp Leviathan Phase 3: the whole cathedral shakes. Run for a beacon!",
+}
+
+local sightParams = RaycastParams.new()
+sightParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function newGuardian(id, model, pathFolder, cfg, depth, hoverY, noGoCenter, noGoRadius, phaseText)
+	local waypoints = pathFolder:GetChildren()
+	table.sort(waypoints, function(a, b)
+		return a.Name < b.Name
+	end)
+	return {
+		id = id,
+		model = model,
+		cfg = cfg,
+		depth = depth,
+		hoverY = hoverY,
+		noGoCenter = Vector3.new(noGoCenter.X, 0, noGoCenter.Z),
+		noGoRadius = noGoRadius,
+		phaseText = phaseText,
+		lair = model:GetPivot(),
+		waypoints = waypoints,
+		waypointIndex = 1,
+		windup = nil, -- { at = Vector3, untilTime = number }
+		pauseUntil = 0,
+		active = false,
+	}
+end
+
+local guardians = {
+	newGuardian("ReefWarden", shoals:WaitForChild("ReefWarden"), shoals:WaitForChild("WardenPath"), G, 1, Config.Warden.hoverY, Vector3.zero, Config.World.wardenNoGoRadius, PHASE_TEXT),
+	newGuardian("KelpLeviathan", kelp:WaitForChild("KelpLeviathan"), kelp:WaitForChild("LeviathanPath"), Config.Leviathan, 2, Config.Leviathan.hoverY, Config.Kelp.arrival.Position, Config.Leviathan.noGoRadius, LEVIATHAN_TEXT),
+}
+
+guardianFor = function(run)
+	return guardians[run.depth] or guardians[1]
+end
+
+-- Is this diver in the guardian's biome and fair game right now?
+local function hunts(g, player, run, root)
+	return run.started and now() >= run.travelUntil and not inNest(player) and ((Config.zoneOf(root.Position) == "Kelp") == (g.depth == 2))
+end
+
+-- Big Update: the guardian rises and the camera shows it; it holds still and can't hurt you meanwhile.
+local function wake(player, run, g)
+	run.woke[g.id] = true
+	g.pauseUntil = math.max(g.pauseUntil, now() + CUT.wakeSeconds)
+	if g.windup then
+		g.windup = nil
+		g.model:SetAttribute("Tell", false)
+	end
+	run.invulnerableUntil = math.max(run.invulnerableUntil, now() + CUT.wakeSeconds + 0.5)
+	g.model:SetAttribute("WokeAt", now())
+	cue(player, "Cutscene", { kind = "Wake", name = g.cfg.name, at = g.model:GetPivot().Position, depth = g.depth })
+end
+
+local function canSee(g, fromPos, player, root)
+	local offset = root.Position - fromPos
+	if offset.Magnitude > R.lockLoseRange then
+		return false
+	end
+	sightParams.FilterDescendantsInstances = { g.model, player.Character }
+	return workspace:Raycast(fromPos, offset, sightParams) == nil
+end
+
+local function guardPoint(g, run, root)
+	local best, bestDistance = nil, math.huge
+	for _, beacon in ipairs(beacons) do
+		if not run.spentBeacons[beacon] and not Config.safeZone(beacon.Position) and (beacon:GetAttribute("Depth") or 1) == g.depth then
+			local distance = (flat(beacon.Position) - flat(root.Position)).Magnitude
+			if distance < bestDistance then
+				best, bestDistance = beacon, distance
+			end
+		end
+	end
+	if not best then
+		return root.Position
+	end
+	return root.Position + (best.Position - root.Position) * 0.65
+end
+
+-- keeps a guardian out of its no-go circle (the Nest for the Warden, the Descent dais for the Leviathan)
+local function outsideNoGo(g, position)
+	local fromCenter = flat(position) - g.noGoCenter
+	if fromCenter.Magnitude >= g.noGoRadius then
+		return position
+	end
+	local dir = fromCenter.Magnitude > 0.01 and fromCenter.Unit or Vector3.new(1, 0, 0)
+	local edge = g.noGoCenter + dir * g.noGoRadius
+	return Vector3.new(edge.X, position.Y, edge.Z)
+end
+
+local function moveGuardian(g, goal, speed, dt)
+	local pos = g.model:GetPivot().Position
+	local delta = Vector3.new(goal.X, g.hoverY, goal.Z) - pos
+	if delta.Magnitude <= 0.05 then
+		return
+	end
+	local newPos = outsideNoGo(g, pos + delta.Unit * math.min(delta.Magnitude, speed * dt))
+	local facing = flat(delta)
+	if facing.Magnitude > 0.01 then
+		g.model:PivotTo(CFrame.lookAt(newPos, newPos + facing))
+	else
+		g.model:PivotTo(CFrame.new(newPos) * g.model:GetPivot().Rotation)
+	end
+end
+
+local function canStrike(g, player, run, root, center, radius)
+	return hunts(g, player, run, root) and atRisk(run) and (flat(root.Position) - flat(center)).Magnitude <= radius and math.abs(root.Position.Y - center.Y) < 14
+end
+
+local function tickGuardian(g, dt, t)
+	local cfg = g.cfg
+	local pos = g.model:GetPivot().Position
+	local active, target, targetScore = false, nil, -1
+	for player, run in pairs(runs) do
+		local root = rootOf(player)
+		if root and hunts(g, player, run, root) then
+			local phase = rawPhase(run)
+			if run.heat >= Config.Heat.patrolAt or phase > 0 then
+				active = true
+			end
+			if phase >= 2 and not run.lockDropped then
+				if canSee(g, pos, player, root) then
+					run.unseenFor = 0
+				else
+					run.unseenFor += dt
+					if run.unseenFor >= R.lockLoseSight then
+						run.lockDropped = true
+						run.unseenFor = 0
+						notify(player, ("You broke line of sight. The %s lost your trail and goes back to guarding the exit!"):format(cfg.name), "good")
+						cue(player, "LockLost")
+					end
+				end
+			end
+			local b = behaviour(run)
+			if b > 0 and b * 1000 + run.heat > targetScore then
+				target, targetScore = { root = root, run = run, behaviour = b }, b * 1000 + run.heat
+			end
+		end
+	end
+	if active ~= g.active then
+		g.active = active
+		g.model:SetAttribute("Active", active)
+	end
+
+	-- a strike that is winding up lands when the tell ends
+	if g.windup then
+		if t < g.windup.untilTime then
+			return
+		end
+		local toward = flat(g.windup.at - pos)
+		local strikePos = pos
+		if toward.Magnitude > 0.1 then
+			strikePos = pos + toward.Unit * math.min(6, toward.Magnitude)
+		end
+		strikePos = outsideNoGo(g, strikePos)
+		g.model:PivotTo(CFrame.new(strikePos) * g.model:GetPivot().Rotation)
+		g.model:SetAttribute("StrikeAt", now())
+		for player, run in pairs(runs) do
+			local root = rootOf(player)
+			if root and canStrike(g, player, run, root, strikePos, cfg.strikeRadius) then
+				damage(player, cfg.damage, strikePos, cfg.name, true)
+			end
+		end
+		g.model:SetAttribute("Tell", false)
+		g.windup = nil
+		g.pauseUntil = t + cfg.recover
+		return
+	end
+
+	if t < g.pauseUntil then
+		return
+	end
+	if target and target.behaviour >= 2 then
+		moveGuardian(g, target.root.Position, target.behaviour >= 3 and cfg.speeds.fury or cfg.speeds.chase, dt)
+	elseif target then
+		moveGuardian(g, guardPoint(g, target.run, target.root), cfg.speeds.guard, dt)
+	elseif active then
+		local goal = g.waypoints[g.waypointIndex].Position
+		if (flat(goal) - flat(pos)).Magnitude < 3 then
+			g.waypointIndex = g.waypointIndex % #g.waypoints + 1
+		end
+		moveGuardian(g, goal, cfg.speeds.patrol, dt)
+	else
+		moveGuardian(g, g.lair.Position, cfg.speeds.patrol, dt)
+	end
+
+	if not active then
+		return
+	end
+	pos = g.model:GetPivot().Position
+	for player, run in pairs(runs) do
+		local root = rootOf(player)
+		if root and canStrike(g, player, run, root, pos, cfg.lungeRange) then
+			g.windup = { at = root.Position, untilTime = t + cfg.tell }
+			g.model:SetAttribute("Tell", true)
+			g.model:SetAttribute("TellAt", now())
+			cue(player, "WardenTell", cfg.name)
+			break
+		end
+	end
+end
+
+RunService.Heartbeat:Connect(function(dt)
+	local t = now()
+	for _, g in ipairs(guardians) do
+		tickGuardian(g, dt, t)
+	end
+	wardenActive = guardians[1].active
+end)
+
+-- Once per second: dives, heat decay, riptide, the Greed Window, guardian phases, carried heat, snatch
+-- prompts, companions and aquarium income ------------------------------------------------------------
 
 local function choiceTick(player, run)
 	local choice = run.choice
@@ -1423,7 +1747,7 @@ task.spawn(function()
 				run.session = nil
 				setFishPhase(player, "")
 			end
-			if data and not run.started and not safe and rootOf(player) then
+			if data and not run.started and not safe and rootOf(player) and now() >= run.travelUntil then
 				startRun(player, run, data)
 			elseif data and run.started and safe and not atRisk(run) and not run.choice and run.bankedPearls == 0 then
 				-- back home with nothing at stake: the dive quietly ends and you heal up
@@ -1440,7 +1764,7 @@ task.spawn(function()
 					end
 				end
 			end
-			if run.heat >= Config.Heat.hazardAt and not safe then
+			if run.heat >= Config.Heat.hazardAt and not safe and run.depth == 1 then
 				run.riptideTicks += 1
 				local root = rootOf(player)
 				if Threats.riptidePaused() then
@@ -1457,13 +1781,21 @@ task.spawn(function()
 			else
 				run.riptideTicks = 0
 			end
+			-- guardian phases (held while a cutscene moves you, so they land in the biome you arrive in)
 			local phase = rawPhase(run)
-			if phase > run.phase then
-				notify(player, PHASE_TEXT[phase], phase >= 2 and "bad" or "warn")
-				cue(player, "Phase", phase)
+			if now() >= run.travelUntil then
+				local g = guardianFor(run)
+				if phase > run.phase then
+					notify(player, g.phaseText[phase], phase >= 2 and "bad" or "warn")
+					cue(player, "Phase", { phase = phase, guardian = g.cfg.name })
+				end
+				local root = rootOf(player)
+				if phase >= 1 and not run.woke[g.id] and root and hunts(g, player, run, root) then
+					wake(player, run, g)
+				end
+				run.phase = phase
+				run.maxPhase = math.max(run.maxPhase, phase)
 			end
-			run.phase = phase
-			run.maxPhase = math.max(run.maxPhase, phase)
 			if run.choice then
 				choiceTick(player, run)
 			end
@@ -1489,166 +1821,6 @@ task.spawn(function()
 				end
 			end
 			push(player)
-		end
-	end
-end)
-
--- Reef Warden (Master Patch 3 Table A) -------------------------------------------------------------
--- Sleeps on its rock, patrols at heat 25 (Canon). Phase 1 guards the exit between you and your nearest
--- beacon, Phase 2 chases (lock-on breaks after 6 s out of sight), Phase 3 chases faster. Every strike
--- has a 0.6 s wind-up you can see, then it lunges up to 6 studs: step out of the way.
-
-local warden = shoals:WaitForChild("ReefWarden")
-local lairCFrame = warden:GetPivot()
-local waypoints = shoals:WaitForChild("WardenPath"):GetChildren()
-table.sort(waypoints, function(a, b)
-	return a.Name < b.Name
-end)
-local waypointIndex = 1
-local sightParams = RaycastParams.new()
-sightParams.FilterType = Enum.RaycastFilterType.Exclude
-local windup = nil -- { at = Vector3, untilTime = number }
-
-local function canSee(fromPos, player, root)
-	local offset = root.Position - fromPos
-	if offset.Magnitude > R.lockLoseRange then
-		return false
-	end
-	sightParams.FilterDescendantsInstances = { warden, player.Character }
-	return workspace:Raycast(fromPos, offset, sightParams) == nil
-end
-
-local function guardPoint(run, root)
-	local best, bestDistance = nil, math.huge
-	for _, beacon in ipairs(beacons) do
-		if not run.spentBeacons[beacon] and not Config.safeZone(beacon.Position) then
-			local distance = (flat(beacon.Position) - flat(root.Position)).Magnitude
-			if distance < bestDistance then
-				best, bestDistance = beacon, distance
-			end
-		end
-	end
-	if not best then
-		return root.Position
-	end
-	return root.Position + (best.Position - root.Position) * 0.65
-end
-
-local function moveWarden(goal, speed, dt)
-	local wardenPos = warden:GetPivot().Position
-	local delta = Vector3.new(goal.X, Config.Warden.hoverY, goal.Z) - wardenPos
-	if delta.Magnitude <= 0.05 then
-		return
-	end
-	local newPos = wardenPos + delta.Unit * math.min(delta.Magnitude, speed * dt)
-	local flatPos = flat(newPos)
-	if flatPos.Magnitude < Config.World.wardenNoGoRadius then
-		flatPos = flatPos.Unit * Config.World.wardenNoGoRadius
-		newPos = Vector3.new(flatPos.X, newPos.Y, flatPos.Z)
-	end
-	local facing = flat(delta)
-	if facing.Magnitude > 0.01 then
-		warden:PivotTo(CFrame.lookAt(newPos, newPos + facing))
-	else
-		warden:PivotTo(CFrame.new(newPos) * warden:GetPivot().Rotation)
-	end
-end
-
-local function canStrike(player, run, root, center, radius)
-	return run.started and atRisk(run) and not inNest(player) and (flat(root.Position) - flat(center)).Magnitude <= radius and math.abs(root.Position.Y - center.Y) < 14
-end
-
-RunService.Heartbeat:Connect(function(dt)
-	local t = now()
-	local wardenPos = warden:GetPivot().Position
-	local active, target, targetScore = false, nil, -1
-	for player, run in pairs(runs) do
-		local root = rootOf(player)
-		if root and run.started and not inNest(player) then
-			local phase = rawPhase(run)
-			if run.heat >= Config.Heat.patrolAt or phase > 0 then
-				active = true
-			end
-			if phase >= 2 and not run.lockDropped then
-				if canSee(wardenPos, player, root) then
-					run.unseenFor = 0
-				else
-					run.unseenFor += dt
-					if run.unseenFor >= R.lockLoseSight then
-						run.lockDropped = true
-						run.unseenFor = 0
-						notify(player, "You broke line of sight. The Reef Warden lost your trail and goes back to guarding the exit!", "good")
-						cue(player, "LockLost")
-					end
-				end
-			end
-			local b = behaviour(run)
-			if b > 0 and b * 1000 + run.heat > targetScore then
-				target, targetScore = { root = root, run = run, behaviour = b }, b * 1000 + run.heat
-			end
-		end
-	end
-	if active ~= wardenActive then
-		wardenActive = active
-		warden:SetAttribute("Active", active)
-	end
-
-	-- a strike that is winding up lands when the tell ends
-	if windup then
-		if t < windup.untilTime then
-			return
-		end
-		local toward = flat(windup.at - wardenPos)
-		local strikePos = wardenPos
-		if toward.Magnitude > 0.1 then
-			strikePos = wardenPos + toward.Unit * math.min(6, toward.Magnitude)
-		end
-		local flatStrike = flat(strikePos)
-		if flatStrike.Magnitude < Config.World.wardenNoGoRadius then
-			flatStrike = flatStrike.Unit * Config.World.wardenNoGoRadius
-			strikePos = Vector3.new(flatStrike.X, strikePos.Y, flatStrike.Z)
-		end
-		warden:PivotTo(CFrame.new(strikePos) * warden:GetPivot().Rotation)
-		for player, run in pairs(runs) do
-			local root = rootOf(player)
-			if root and canStrike(player, run, root, strikePos, G.strikeRadius) then
-				damage(player, G.damage, strikePos, G.name, true)
-			end
-		end
-		warden:SetAttribute("Tell", false)
-		windup = nil
-		wardenPauseUntil = t + G.recover
-		return
-	end
-
-	if t < wardenPauseUntil then
-		return
-	end
-	if target and target.behaviour >= 2 then
-		moveWarden(target.root.Position, target.behaviour >= 3 and G.speeds.fury or G.speeds.chase, dt)
-	elseif target then
-		moveWarden(guardPoint(target.run, target.root), G.speeds.guard, dt)
-	elseif active then
-		local goal = waypoints[waypointIndex].Position
-		if (flat(goal) - flat(wardenPos)).Magnitude < 3 then
-			waypointIndex = waypointIndex % #waypoints + 1
-		end
-		moveWarden(goal, G.speeds.patrol, dt)
-	else
-		moveWarden(lairCFrame.Position, G.speeds.patrol, dt)
-	end
-
-	if not active then
-		return
-	end
-	wardenPos = warden:GetPivot().Position
-	for player, run in pairs(runs) do
-		local root = rootOf(player)
-		if root and canStrike(player, run, root, wardenPos, G.lungeRange) then
-			windup = { at = root.Position, untilTime = t + G.tell }
-			warden:SetAttribute("Tell", true)
-			cue(player, "WardenTell")
-			break
 		end
 	end
 end)

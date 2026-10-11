@@ -1,12 +1,13 @@
 -- Tidebound: Eggfall: sound cues (Master Patches 5 to 7), ready for the sound designer.
 -- Paste each uploaded sound's asset id into `id` (for example "rbxassetid://1234567890"). A cue with an
--- empty id plays nothing, so every trigger below is already wired and safe to leave empty. Plop and Splash
--- use Roblox's built-in water splash until real sounds arrive.
+-- empty id plays nothing, so every trigger below is already wired and safe to leave empty. Plop, Splash and
+-- the Big Update body and cutscene cues use Roblox's built-in sounds until real sounds arrive.
 
 local Debris = game:GetService("Debris")
 local SoundService = game:GetService("SoundService")
 
 local WATER = "rbxasset://sounds/impact_water.mp3"
+local THUD = "rbxasset://sounds/action_jump_land.mp3"
 
 local Audio = {
 	cues = {
@@ -38,6 +39,15 @@ local Audio = {
 		NearMissDrain = { id = "", volume = 0.6, note = "The climb falls back one tier" },
 		CardSlide = { id = "", volume = 0.5, note = "Phase 3: name card slides in" },
 		Celebrate = { id = "", volume = 0.8, note = "Phase 4 fanfare, Legendary and up" },
+		-- Big Update: the body (TideboundMotion) and the cutscenes (TideboundCutscenes)
+		HitThud = { id = THUD, volume = 0.9, pitch = 0.7, note = "You take a hit" },
+		Down = { id = "rbxasset://sounds/uuhhh.mp3", volume = 0.7, note = "You go down (a wipe)" },
+		LandHeavy = { id = THUD, volume = 0.6, pitch = 0.85, note = "A hard landing" },
+		Whoosh = { id = "rbxasset://sounds/action_falling.mp3", volume = 0.6, pitch = 0.8, note = "The Maelstrom drags you down, or the light column lifts you" },
+		Plunge = { id = WATER, volume = 0.8, pitch = 0.7, note = "You hit the water at the start of a dive or descent" },
+		Roar = { id = "", volume = 0.9, note = "A guardian wakes up" },
+		Sting = { id = "", volume = 0.7, note = "A title card lands (new area, extraction)" },
+		Tally = { id = "", volume = 0.5, note = "One tick per line of the extraction tally" },
 	},
 }
 
