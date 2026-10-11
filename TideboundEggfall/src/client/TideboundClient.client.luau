@@ -1904,36 +1904,35 @@ end
 -- Zone lighting: snowy pink haze over the Nest (REF 1), bright turquoise over the Shoals (REF 2) ---
 
 local ZONES = {
-	-- Patch 12: toned down everywhere (less haze, less bloom, a touch darker, more contrast and colour)
+	-- Patch 14: copied from the references. The town is the winter town (pale blue haze, cool soft light, glowing
+	-- windows); the Shoals are the green hub (clear air, saturated greens and blues, crisp light).
 	Nest = {
-		atmosphere = { Density = 0.3, Color = Color3.fromRGB(190, 200, 222), Decay = Color3.fromRGB(150, 160, 190), Haze = 0.6 },
-		grade = { Saturation = 0.22, Contrast = 0.12, Brightness = -0.06, TintColor = Color3.fromRGB(255, 246, 240) },
-		bloom = 0.15,
+		atmosphere = { Density = 0.4, Offset = 0.28, Color = Color3.fromRGB(196, 222, 255), Decay = Color3.fromRGB(118, 158, 222), Glare = 0.15, Haze = 2.1 },
+		grade = { Saturation = 0.22, Contrast = 0.07, Brightness = 0.02, TintColor = Color3.fromRGB(236, 246, 255) },
+		bloom = { Intensity = 0.7, Size = 32, Threshold = 1.2 },
+		lighting = { Ambient = Color3.fromRGB(150, 170, 210), OutdoorAmbient = Color3.fromRGB(168, 188, 226), Brightness = 2.4, ExposureCompensation = -0.1, ColorShift_Top = Color3.fromRGB(214, 232, 255) },
 	},
 	Shoals = {
-		atmosphere = { Density = 0.26, Color = Color3.fromRGB(176, 214, 230), Decay = Color3.fromRGB(100, 170, 200), Haze = 0.5 },
-		grade = { Saturation = 0.26, Contrast = 0.1, Brightness = -0.05, TintColor = Color3.fromRGB(244, 252, 255) },
-		bloom = 0.22,
+		atmosphere = { Density = 0.24, Offset = 0.15, Color = Color3.fromRGB(206, 236, 255), Decay = Color3.fromRGB(140, 196, 240), Glare = 0, Haze = 0.6 },
+		grade = { Saturation = 0.36, Contrast = 0.12, Brightness = 0.02, TintColor = Color3.fromRGB(255, 252, 246) },
+		bloom = { Intensity = 0.45, Size = 28, Threshold = 1.4 },
+		lighting = { Ambient = Color3.fromRGB(140, 150, 170), OutdoorAmbient = Color3.fromRGB(160, 172, 194), Brightness = 2.6, ExposureCompensation = -0.05, ColorShift_Top = Color3.fromRGB(255, 244, 226) },
 	},
 	-- Patch 10: the Outer Reef (the Open Isles' third ring), a grey storm over dark rock
 	Storm = {
 		atmosphere = { Density = 0.42, Color = Color3.fromRGB(150, 160, 178), Decay = Color3.fromRGB(88, 98, 120), Haze = 2.4 },
 		grade = { Saturation = -0.04, Contrast = 0.08, Brightness = -0.08, TintColor = Color3.fromRGB(226, 234, 246) },
-		bloom = 0.35,
-		lighting = { Ambient = Color3.fromRGB(108, 112, 128), OutdoorAmbient = Color3.fromRGB(118, 122, 140), Brightness = 1.9 },
+		bloom = { Intensity = 0.35, Size = 24, Threshold = 1.6 },
+		lighting = { Ambient = Color3.fromRGB(108, 112, 128), OutdoorAmbient = Color3.fromRGB(118, 122, 140), Brightness = 1.9, ExposureCompensation = -0.15, ColorShift_Top = Color3.fromRGB(200, 210, 230) },
 	},
 	-- Big Update: Kelp Cathedral, a dim teal cavern where everything that glows really glows
 	Kelp = {
 		atmosphere = { Density = 0.45, Color = Color3.fromRGB(46, 120, 110), Decay = Color3.fromRGB(18, 60, 70), Haze = 2.2 },
 		grade = { Saturation = 0.3, Contrast = 0.1, Brightness = 0, TintColor = Color3.fromRGB(214, 255, 240) },
-		bloom = 1,
-		lighting = { Ambient = Color3.fromRGB(64, 104, 108), OutdoorAmbient = Color3.fromRGB(70, 120, 120), Brightness = 1.6 },
+		bloom = { Intensity = 1, Size = 30, Threshold = 1.1 },
+		lighting = { Ambient = Color3.fromRGB(64, 104, 108), OutdoorAmbient = Color3.fromRGB(70, 120, 120), Brightness = 1.6, ExposureCompensation = 0, ColorShift_Top = Color3.fromRGB(150, 255, 230) },
 	},
 }
--- the Nest and Shoals share the calm daylight WorldBuilder sets (Patch 12: fixed values, so a client that loads
--- before the lighting replicates doesn't lock in the old glare)
-ZONES.Nest.lighting = { Ambient = Color3.fromRGB(104, 106, 122), OutdoorAmbient = Color3.fromRGB(124, 126, 146), Brightness = 2 }
-ZONES.Shoals.lighting = ZONES.Nest.lighting
 local currentZone = nil
 local function applyZone(name)
 	if currentZone == name then
@@ -1952,7 +1951,7 @@ local function applyZone(name)
 	end
 	local bloom = Lighting:FindFirstChild("TideboundBloom")
 	if bloom then
-		TweenService:Create(bloom, info, { Intensity = zone.bloom }):Play()
+		TweenService:Create(bloom, info, type(zone.bloom) == "table" and zone.bloom or { Intensity = zone.bloom }):Play()
 	end
 	TweenService:Create(Lighting, info, zone.lighting):Play()
 end

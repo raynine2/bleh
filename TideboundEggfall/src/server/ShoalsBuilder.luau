@@ -17,10 +17,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local WorldBuilder = require(script.Parent:WaitForChild("WorldBuilder"))
 local DescentBuilder = require(script.Parent:WaitForChild("DescentBuilder"))
 local L = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild("IslesLayout"))
+local PropKit = require(script.Parent:WaitForChild("PropKit"))
 
 local ShoalsBuilder = {}
 
-local VERSION = 3
+local VERSION = 4
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -169,7 +170,7 @@ local function islandLand(parent, island, rng)
 	local pos, r, ring = island.pos, island.r, island.ring
 	local body = ring == 1 and CLIFF_RING1 or ring == 2 and CLIFF or CLIFF_STORM
 	local beachColor = ring == 3 and BEACH_DARK or BEACH
-	local top = ring == 1 and P.POND_GRASS or ring == 3 and STORM_TOP or V.GRASS_A
+	local top = ring == 1 and Color3.fromRGB(96, 206, 76) or ring == 3 and STORM_TOP or V.GRASS_A
 	-- Patch 13: stepped voxel land with studs on top: the sand shelf, the cliff body, then the top (grass the
 	-- foliage grows on in the Shallows and the Coral Maze's checkered tiles, dark slate on the Outer Reef).
 	-- Puffer Lagoon is a ring round open water.
@@ -230,8 +231,67 @@ local function islandTitle(parent, island)
 end
 
 -- Ring decoration: trees, grass and flowers in each ring's style.
+-- Patch 14: the green hub's look on the Shallows and the Coral Maze: tan studded paths with brown inlays from
+-- every bridge into the island's middle, a little paved square there, brick houses with picket fences on the
+-- bigger islands, and a thick wall of voxel forest round the edge.
+local NO_PATHS = { shipwreck = true, stacks = true, cove = true, lagoon = true }
+local HOUSES = { LilyPond = true, BambooReef = true, MangroveIsle = true, TurtleBay = true, KelpShallows = true, CoralArches = true }
+local PATH = V.PATH
+local PATH_EDGE = V.PATH_EDGE
+local ROOFS = { Color3.fromRGB(236, 110, 60), Color3.fromRGB(60, 110, 220), Color3.fromRGB(200, 60, 70), Color3.fromRGB(80, 170, 90) }
+
+local function hubDressing(parent, island, rng)
+	if island.ring == 3 then
+		return
+	end
+	local c = island.pos
+	if not NO_PATHS[island.feature] then
+		for _, link in ipairs(L.links) do
+			local other = (link[1] == island.name and L.byName[link[2]]) or (link[2] == island.name and L.byName[link[1]]) or nil
+			if other then
+				local dir = (other.pos - c).Unit
+				local from = c + dir * (island.r - 3)
+				D.studPath(parent, from, c + dir * 6, 6, TOP + 0.15, PATH)
+				for s = 0, 1, 0.1 do
+					reserve(from:Lerp(c, s), 4)
+				end
+			end
+		end
+		K.voxelDisk(parent, "Square", c, 8, TOP - 0.4, TOP + 0.15, PATH, 2)
+		PropKit.inlays(parent, c, 7, TOP + 0.15, rng, PATH_EDGE, 3)
+		reserve(c, 9)
+	end
+	if HOUSES[island.name] then
+		local p = landPoint(island, rng, 12, 9)
+		if p then
+			local w, d = rng:NextNumber(11, 13), rng:NextNumber(9, 10)
+			PropKit.brickHouse(parent, at(p, TOP), at(c, TOP), w, d, rng:NextNumber(8, 9), ROOFS[rng:NextInteger(1, #ROOFS)])
+			local cf = CFrame.lookAt(at(p, TOP), at(c, TOP))
+			local yard = d / 2 + 4
+			PropKit.picketFence(parent, (cf * CFrame.new(-w / 2 - 1, 0, -yard)).Position, (cf * CFrame.new(-2.4, 0, -yard)).Position, TOP)
+			PropKit.picketFence(parent, (cf * CFrame.new(2.4, 0, -yard)).Position, (cf * CFrame.new(w / 2 + 1, 0, -yard)).Position, TOP)
+			reserve(p, 10)
+		end
+	end
+	-- the forest wall: trees packed round the edge, leaving the bridge mouths and paths clear
+	for _ = 1, math.floor(island.r / 3) do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local d = rng:NextNumber(island.r * 0.68, island.r - 4)
+		local p = c + Vector3.new(math.cos(a) * d, 0, math.sin(a) * d)
+		if free(p, 3.5) then
+			if island.ring == 1 then
+				K.voxelTree(parent, at(p, TOP), rng, rng:NextNumber(1.1, 1.5))
+			else
+				D.blockTree(parent, at(p, TOP), rng, rng:NextNumber(0.9, 1.25))
+			end
+			reserve(p, 3.5)
+		end
+	end
+end
+
 local function decorate(parent, island, rng)
 	local r, ring = island.r, island.ring
+	hubDressing(parent, island, rng)
 	local trees = math.floor(r / 9)
 	for _ = 1, trees do
 		local p = landPoint(island, rng, 6, 6)

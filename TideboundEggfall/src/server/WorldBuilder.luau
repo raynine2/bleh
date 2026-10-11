@@ -11,7 +11,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local WorldBuilder = {}
 
-local VERSION = 11
+local VERSION = 12
 
 -- REF 1 palette
 -- Patch 12: the snow is a soft blue-grey, not paper white, so it doesn't glare
@@ -450,27 +450,30 @@ end
 -- The client swaps between the Nest and Shoals atmospheres by zone (see TideboundClient).
 
 local function setupEnvironment()
-	-- Patch 12: easier on the eyes. A lower, warmer sun, less ambient light, a little negative exposure, crisper
-	-- shadows and richer colour instead of a white glare.
-	Lighting.ClockTime = 15.3
-	Lighting.GeographicLatitude = 35
-	Lighting.Brightness = 2
-	Lighting.ExposureCompensation = -0.3
-	Lighting.Ambient = Color3.fromRGB(104, 106, 122)
-	Lighting.OutdoorAmbient = Color3.fromRGB(124, 126, 146)
-	Lighting.ColorShift_Top = Color3.fromRGB(255, 236, 214)
-	Lighting.EnvironmentDiffuseScale = 0.55
-	Lighting.EnvironmentSpecularScale = 0.25
+	-- Patch 14: the reference winter town's look. A high, cool sun; strong blue-tinted ambient so shadows stay
+	-- soft and coloured, never black; a pale blue haze that swallows the distance; saturated colour; and bloom
+	-- low enough to make windows, lanterns, neon and ice glow. (Set Lighting.Technology to Future in Studio for
+	-- the lanterns and windows to light their surroundings like the references.)
+	Lighting.ClockTime = 13.6
+	Lighting.GeographicLatitude = 28
+	Lighting.Brightness = 2.4
+	Lighting.ExposureCompensation = -0.1
+	Lighting.Ambient = Color3.fromRGB(150, 170, 210)
+	Lighting.OutdoorAmbient = Color3.fromRGB(168, 188, 226)
+	Lighting.ColorShift_Top = Color3.fromRGB(214, 232, 255)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(150, 180, 230)
+	Lighting.EnvironmentDiffuseScale = 0.7
+	Lighting.EnvironmentSpecularScale = 0.4
 	Lighting.GlobalShadows = true
-	Lighting.ShadowSoftness = 0.2
+	Lighting.ShadowSoftness = 0.35
 
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
-	atmosphere.Density = 0.3
-	atmosphere.Offset = 0.2
-	atmosphere.Color = Color3.fromRGB(190, 200, 222)
-	atmosphere.Decay = Color3.fromRGB(150, 160, 190)
-	atmosphere.Glare = 0
-	atmosphere.Haze = 0.6
+	atmosphere.Density = 0.4
+	atmosphere.Offset = 0.28
+	atmosphere.Color = Color3.fromRGB(196, 222, 255)
+	atmosphere.Decay = Color3.fromRGB(118, 158, 222)
+	atmosphere.Glare = 0.15
+	atmosphere.Haze = 2.1
 	atmosphere.Parent = Lighting
 
 	for _, name in ipairs({ "TideboundRays" }) do
@@ -487,8 +490,9 @@ local function setupEnvironment()
 		end
 		e.Parent = Lighting
 	end
-	effect("ColorCorrectionEffect", "TideboundGrade", { Saturation = 0.22, Contrast = 0.12, Brightness = -0.06, TintColor = Color3.fromRGB(255, 246, 240) })
-	effect("BloomEffect", "TideboundBloom", { Intensity = 0.15, Size = 22, Threshold = 2.2 })
+	effect("ColorCorrectionEffect", "TideboundGrade", { Saturation = 0.22, Contrast = 0.07, Brightness = 0.02, TintColor = Color3.fromRGB(236, 246, 255) })
+	effect("BloomEffect", "TideboundBloom", { Intensity = 0.7, Size = 32, Threshold = 1.2 })
+	effect("SunRaysEffect", "TideboundSunRays", { Intensity = 0.05, Spread = 0.6 })
 
 	workspace.GlobalWind = Vector3.new(6, 0, 3)
 

@@ -18,10 +18,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local WorldBuilder = require(script.Parent:WaitForChild("WorldBuilder"))
 local DescentBuilder = require(script.Parent:WaitForChild("DescentBuilder"))
 local L = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChild("IslesLayout"))
+local PropKit = require(script.Parent:WaitForChild("PropKit"))
+local PC = PropKit.color
 
 local TownBuilder = {}
 
-local VERSION = 3
+local VERSION = 4
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -32,11 +34,9 @@ local FLOOR = L.sea.floorY - 2
 local T = L.Town
 
 -- palette
-local GRASS = Color3.fromRGB(92, 176, 84)
-local GRASS_DARK = Color3.fromRGB(88, 170, 80)
 local SAND = Color3.fromRGB(212, 190, 140)
-local COBBLE = Color3.fromRGB(176, 170, 164)
-local COBBLE_EDGE = Color3.fromRGB(130, 124, 120)
+local COBBLE = PC.PAVER -- Patch 14: grey studded paving, like the reference snow town
+local COBBLE_EDGE = PC.PAVER_DARK
 local WOOD = Color3.fromRGB(150, 104, 68)
 local WOOD_DARK = Color3.fromRGB(104, 72, 50)
 local SOIL = Color3.fromRGB(110, 78, 56)
@@ -126,9 +126,11 @@ local function buildLand(parent)
 		end
 		return nil
 	end
+	-- Patch 14: the town is snow (the reference winter town): studded blue-white snow, a slightly greyer plaza,
+	-- and frosted white grass (TideboundFoliage) only out on the edges, so the streets stay clean
 	local STYLE = {
-		grass = { top = TOP, color = GRASS },
-		plaza = { top = TOP, color = P.SNOW_GROUND },
+		grass = { top = TOP, color = PC.SNOW },
+		plaza = { top = TOP, color = Color3.fromRGB(206, 216, 234) },
 		beach = { top = TOP - 0.4, color = SAND },
 		shore = { top = WATER_Y + 0.8, color = SAND:Lerp(Color3.fromRGB(180, 160, 120), 0.3) },
 	}
@@ -141,7 +143,7 @@ local function buildLand(parent)
 				local w = xEnd - runStart
 				local strip = part({ Name = "Town_" .. runKind, Size = Vector3.new(w, style.top - FLOOR, GRID), CFrame = CFrame.new(runStart + w / 2, (style.top + FLOOR) / 2, zc), Color = style.color, Material = Enum.Material.Plastic, Parent = parent })
 				strip.TopSurface = Enum.SurfaceType.Studs
-				if runKind == "grass" then
+				if runKind == "grass" and Vector3.new(runStart + w / 2, 0, zc).Magnitude > 130 then
 					CollectionService:AddTag(strip, "TideboundGrass")
 				end
 			end
@@ -172,10 +174,7 @@ end
 -- Streets -----------------------------------------------------------------------------------------------------
 
 local function lamp(parent, base, target)
-	K.lampPost(parent, base, target)
-	local cf = CFrame.lookAt(base, Vector3.new(target.X, base.Y, target.Z))
-	local glow = decor({ Name = "LampGlow", Size = Vector3.new(0.6, 0.8, 0.6), CFrame = cf * CFrame.new(0, 7.3, -1.9), Color = Color3.fromRGB(255, 214, 140), Material = Enum.Material.Neon, Parent = parent })
-	light(glow, Color3.fromRGB(255, 200, 130), 18, 1.2)
+	PropKit.gallowsLamp(parent, base, target) -- Patch 14: the reference's wooden lamp with a hanging lantern
 end
 
 -- A cobbled street from a to b (clipped to stay out of the plaza), with curbs and lamps; a boardwalk over water.
@@ -545,10 +544,14 @@ local function buildMarket(parent, rng)
 	folder.Parent = parent
 	local n = T.nodes
 	-- shops lining the walk up from the plaza
-	neonShop(folder, v(-17, 72), v(0, 72), "SNACKS", NEONS[3], 12, 10, 9)
-	neonShop(folder, v(17, 72), v(0, 72), "POTIONS", NEONS[5], 12, 10, 9)
-	neonShop(folder, v(-17, 92), v(0, 92), "SHELLS", NEONS[2], 12, 10, 9)
-	neonShop(folder, v(17, 92), v(0, 92), "CHARMS", NEONS[1], 12, 10, 9)
+	PropKit.frameShop(folder, at(v(-17, 72), TOP), at(v(0, 72), TOP), 13, 10, 11, "SNACKS", Color3.fromRGB(226, 60, 90))
+	reserve(v(-17, 72), 9)
+	PropKit.frameShop(folder, at(v(17, 72), TOP), at(v(0, 72), TOP), 13, 10, 11, "POTIONS", Color3.fromRGB(150, 80, 230))
+	reserve(v(17, 72), 9)
+	PropKit.frameShop(folder, at(v(-17, 92), TOP), at(v(0, 92), TOP), 13, 10, 11, "SHELLS", Color3.fromRGB(60, 140, 230))
+	reserve(v(-17, 92), 9)
+	PropKit.frameShop(folder, at(v(17, 92), TOP), at(v(0, 92), TOP), 13, 10, 11, "CHARMS", Color3.fromRGB(40, 180, 120))
+	reserve(v(17, 92), 9)
 	-- food stalls round the square (the vendors TideboundLife stands behind them)
 	for _, vendor in ipairs(T.vendors) do
 		if vendor.at.Z > 60 then
@@ -612,7 +615,7 @@ local function buildToriiHill(parent, rng)
 		local r, y = tier[1], tier[2]
 		-- Patch 13: stepped voxel terraces: a dirt body, a studded grass band, snow dusting the middle
 		K.voxelDisk(folder, "Terrace" .. i, c, r, TOP, y - 0.2, (i % 2 == 0) and Color3.fromRGB(150, 110, 80) or Color3.fromRGB(128, 94, 70), 4)
-		for _, strip in ipairs(K.voxelDisk(folder, "TerraceGrass" .. i, c, r, y - 0.2, y + 0.4, P.GRASS, 4)) do
+		for _, strip in ipairs(K.voxelDisk(folder, "TerraceGrass" .. i, c, r, y - 0.2, y + 0.4, PC.SNOW, 4)) do
 			CollectionService:AddTag(strip, "TideboundGrass")
 		end
 		K.voxelDisk(folder, "TerraceSnow" .. i, c, math.max(4, r - 6), y + 0.4, y + 0.7, P.SNOW_CAP, 4)
@@ -696,22 +699,9 @@ local function buildToriiHill(parent, rng)
 		local a = i / 16 * math.pi * 2
 		part({ Name = "PondStone", Size = Vector3.new(3, 1.6, 2.4), CFrame = CFrame.new(pond.X + math.cos(a) * 12.5, TOP + 0.8, pond.Z + math.sin(a) * 12.5) * CFrame.Angles(0, -a, 0), Color = (i % 2 == 0) and P.STONE or COBBLE, Parent = folder })
 	end
-	disk(folder, "PondBed", at(pond, TOP + 0.05), 12, 0.1, Color3.fromRGB(40, 80, 90)).CanCollide = false
-	local water = disk(folder, "PondWater", at(pond, TOP + 0.9), 12, 0.2, Color3.fromRGB(90, 190, 210))
-	water.CanCollide = false
-	water.CanQuery = false
-	water.Material = Enum.Material.Glass
-	water.Transparency = 0.45
-	local koi = decor({ Name = "Koi", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(at(pond, TOP + 0.5)), Transparency = 1, Parent = folder })
-	koi:SetAttribute("Radius", 6)
-	koi:SetAttribute("Count", 7)
-	koi:SetAttribute("Color", Color3.fromRGB(255, 140, 60))
-	CollectionService:AddTag(koi, "TideboundSchool")
-	for _ = 1, 5 do
-		local a = rng:NextNumber(0, math.pi * 2)
-		local p = pond + Vector3.new(math.cos(a), 0, math.sin(a)) * rng:NextNumber(2, 9)
-		decor({ Name = "LilyPad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.12, 2.2, 2.2), CFrame = CFrame.new(at(p, TOP + 1.05)) * CFrame.Angles(0, 0, math.rad(90)), Color = Color3.fromRGB(92, 186, 84), Parent = folder })
-	end
+	-- Patch 14: frozen over: glowing ice with white cracks (the reference's ice), with a crystal on the bank
+	PropKit.iceSheet(folder, pond, 22, 22, TOP + 0.3, rng)
+	PropKit.iceCrystal(folder, at(pond + v(15, -8), TOP), rng, 1)
 	reserve(pond, 16)
 	reserve(c, 46)
 end
@@ -914,14 +904,20 @@ local function buildHouses(parent, rng)
 		if p.Magnitude > T.plazaRadius + 10 and isLand(p, 10) and (flat(p) - BEACH.c).Magnitude > BEACH.r - 4 and free(p, 8) then
 			local q, d = nearestStreetPoint(p)
 			if q and d > 11 and d < 24 then
-				local w, depth, h = rng:NextNumber(10, 13), rng:NextNumber(8, 10), rng:NextNumber(8, 12)
-				K.timberHouse(folder, at(p, TOP), at(q, TOP), w, depth, h, roofs[rng:NextInteger(1, #roofs)])
-				-- a flower box and a lantern by the door
+				-- Patch 14: the reference town's houses: mostly snowy log cabins, some brick houses with tiled roofs,
+				-- each with a fence round its front garden and a snow mound or two
+				local w, depth, h = rng:NextNumber(11, 14), rng:NextNumber(9, 11), rng:NextNumber(8, 10)
+				if rng:NextNumber() < 0.7 then
+					PropKit.logCabin(folder, at(p, TOP), at(q, TOP), w, depth, h, rng)
+				else
+					PropKit.brickHouse(folder, at(p, TOP), at(q, TOP), w, depth, h, roofs[rng:NextInteger(1, #roofs)])
+				end
 				local cf = facing(p, q)
-				K.flowerTuft(folder, (cf * CFrame.new(w / 2 - 1, 0, -depth / 2 - 1)).Position, rng)
-				local lantern = decor({ Name = "DoorLantern", Size = Vector3.new(0.8, 1, 0.8), CFrame = cf * CFrame.new(-2, 4.5, -depth / 2 - 0.6), Color = Color3.fromRGB(255, 210, 140), Material = Enum.Material.Neon, Parent = folder })
-				light(lantern, Color3.fromRGB(255, 200, 130), 10, 0.8)
-				reserve(p, math.max(w, depth) * 0.75)
+				local yard = depth / 2 + 4
+				PropKit.woodFence(folder, (cf * CFrame.new(-w / 2 - 1, 0, -yard)).Position, (cf * CFrame.new(-2.4, 0, -yard)).Position, TOP)
+				PropKit.woodFence(folder, (cf * CFrame.new(2.4, 0, -yard)).Position, (cf * CFrame.new(w / 2 + 1, 0, -yard)).Position, TOP)
+				PropKit.snowMound(folder, (cf * CFrame.new(w / 2 + 3, 0, rng:NextNumber(-3, 3))).Position, rng, rng:NextNumber(0.8, 1.2))
+				reserve(p, math.max(w, depth) * 0.8)
 				placed += 1
 			end
 		end
@@ -934,19 +930,18 @@ local function buildGreenery(parent, rng)
 	folder.Parent = parent
 	local trees = 0
 	for _ = 1, 600 do
-		if trees >= 90 then
+		if trees >= 150 then
 			break
 		end
 		local p = v(rng:NextNumber(-200, 205), rng:NextNumber(-200, 205))
 		if p.Magnitude > T.plazaRadius + 4 and isLand(p, 4) and (flat(p) - BEACH.c).Magnitude > BEACH.r and free(p, 4) then
 			local r = rng:NextNumber()
 			local base = at(p, TOP)
-			if r < 0.45 then
-				K.voxelTree(folder, base, rng, rng:NextNumber(1, 1.3))
-			elseif r < 0.75 then
-				K.pineTree(folder, base, rng:NextNumber(0.9, 1.3))
+			-- Patch 14: a winter forest: mostly snowy pines, some voxel trees
+			if r < 0.3 then
+				K.voxelTree(folder, base, rng, rng:NextNumber(1, 1.4))
 			else
-				D.blockTree(folder, base, rng, rng:NextNumber(0.7, 0.95))
+				K.pineTree(folder, base, rng:NextNumber(1, 1.6))
 			end
 			reserve(p, 4)
 			trees += 1
@@ -955,11 +950,96 @@ local function buildGreenery(parent, rng)
 	for _ = 1, 160 do
 		local p = v(rng:NextNumber(-200, 205), rng:NextNumber(-200, 205))
 		if p.Magnitude > T.plazaRadius and isLand(p, 3) and (flat(p) - BEACH.c).Magnitude > BEACH.r and free(p, 1) then
-			if rng:NextNumber() < 0.5 then
-				K.flowerTuft(folder, at(p, TOP), rng)
+			if rng:NextNumber() < 0.6 then
+				PropKit.snowMound(folder, at(p, TOP), rng, rng:NextNumber(0.6, 1.3))
 			else
-				D.tuft(folder, at(p, TOP), rng, GRASS_DARK, Color3.fromRGB(255, 230, 120))
+				D.tuft(folder, at(p, TOP), rng, Color3.fromRGB(230, 240, 255), Color3.fromRGB(200, 220, 245))
 			end
+		end
+	end
+end
+
+-- Patch 14: the reference winter town's dressing ---------------------------------------------------------------
+-- Paving inlays and loose tiles round the plaza and squares, vending machines, ice crystals, igloos, striped
+-- stalls on Harbor Street, fences, scaffold arches with lanterns over the main streets.
+
+local function buildWinter(parent, rng)
+	local folder = Instance.new("Folder")
+	folder.Name = "Winter"
+	folder.Parent = parent
+	-- grey paving inlays set into the snow round the plaza, the market square and the Tidegate
+	PropKit.inlays(folder, v(0, 0), T.plazaRadius + 8, TOP, rng, PC.PAVER, 22)
+	PropKit.inlays(folder, v(0, 125), 30, TOP, rng, PC.PAVER, 10)
+	PropKit.inlays(folder, v(170, 0), 26, TOP, rng, PC.PAVER, 8)
+	-- vending machines round the plaza's edge
+	for _, spec in ipairs({ { v(54, -24), "BAIT MACHINE", Color3.fromRGB(60, 120, 220) }, { v(-50, 30), "EGG MACHINE", Color3.fromRGB(230, 70, 110) }, { v(-50, -30), "XP MACHINE", Color3.fromRGB(60, 160, 230) } }) do
+		local cf = facing(spec[1], v(0, 0))
+		PropKit.vendingMachine(folder, cf, spec[2], spec[3])
+		reserve(spec[1], 4)
+	end
+	-- glowing ice crystals and snowy igloos out on the edges of town
+	local placed = 0
+	for _ = 1, 200 do
+		if placed >= 18 then
+			break
+		end
+		local p = v(rng:NextNumber(-200, 205), rng:NextNumber(-200, 205))
+		if p.Magnitude > 90 and isLand(p, 6) and (flat(p) - BEACH.c).Magnitude > BEACH.r and free(p, 5) then
+			PropKit.iceCrystal(folder, at(p, TOP), rng, rng:NextNumber(0.9, 1.6))
+			reserve(p, 4)
+			placed += 1
+		end
+	end
+	for _, spec in ipairs({ { v(-60, 70), v(-30, 40) }, { v(-80, -40), v(-40, -10) }, { v(70, 60), v(40, 40) } }) do
+		if free(spec[1], 9) then
+			PropKit.igloo(folder, at(spec[1], TOP), spec[2], 1)
+			reserve(spec[1], 9)
+		end
+	end
+	-- blue and white striped stalls along Harbor Street
+	for _, x in ipairs({ 88, 112 }) do
+		PropKit.stripedStall(folder, at(v(x, 16), TOP), at(v(x, 0), TOP), Color3.fromRGB(60, 120, 220), PC.WHITE)
+		reserve(v(x, 16), 6)
+	end
+	-- scaffold arches with hanging lanterns over the main streets out of the plaza
+	for _, spec in ipairs({ { v(60, -9), v(60, 9) }, { v(-9, 66), v(9, 66) }, { v(-60, -9), v(-60, 9) }, { v(-9, -62), v(9, -62) } }) do
+		PropKit.scaffold(folder, spec[1], spec[2], TOP, 13)
+		reserve(spec[1], 2)
+		reserve(spec[2], 2)
+	end
+	-- wooden fences round the plaza's corners
+	for i = 0, 3 do
+		local a = math.rad(45 + i * 90)
+		local mid = v(math.cos(a) * (T.plazaRadius + 3), math.sin(a) * (T.plazaRadius + 3))
+		local side = v(-math.sin(a), math.cos(a)) * 9
+		PropKit.woodFence(folder, mid - side, mid + side, TOP)
+	end
+end
+
+-- Snow-capped voxel ice mountains rising out of the sea beyond the town (outside the play area), with glowing
+-- crystals on their ledges, so the hub sits in a valley the way the references' towns do.
+local function buildBackdrop(parent, rng)
+	local folder = Instance.new("Folder")
+	folder.Name = "Backdrop"
+	folder.Parent = parent
+	local peaks = {
+		{ v(-360, -120), v(140, 120), 120 },
+		{ v(-390, 80), v(160, 130), 150 },
+		{ v(-350, 260), v(130, 120), 110 },
+		{ v(-300, 420), v(150, 120), 95 },
+		{ v(-330, -320), v(150, 130), 130 },
+		{ v(-80, 420), v(170, 110), 85 },
+		{ v(120, 430), v(140, 100), 75 },
+	}
+	for _, peak in ipairs(peaks) do
+		local top = PropKit.voxelCliff(folder, peak[1], peak[2], FLOOR, peak[3], rng)
+		for _ = 1, 3 do
+			local p = peak[1] + v(rng:NextNumber(-25, 25), rng:NextNumber(-25, 25))
+			PropKit.iceCrystal(folder, at(p, top * rng:NextNumber(0.6, 0.95)), rng, rng:NextNumber(2, 3.5))
+		end
+		for _ = 1, 4 do
+			local p = peak[1] + v(rng:NextNumber(-50, 50), rng:NextNumber(-40, 40))
+			K.pineTree(folder, at(p, rng:NextNumber(20, top * 0.5)), rng:NextNumber(1.5, 2.5))
 		end
 	end
 end
@@ -984,8 +1064,10 @@ local function build(root)
 	streets.Name = "Streets"
 	streets.Parent = root
 	buildStreets(streets)
+	buildWinter(root, rng)
 	buildHouses(root, rng)
 	buildGreenery(root, rng)
+	buildBackdrop(root, rng)
 
 	-- a welcome sign at the plaza's east exit, pointing the way
 	local sign = part({ Name = "TownSign", Size = Vector3.new(12, 4.5, 0.6), CFrame = facing(v(56, 14), v(56, 40), TOP + 5), Color = WOOD, Material = Enum.Material.WoodPlanks, Parent = root })
