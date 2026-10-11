@@ -38,14 +38,38 @@ local function template()
 		aquarium = {},
 		history = {},
 		bestiary = {},
-		stats = { fishCaught = 0, hatched = 0, extractions = 0, wipes = 0, cleanStreak = 0, bestStreak = 0, bestHeatExtract = 0, bestHatchValue = 0, bestHatch = "" },
+		stats = {
+			fishCaught = 0,
+			hatched = 0,
+			extractions = 0,
+			wipes = 0,
+			cleanStreak = 0,
+			bestStreak = 0,
+			bestHeatExtract = 0,
+			bestHatchValue = 0,
+			bestHatch = "",
+			-- Master Patch 1: every leaderboard has separate Solo and Crew boards
+			modes = {
+				Solo = { extractions = 0, cleanStreak = 0, bestStreak = 0, bestHeatExtract = 0, deepestPush = 0, bestHatchValue = 0, bestHatch = "" },
+				Crew = { extractions = 0, cleanStreak = 0, bestStreak = 0, bestHeatExtract = 0, deepestPush = 0, bestHatchValue = 0, bestHatch = "" },
+			},
+		},
+		crewEggs = 0, -- eggs extracted on Crew runs and not hatched yet (they count toward the Crew rarest-hatch board)
+		-- Master Patch 2: rod durability (missing = full), vials, carried heat, guardian trophies
+		rodDura = {},
+		vials = { Mending = 0, Revive = 0 },
+		heatDebt = 0,
+		heatDebtRest = 0, -- seconds rested at your Home Nest toward clearing it
+		trophies = { ReefCore = 0 },
+		-- Master Patch 1 step 4: two companion slots (creature names) and knock-out timers (os.time)
+		companions = { slots = { "", "" }, ko = {} },
 		-- Delta Section 7: Home Nest zones (true = unlocked) and upgrade levels (1 = first value)
 		zones = { hatch = true, aquarium = true },
 		levels = { incubators = 1, aquarium = 1, filter = 1, treadmill = 1, pen = 1, trophy = 1, vault = 1 },
 		fedUntil = 0,
 		admires = { day = 0, count = 0, visitors = {} },
 		quests = { day = 0, progress = {}, claimed = {} },
-		settings = { openTide = false, privacy = "Public" },
+		settings = { contested = false, privacy = "Public" },
 		guestbook = {},
 		lastSeen = 0,
 	}

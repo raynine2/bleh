@@ -1,13 +1,16 @@
--- Tidebound: Eggfall: idle motion for Home Nest creatures (Delta Section 7). Client-only visuals.
--- Swimmers (Aquarium Hall) drift in a slow figure eight inside the tank; roamers (Creature Pen) wander
--- between points on the lawn, pause, and hop. Real idle and follow loops come from Person B (Section 10).
+-- Tidebound: Eggfall: idle motion for Home Nest creatures (Delta Section 7) and companions (Master Patch 1).
+-- Client-only visuals. Swimmers (Aquarium Hall) drift in a slow figure eight inside the tank; roamers
+-- (Creature Pen) wander between points on the lawn, pause, and hop; companions swim at their owner's
+-- shoulders. Real idle and follow loops come from Person B (Section 10).
 
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 
 local NEAR = 220 -- only animate creatures near the camera
 
 local roamState = {} -- [Model] = { from, to, started, duration, pauseUntil }
+local followState = {} -- [Model] = CFrame the companion is easing from
 
 local function near(position)
 	local camera = workspace.CurrentCamera
@@ -61,11 +64,35 @@ local function roam(model, now)
 	model:PivotTo(look + Vector3.new(0, hop, 0))
 end
 
+-- Companions trail just behind their owner, one at each shoulder, bobbing as they swim.
+local function follow(model, dt, now)
+	local owner = Players:GetPlayerByUserId(model:GetAttribute("Owner") or 0)
+	local root = owner and owner.Character and owner.Character:FindFirstChild("HumanoidRootPart")
+	if not root or not near(root.Position) then
+		return
+	end
+	local slot = model:GetAttribute("Slot") or 1
+	local target = root.CFrame * CFrame.new(slot == 1 and -3 or 3, 0.6 + math.sin(now * 3 + slot) * 0.3, 3.5)
+	local current = followState[model] or model:GetPivot()
+	local position = target.Position
+	if (current.Position - position).Magnitude < 40 then
+		position = current.Position:Lerp(position, math.min(1, dt * 6))
+	end
+	local moved = Vector3.new(position.X - current.Position.X, 0, position.Z - current.Position.Z)
+	local look = moved.Magnitude > 0.02 and CFrame.lookAt(position, position + moved) or CFrame.new(position) * root.CFrame.Rotation
+	followState[model] = look
+	model:PivotTo(look)
+end
+
 CollectionService:GetInstanceRemovedSignal("TideboundRoamer"):Connect(function(model)
 	roamState[model] = nil
 end)
 
-RunService.RenderStepped:Connect(function()
+CollectionService:GetInstanceRemovedSignal("TideboundCompanion"):Connect(function(model)
+	followState[model] = nil
+end)
+
+RunService.RenderStepped:Connect(function(dt)
 	local now = os.clock()
 	for _, model in ipairs(CollectionService:GetTagged("TideboundSwimmer")) do
 		if model:IsA("Model") then
@@ -75,6 +102,11 @@ RunService.RenderStepped:Connect(function()
 	for _, model in ipairs(CollectionService:GetTagged("TideboundRoamer")) do
 		if model:IsA("Model") then
 			roam(model, now)
+		end
+	end
+	for _, model in ipairs(CollectionService:GetTagged("TideboundCompanion")) do
+		if model:IsA("Model") then
+			follow(model, dt, now)
 		end
 	end
 end)

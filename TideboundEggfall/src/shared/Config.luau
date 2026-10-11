@@ -80,8 +80,10 @@ Config.Heat = {
 	lockAt = 75,
 	beaconCloseAt = 100,
 	beaconCloseSeconds = 30,
-	riptideEvery = 6, -- seconds between riptide pulls while heat >= 50
-	riptideForce = 55,
+	-- Master Patch 3 Table C: Riptide Pull pulls toward open water at 8 studs/s, 6 s pulses every 20 s
+	riptideEvery = 20,
+	riptideSeconds = 6,
+	riptideSpeed = 8,
 	thresholds = {
 		{ at = 25, label = "Reef Warden patrol is out" },
 		{ at = 50, label = "Riptide hazard active" },
@@ -96,48 +98,117 @@ Config.Extraction = {
 	pearlsPerEmber = 50,
 	minEmbers = 5,
 	maxEmbers = 25,
-	wipeKeepPearls = 0.5, -- caught before extracting: keep 50% of the run's fish Pearls; stolen eggs are lost
+	-- Master Patch 2: a wipe loses 100% of cargo (carried eggs and unbanked fish). Fish banked at the
+	-- Tide Cache are already Pearls in the wallet, so they are always safe.
 	-- Run extraction payout (canon 50-400 per run), separate from fish Pearls
 	payoutBase = 50,
 	payoutPerEgg = 30,
 	payoutCap = 400,
 }
 
--- Delta Section 9: risk, loss and tension
+-- Delta Section 9 + Master Patch 2: risk, loss and tension
 Config.Risk = {
-	maxHealth = 3, -- Warden hits cost 1 of 3 health; 0 health is a wipe
+	maxHealth = 100, -- Master Patch 2: guardians deal 25-60 per hit
 	hitInvulnerable = 1.5,
-	wardenRecover = 2, -- the Warden pauses after a hit (its lunge recovery)
 	knockback = 60,
-	carrySlowPerEgg = 2, -- each carried egg costs WalkSpeed
+	carrySlowPerEgg = 2, -- each carried egg costs WalkSpeed (an awake companion carries one for you)
 	minWalkSpeed = 10,
 	sprintBonus = 6,
 	beaconChannel = 3, -- hold to extract
-	greedSeconds = 15, -- keep holding after the channel for the Greed Window
-	greedStep = 5,
-	greedPayoutPct = 0.15, -- +15% run payout per 5 s, within the 400 cap
-	greedHeat = 5,
-	greedEmbers = 2, -- holding the full window, within the 25 cap
 	graceSeconds = 10, -- within 10 studs of a beacon when Heat 100 closes it
 	graceRadius = 10,
 	lockLoseSight = 6, -- lock-on drops after 6 s without line of sight
 	luckyScalePearls = 25, -- an escaped fish whose meter passed 90%
 	luckyScaleThreshold = 0.9,
-	frayControl = 0.8, -- a lost fish frays the rod for the rest of the run: -20% Control
 	lockLoseRange = 60, -- beyond this the Warden counts as out of sight
 	streakEmberEvery = 3, -- Clean Extraction streak: +1 Ember per 3 in a row, up to +3
 	streakEmberMax = 3,
 }
 
--- Delta Section 9: opt-in Open Tide runs. Calm Tide (the default) has no PvP.
-Config.OpenTide = {
+-- Master Patch 2: the Greed Window. Every beacon asks: extract now, or push deeper.
+Config.Greed = {
+	cargoPct = 0.40, -- each push adds +40% cargo value (1.4x, 1.8x, 2.2x), within the Canon caps
+	heat = 25,
+	aggro = 1, -- the guardian moves one phase up
+	embersPerPush = 2, -- within the 25 Ember cap
+	choiceSeconds = 10, -- no answer picks Extract now
+	leaveRadius = 12, -- walking away from the beacon also picks Extract now
+}
+
+-- Master Patch 1: Solo is the default and co-op is opt-in.
+Config.Modes = {
+	soloPearlMult = 1.15, -- offsets lost co-op scaling; Canon caps still apply (120 per fish, 400 per run)
+	crewPerMember = 0.05, -- a Crew earns +5% Pearls per extra member (1.15x at 4)
+	crewMax = 4,
+	inviteSeconds = 60,
+	diveSpawn = CFrame.new(86, 10, 0) * CFrame.Angles(0, -math.pi / 2, 0), -- end of the dock into the Shoals
+}
+
+-- Master Patch 1: opt-in PvP egg theft ("Contested Waters"), set before each run, OFF by default and
+-- back to OFF after every run. Replaces the Delta's Open Tide toggle with the same theft rule.
+Config.Contested = {
 	snatchRange = 6, -- a rival behind you holds interact for 1 s
 	snatchHold = 1,
 	beaconSafeRadius = 40, -- no snatching near an extraction beacon
 	immunity = 5, -- seconds of snatch immunity after you are snatched from
 	burstSpeed = 3,
 	burstSeconds = 3,
-	bonusEggChance = 0.2, -- Open Tide pays x1.20 egg nests: a 20% chance of a second egg per steal
+	bonusEggChance = 0.2, -- egg nests pay x1.20 in Contested Waters: a 20% chance of a second egg per steal
+}
+
+-- Master Patch 3 Table A: the Sunken Shoals guardian. Phase 1 at its trigger, Phase 2 at heat 75,
+-- Phase 3 at heat 100. Every strike telegraphs for at least 0.6 s.
+Config.Guardian = {
+	name = "Reef Warden",
+	damage = 25,
+	triggerEggs = 3, -- Phase 1 starts on the 3rd egg stolen in a run
+	drop = "ReefCore",
+	dropName = "Reef Core",
+	dropsForPage = 5, -- 5 Reef Cores complete its Bestiary page
+	tell = 0.6,
+	lungeRange = 10,
+	strikeRadius = 7.5,
+	recover = 2, -- pause after a strike
+	speeds = { patrol = 10, guard = 13, chase = 15, fury = 16.5 },
+}
+
+-- Master Patch 2: rod durability. A broken rod fishes as a tier-1 Drift Rod until repaired (Pearls only).
+Config.Durability = {
+	max = 100,
+	perCast = 1,
+	perSnap = 10, -- a fish that gets away snaps the line
+	repairCost = { Drift = 50, Coral = 150, Stormline = 400, Abyssal = 900, Riftcaster = 2000, Celestial = 3000 }, -- full repair
+}
+
+-- Master Patch 2: wiping at heat 75+ carries heat into the next run until you rest at your Home Nest.
+Config.HeatCarry = { wipeAt = 75, startHeat = 15, drainSeconds = 180 }
+
+-- Master Patch 2 + 4: vials from Nim's Bait Shop. Pearls only; at most 3 used per run.
+Config.Vials = {
+	{ id = "Mending", name = "Mending Vial", cost = 150, text = "Heals 25 health" },
+	{ id = "Revive", name = "Revive Vial", cost = 200, text = "Wakes a knocked-out companion" },
+}
+Config.VialHeal = 25
+Config.VialsPerRun = 3
+
+-- Master Patch 1 step 4: 2 companion creatures from your collection follow you on dives. Each awake
+-- companion carries one egg, so it doesn't slow you down. A Warden hit knocks one out for 10 min.
+Config.Companions = { slots = 2, koSeconds = 600 }
+
+-- Master Patch 3 Table B: Sunken Shoals elites. Weights are the spawn chance within the biome's pool.
+-- Elites are dodged, not killed: a missed charge or lunge leaves them dazed, and you can loot their bait.
+Config.Elites = {
+	{ id = "BarnacleBrute", name = "Barnacle Brute", weight = 70, drop = { bait = "Brineworm", count = 5 }, tell = 1, chargeSpeed = 38, chargeDistance = 32, aggroRange = 28, hitRadius = 4.5, stun = 1.5, daze = 4, cooldown = 5 },
+	{ id = "SnapjawMoray", name = "Snapjaw Moray", weight = 30, drop = { bait = "Glowmite", count = 2 }, tell = 0.6, range = 6, damage = 10, exposed = 3, cooldown = 4 },
+}
+Config.EliteLootCooldown = 180 -- per player, per elite
+
+-- Master Patch 3 Table C: Sunken Shoals terrain hazard (always on).
+Config.Anemone = { damage = 10, slow = 0.3, tick = 1.5 }
+
+-- Master Patch 3 Table D: Sunken Shoals weather.
+Config.Weather = {
+	GlassCalm = { name = "Glass Calm", every = 900, firstAfter = 300, duration = 180, warning = 20, biteMult = 0.7, reward = { bait = "Brineworm", count = 3 } },
 }
 
 -- Delta Section 10 Table C: camera field of view per situation.
@@ -155,14 +226,14 @@ Config.Harbor = {
 }
 
 Config.Npcs = {
-	Pinch = { name = "Pinch", role = "Guide crab", lines = { "New here? Cast in the Shoals, steal eggs, then hold at a beacon to extract.", "The Tide Slide behind me goes to the Harbor Ring, where your Home Nest is." } },
-	OldHarl = { name = "Old Harl", role = "Tackle Shop", panel = "RODS", lines = { "Every rod's stats are on the rack. No secrets, no Robux." } },
-	Nim = { name = "Nim", role = "Bait Shop", panel = "BAIT", lines = { "Brineworm for the shallows, Glowmite when you want rarer bites!" } },
+	Pinch = { name = "Pinch", role = "Guide crab", lines = { "New here? Cast in the Shoals, bank fish at the Tide Cache, steal eggs, then hold at a beacon to extract.", "The Tide Slide behind me goes to the Harbor Ring, where your Home Nest is." } },
+	OldHarl = { name = "Old Harl", role = "Tackle Shop", panel = "RODS", lines = { "Every rod's stats are on the rack. No secrets, no Robux.", "Worn rod? I'll repair it for Pearls before you dive." } },
+	Nim = { name = "Nim", role = "Bait Shop", panel = "BAIT", lines = { "Brineworm for the shallows, Glowmite when you want rarer bites!", "Mending Vials heal you, Revive Vials wake a companion. Pearls only!" } },
 	SisterCoralie = { name = "Sister Coralie", role = "Tide Egg Shrine", panel = "ODDS", lines = { "These are the odds, child, every one of them. Your pity never resets on a wipe." } },
 	CaptainBrask = { name = "Captain Brask", role = "Season Pass Board", panel = "QUESTS", lines = { "The season track isn't posted yet. Quill's quests pay Pearls today." } },
 	Quill = { name = "Quill", role = "Daily Quest Board", panel = "QUESTS", lines = { "Three quests a day, reset at midnight UTC. Squawk!" } },
 	ArchivistOphel = { name = "Archivist Ophel", role = "Leaderboard Hall", panel = "BOARDS", lines = { "The Hall remembers this server's rarest hatches and boldest escapes." } },
-	GateWardenSel = { name = "Gate Warden Sel", role = "Tidegate", panel = "RUN", lines = { "Calm Tide is safe from rivals. Open Tide lets them snatch eggs, and pays more eggs." } },
+	GateWardenSel = { name = "Gate Warden Sel", role = "Tidegate", panel = "DIVE", lines = { "Dive Solo or Dive With Crew. Contested Waters stays off unless you switch it on.", "Push past a beacon and the Shoals pay more, but the Warden gets angrier." } },
 	TradesmanKobb = { name = "Tradesman Kobb", role = "Trading Post", lines = { "Trades open when cosmetics arrive. Creatures, eggs and bait never trade, so nobody buys power." } },
 }
 
@@ -252,6 +323,7 @@ Config.Biomes = {
 		hazard = "Riptide pull",
 		guardian = "Reef Warden",
 		built = true,
+		weather = "Glass Calm",
 		fish = {
 			{ "Sand Minnow", "Reef Sprat" },
 			{ "Glass Shrimp", "Striped Grunt" },

@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local CollectionService = game:GetService("CollectionService")
 
 local player = Players.LocalPlayer
 local Shared = ReplicatedStorage:WaitForChild("Tidebound")
@@ -322,7 +323,7 @@ local pills = {
 local infoCard = neonPanel({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = hud }, 6, true)
 padding(8).Parent = infoCard
 list(2).Parent = infoCard
-local infoRod = label({ Size = UDim2.new(1, 0, 0, 16), TextSize = 13, LayoutOrder = 1, Parent = infoCard }, { textStroke(1) })
+local infoRod = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, LayoutOrder = 1, Parent = infoCard }, { textStroke(1) })
 local infoIncome = label({ Size = UDim2.new(1, 0, 0, 16), TextSize = 13, LayoutOrder = 2, Parent = infoCard }, { textStroke(1) })
 
 -- Side menu: REF 4 tiles as buttons
@@ -364,9 +365,26 @@ for _, mark in ipairs({ 25, 50, 75 }) do
 end
 local heatInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 3, Parent = heatFrame }, { textStroke(1) })
 local haulInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 4, Parent = heatFrame }, { textStroke(1) })
--- Delta Section 9: health, lock-on, frayed rod and tide mode under the heat bar
+-- Master Patches 1-3: health, guardian phase, dive mode, rod, carried heat and weather under the heat bar
 local riskInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Font = DISPLAY, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 5, Parent = heatFrame }, { textStroke(1.5) })
 local lastHeatStyle = nil
+local hudExtra = {}
+do
+	hudExtra.weather = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Font = DISPLAY, TextSize = 14, TextColor3 = Color3.fromRGB(150, 230, 255), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 6, Visible = false, Parent = heatFrame }, { textStroke(1.5) })
+	-- vial buttons under the currency pills: Mending during a dive, Revive whenever a companion is out
+	local vialRow = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 6, Visible = false, Parent = hud })
+	hudExtra.vialRow = vialRow
+	hudExtra.mend = button({ Size = UDim2.new(1, 0, 1, 0), TextSize = 13, Parent = vialRow }, "blue", function()
+		act("UseVial", "Mending")
+	end)
+	hudExtra.revive = button({ Size = UDim2.new(1, 0, 1, 0), TextSize = 13, Parent = vialRow }, "gold", function()
+		act("UseVial", "Revive")
+	end)
+	hudExtra.clock = function(seconds)
+		seconds = math.max(0, math.ceil(seconds))
+		return ("%d:%02d"):format(seconds // 60, seconds % 60)
+	end
+end
 
 local function refreshHUD()
 	if not state then
@@ -378,11 +396,14 @@ local function refreshHUD()
 	pills.tideglass.Text = fmt(state.tideglass)
 	local rod = Config.RodsById[state.rod]
 	local bait = state.bait ~= "" and Config.BaitById[state.bait]
-	infoRod.Text = (rod and rod.name or "?") .. (bait and (" · %s x%d"):format(bait.name, state.baitInv[state.bait] or 0) or " · no bait")
+	local dura = state.rodDura[state.rod] or Config.Durability.max
+	infoRod.Text = (rod and rod.name or "?") .. (state.rodBroken and " BROKEN" or (" %d%%"):format(dura)) .. (bait and (" · %s x%d"):format(bait.name, state.baitInv[state.bait] or 0) or " · no bait")
+	infoRod.TextColor3 = state.rodBroken and C.bad or (dura < 25 and C.warn or C.text)
 	infoIncome.Text = ("Aquarium +%.1f Pearls/min"):format(state.incomePerMin)
 	eggBadge.Visible = state.eggs > 0
 	eggBadgeText.Text = state.eggs > 99 and "99+" or tostring(state.eggs)
 
+	local now = workspace:GetServerTimeNow()
 	local heat = state.heat
 	heatFill.Size = UDim2.new(heat / Config.Heat.max, 0, 1, 0)
 	local style = heat >= 75 and "red" or heat >= 25 and "gold" or "blue"
@@ -397,32 +418,82 @@ local function refreshHUD()
 			status = threshold.label
 		end
 	end
-	local closed = state.beaconsClosedUntil - workspace:GetServerTimeNow()
+	local closed = state.beaconsClosedUntil - now
 	if closed > 0 then
 		status = ("Extraction beacons closed for %ds"):format(math.ceil(closed))
+		if state.graceUntil > now then
+			status ..= (" · beacon grace: extract within %ds"):format(math.ceil(state.graceUntil - now))
+		end
 	end
 	heatInfo.Text = status
 	if state.carriedPearls > 0 or state.carriedEggs > 0 then
-		haulInfo.Text = ("At risk: %s Pearls of fish and %d egg(s). A wipe keeps half the fish Pearls and loses the eggs."):format(fmt(state.carriedPearls), state.carriedEggs)
+		local mult = state.cargoMult > 1 and (" · x%.1f when you extract"):format(state.cargoMult) or ""
+		haulInfo.Text = ("Cargo at risk: %d fish (%s Pearls) and %d egg(s)%s. A wipe loses all of it, so bank fish at the Tide Cache."):format(state.carriedFish, fmt(state.carriedPearls), state.carriedEggs, mult)
 		haulInfo.TextColor3 = C.warn
+	elseif state.bankedPearls > 0 then
+		haulInfo.Text = ("Banked this dive: %s Pearls, safe from any wipe. Extract at a beacon to finish."):format(fmt(state.bankedPearls))
+		haulInfo.TextColor3 = C.good
 	else
-		haulInfo.Text = "Nothing at risk. Cast at a glowing spot in the Sunken Shoals or steal a wild egg."
+		haulInfo.Text = "Nothing at risk. Talk to Gate Warden Sel to dive, then fish the glowing spots or steal a wild egg."
 		haulInfo.TextColor3 = C.muted
 	end
-	local parts = { string.rep("❤", state.health) .. string.rep("♡", state.maxHealth - state.health) }
+	local parts = { ("HP %d/%d"):format(state.health, state.maxHealth) }
+	if state.phase > 0 then
+		table.insert(parts, ("Warden Phase %d"):format(state.phase))
+	end
 	if state.locked then
 		table.insert(parts, "LOCKED ON")
 	end
-	if state.frayed then
-		table.insert(parts, "Rod frayed")
+	if state.stunUntil > now then
+		table.insert(parts, "STUNNED")
 	end
-	table.insert(parts, state.openTide and "Open Tide" or "Calm Tide")
-	if state.immuneUntil > workspace:GetServerTimeNow() then
+	table.insert(parts, ("%s x%.2f"):format(state.mode, state.modeMult))
+	if (state.started and state.runContested) or (not state.started and state.contested) then
+		table.insert(parts, "Contested ON")
+	end
+	if state.heatDebt > 0 then
+		table.insert(parts, ("Carried heat %d"):format(state.heatDebt))
+	end
+	if state.immuneUntil > now then
 		table.insert(parts, "Snatch immune")
 	end
 	riskInfo.Text = table.concat(parts, "  ·  ")
 	riskInfo.TextColor3 = state.locked and C.bad or (state.health < state.maxHealth and C.warn or C.text)
-	infoIncome.Text = ("Aquarium +%.1f Pearls/min"):format(state.incomePerMin)
+
+	-- Glass Calm banner from its 20 s warning until it ends
+	local weather = state.weather
+	hudExtra.weather.Visible = weather ~= nil and now < weather.endsAt
+	if hudExtra.weather.Visible then
+		local glass = Config.Weather.GlassCalm
+		local faster = math.floor((1 - glass.biteMult) * 100 + 0.5)
+		if now < weather.startsAt then
+			hudExtra.weather.Text = ("%s in %ds: bites %d%% faster, no riptide"):format(weather.name:upper(), math.ceil(weather.startsAt - now), faster)
+		else
+			hudExtra.weather.Text = ("%s %s: bites %d%% faster, no riptide, first catch +%d %s"):format(weather.name:upper(), hudExtra.clock(weather.endsAt - now), faster, glass.reward.count, Config.BaitById[glass.reward.bait].name)
+		end
+	end
+
+	-- vials: Mending on a dive, Revive while a companion is knocked out
+	local knockedOut = false
+	for _, slot in ipairs(state.companions.slots) do
+		if slot.name ~= "" and slot.koLeft > 0 then
+			knockedOut = true
+		end
+	end
+	local showMend = state.started and (state.vials.Mending or 0) > 0
+	local showRevive = knockedOut and (state.vials.Revive or 0) > 0
+	local both = showMend and showRevive
+	hudExtra.vialRow.Visible = showMend or showRevive
+	hudExtra.mend.Visible = showMend
+	hudExtra.revive.Visible = showRevive
+	hudExtra.mend.Size = UDim2.new(both and 0.5 or 1, both and -3 or 0, 1, 0)
+	hudExtra.revive.Size = hudExtra.mend.Size
+	hudExtra.revive.Position = UDim2.new(both and 0.5 or 0, both and 3 or 0, 0, 0)
+	hudExtra.mend.Text = ("MEND x%d"):format(state.vials.Mending or 0)
+	hudExtra.revive.Text = ("REVIVE x%d"):format(state.vials.Revive or 0)
+	local spent = state.started and state.vialsUsed >= Config.VialsPerRun
+	restyle(hudExtra.mend, spent and "grey" or "blue")
+	restyle(hudExtra.revive, spent and "grey" or "gold")
 end
 
 -- Fishing minigame (Fisch-style: hold to push the bar, keep the fish inside it) ---
@@ -490,7 +561,7 @@ local function runMinigame(cast)
 	reelTrack.Visible, progressTrack.Visible = false, false
 	fishTitle.TextColor3 = C.text
 	fishTitle.Text = (cast.pier and "Pier cast" or "Casting") .. (cast.bait and (" with " .. cast.bait) or "") .. "..."
-	fishHint.Text = cast.frayed and "Wait for the bite. Your rod is frayed: -20% Control until you extract." or "Wait for the bite."
+	fishHint.Text = cast.broken and "Wait for the bite. Your rod is broken, so it fishes like a Drift Rod until Old Harl repairs it." or "Wait for the bite."
 	playAnim("Cast")
 	situation = "fishing"
 	task.wait(cast.biteWait)
@@ -614,7 +685,7 @@ local TABS = {
 	{ id = "BASE", title = "HOME NEST", group = "home" },
 	{ id = "QUESTS", title = "DAILY QUESTS", group = "home" },
 	{ id = "BOARDS", title = "LEADERBOARDS", group = "home" },
-	{ id = "RUN", title = "RUN & RISK", group = "home" },
+	{ id = "DIVE", title = "DIVE & CREW", group = "home" },
 }
 local groupSize = {}
 for _, tab in ipairs(TABS) do
@@ -844,6 +915,36 @@ refreshers.RODS = function()
 	end
 end
 
+do
+	-- Master Patch 2: rod durability and Old Harl's repairs, pinned above the rack
+	local D = Config.Durability
+	local repairRow = rowFrame(rodsPage, 54)
+	repairRow.LayoutOrder = -1
+	local duraTitle = label({ Font = DISPLAY, TextSize = 16, Position = UDim2.new(0, 12, 0, 4), Size = UDim2.new(0.64, -12, 0, 22), Parent = repairRow })
+	local duraFill = bar(repairRow, UDim2.new(0, 12, 0, 32), UDim2.new(0.64, -24, 0, 10), "blue")
+	local repairButton = button({ Size = UDim2.new(0.36, -10, 0, 36), Position = UDim2.new(0.64, 0, 0.5, -18), TextSize = 13, Parent = repairRow }, "gold", function()
+		act("RepairRod")
+	end)
+	note(rodsPage, ("Durability: -%d per cast and -%d when a fish snaps the line. A broken rod fishes like a Drift Rod until Old Harl repairs it, for Pearls only. Swap rods between dives."):format(D.perCast, D.perSnap))
+	local rodsRefresh = refreshers.RODS
+	refreshers.RODS = function()
+		rodsRefresh()
+		local rod = Config.RodsById[state.rod] or Config.Rods[1]
+		local dura = state.rodDura[rod.id] or D.max
+		duraTitle.Text = ("%s · durability %d/%d%s"):format(rod.name, dura, D.max, state.rodBroken and " · BROKEN" or "")
+		duraTitle.TextColor3 = state.rodBroken and C.bad or (dura < 25 and C.warn or C.text)
+		duraFill.Size = UDim2.new(math.clamp(dura / D.max, 0, 1), 0, 1, 0)
+		if dura >= D.max then
+			repairButton.Text = "FULL"
+			restyle(repairButton, "grey")
+		else
+			local cost = math.ceil(D.repairCost[rod.id] * (D.max - dura) / D.max)
+			repairButton.Text = ("REPAIR · %s P"):format(fmt(cost))
+			restyle(repairButton, state.pearls >= cost and "gold" or "grey")
+		end
+	end
+end
+
 -- BAIT tab
 local baitPage = makePage("BAIT")
 section(baitPage, "BAIT · multiplies rod Luck, 1 used per cast")
@@ -889,6 +990,36 @@ refreshers.BAIT = function()
 	local fishOdds = Gacha.fishOdds(rod.luck * (bait and bait.luck or 1))
 	for i, labelInst in ipairs(fishOddsRows) do
 		labelInst.Text = pct(fishOdds[i])
+	end
+end
+
+do
+	-- Master Patch 2: Nim's vials, Pearls only, up to 3 used per dive
+	divider(baitPage)
+	section(baitPage, ("VIALS · Pearls only, up to %d per dive"):format(Config.VialsPerRun))
+	local vialRows = {}
+	for _, vial in ipairs(Config.Vials) do
+		local row = rowFrame(baitPage, 56)
+		label({ Text = vial.name, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 5), Size = UDim2.new(0.5, -12, 0, 22), TextSize = 16, Parent = row })
+		local owned = label({ Position = UDim2.new(0, 12, 0, 30), Size = UDim2.new(0.5, -12, 0, 20), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
+		local buy = button({ Size = UDim2.new(0.25, -8, 0, 36), Position = UDim2.new(0.5, 0, 0.5, -18), TextSize = 13, Parent = row }, "gold", function()
+			act("BuyVial", vial.id)
+		end)
+		local use = button({ Text = "USE", Size = UDim2.new(0.25, -10, 0, 36), Position = UDim2.new(0.75, 0, 0.5, -18), TextSize = 13, Parent = row }, "blue", function()
+			act("UseVial", vial.id)
+		end)
+		vialRows[vial.id] = { owned = owned, buy = buy, use = use, vial = vial }
+	end
+	local baitRefresh = refreshers.BAIT
+	refreshers.BAIT = function()
+		baitRefresh()
+		for id, row in pairs(vialRows) do
+			local count = state.vials[id] or 0
+			row.owned.Text = ("Owned %d · %s"):format(count, row.vial.text)
+			row.buy.Text = ("BUY · %d P"):format(row.vial.cost)
+			restyle(row.buy, state.pearls >= row.vial.cost and "gold" or "grey")
+			row.use.Visible = count > 0 and (id ~= "Mending" or state.started)
+		end
 	end
 end
 
@@ -946,7 +1077,7 @@ refreshers.BESTIARY = function()
 			t.caption.Text = Config.Tiers[entry.tier].id
 		end
 	end
-	bestiaryHeader.Text = ("SUNKEN SHOALS · %d/%d fish caught"):format(caught, #fishList)
+	bestiaryHeader.Text = ("SUNKEN SHOALS · %d/%d fish caught · %s %d/%d"):format(caught, #fishList, Config.Guardian.dropName .. "s", state.trophies[Config.Guardian.drop] or 0, Config.Guardian.dropsForPage)
 end
 
 do
@@ -1116,10 +1247,23 @@ do
 end
 
 do
-	-- BOARDS tab: the Leaderboard Hall (this server)
+	-- BOARDS tab: the Leaderboard Hall (this server), with separate Solo and Crew boards (Master Patch 1)
 	local boardsPage = makePage("BOARDS")
+	local boardMode = "Solo"
+	local refreshBoards -- set below
+	local modeRow = rowFrame(boardsPage, 50)
+	local modeButtons = {}
+	for i, mode in ipairs({ "Solo", "Crew" }) do
+		modeButtons[mode] = button({ Text = mode:upper() .. " BOARDS", Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new((i - 1) / 2, i == 1 and 8 or 6, 0.5, -19), TextSize = 15, Parent = modeRow }, "grey", function()
+			boardMode = mode
+			if state then
+				refreshBoards()
+			end
+		end)
+	end
+	note(boardsPage, "Solo dives and Crew dives are ranked separately, so a Crew never pushes a solo diver off the board.")
 	local boardLabels = {}
-	for _, board in ipairs({ { "rarest", "RAREST HATCH" }, { "streak", "LONGEST CLEAN EXTRACTION STREAK" }, { "heat", "HIGHEST HEAT EXTRACTED AT" }, { "hatched", "MOST HATCHED" } }) do
+	for _, board in ipairs({ { "rarest", "RAREST HATCH" }, { "streak", "LONGEST CLEAN EXTRACTION STREAK" }, { "heat", "HIGHEST HEAT EXTRACTED AT" }, { "push", "DEEPEST GREED PUSH" } }) do
 		section(boardsPage, board[2])
 		boardLabels[board[1]] = label({ Text = "", TextSize = 14, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder(), Parent = boardsPage }, { textStroke(1) })
 		divider(boardsPage)
@@ -1127,35 +1271,159 @@ do
 	section(boardsPage, "YOUR RECORD")
 	local myRecord = label({ Text = "", TextSize = 14, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder(), Parent = boardsPage }, { textStroke(1) })
 
-	refreshers.BOARDS = function()
+	refreshBoards = function()
+		for mode, b in pairs(modeButtons) do
+			restyle(b, mode == boardMode and "red" or "grey")
+		end
+		local boards = state.boards[boardMode] or {}
 		for key, labelInst in pairs(boardLabels) do
-			local entries = state.boards[key] or {}
 			local lines = {}
-			for i, entry in ipairs(entries) do
+			for i, entry in ipairs(boards[key] or {}) do
 				table.insert(lines, ("%d. %s · %s"):format(i, entry.name, entry.text))
 			end
 			labelInst.Text = #lines > 0 and table.concat(lines, "\n") or "Nobody yet. Be the first!"
 		end
 		local st = state.stats
-		myRecord.Text = ("Extractions %d · wipes %d · clean streak %d (best %d) · best Heat extracted %d · fish caught %d · hatched %d"):format(st.extractions, st.wipes, st.cleanStreak, st.bestStreak, st.bestHeatExtract or 0, st.fishCaught, st.hatched)
+		local m = st.modes[boardMode]
+		myRecord.Text = ("%s: extractions %d · clean streak %d (best %d) · best Heat extracted %d · deepest push %d · rarest hatch %s\nAll dives: wipes %d · fish caught %d · hatched %d · %ss %d"):format(
+			boardMode,
+			m.extractions,
+			m.cleanStreak,
+			m.bestStreak,
+			m.bestHeatExtract,
+			m.deepestPush,
+			m.bestHatch ~= "" and m.bestHatch or "none yet",
+			st.wipes,
+			st.fishCaught,
+			st.hatched,
+			Config.Guardian.dropName,
+			state.trophies[Config.Guardian.drop] or 0
+		)
 	end
+	refreshers.BOARDS = refreshBoards
 end
 
 do
-	-- RUN tab: Calm or Open Tide, travel and the risk rules (Delta Section 9)
-	local runPage = makePage("RUN")
-	section(runPage, "TIDE MODE · pick before your run")
-	local tideRow = rowFrame(runPage, 50)
-	local calmButton = button({ Text = "CALM TIDE", Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new(0, 8, 0.5, -19), TextSize = 15, Parent = tideRow }, "blue", function()
-		act("SetOpenTide", false)
+	-- DIVE tab (Gate Warden Sel): Dive Solo or With Crew, Contested Waters, Crew invites, companions,
+	-- loadout, travel and the risk rules (Master Patches 1-3)
+	local divePage = makePage("DIVE")
+	local M, CT, G, R = Config.Modes, Config.Contested, Config.Guardian, Config.Risk
+
+	section(divePage, "BIOMES")
+	local biomeLabels = {}
+	for i, biome in ipairs(Config.Biomes) do
+		local row = rowFrame(divePage, 30)
+		label({ Text = biome.name, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.36, -12, 1, 0), TextSize = 15, Parent = row })
+		biomeLabels[i] = label({ Position = UDim2.new(0.36, 0, 0, 0), Size = UDim2.new(0.64, -12, 1, 0), TextSize = 13, Parent = row }, { textStroke(1) })
+	end
+
+	divider(divePage)
+	section(divePage, "DIVE · from the Nest or the Harbor Ring")
+	local diveRow = rowFrame(divePage, 50)
+	local function dive(mode)
+		local result = act("Dive", mode)
+		if result and result.ok then
+			closeMenu()
+		end
+	end
+	local soloDive = button({ Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new(0, 8, 0.5, -19), TextSize = 15, Parent = diveRow }, "blue", function()
+		dive("Solo")
 	end)
-	local openButton = button({ Text = "OPEN TIDE", Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new(0.5, 6, 0.5, -19), TextSize = 15, Parent = tideRow }, "grey", function()
-		act("SetOpenTide", true)
+	local crewDive = button({ Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new(0.5, 6, 0.5, -19), TextSize = 15, Parent = diveRow }, "gold", function()
+		dive("Crew")
 	end)
-	note(runPage, "Calm Tide (default): no PvP. Open Tide: a rival 6 studs behind you can hold for 1 s to snatch one carried egg, never near a beacon (40 studs), and you get 5 s of immunity and a speed burst. Egg nests can hold a bonus egg (x1.20).")
-	divider(runPage)
-	section(runPage, "TRAVEL · from the Nest or the Harbor Ring")
-	local travelRow = rowFrame(runPage, 50)
+	local diveNote = note(divePage, "")
+
+	divider(divePage)
+	section(divePage, "CONTESTED WATERS · this dive only, back to OFF after")
+	local contestRow = rowFrame(divePage, 50)
+	local offButton = button({ Text = "OFF · SAFE", Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new(0, 8, 0.5, -19), TextSize = 15, Parent = contestRow }, "blue", function()
+		act("SetContested", false)
+	end)
+	local onButton = button({ Text = "ON · PVP", Size = UDim2.new(0.5, -14, 0, 38), Position = UDim2.new(0.5, 6, 0.5, -19), TextSize = 15, Parent = contestRow }, "grey", function()
+		act("SetContested", true)
+	end)
+	note(divePage, ("OFF (default): nobody can take anything from you. ON: a rival %d studs behind you can hold for %d s to snatch one carried egg, never within %d studs of a beacon, and you then get %d s of immunity and a speed burst. Egg nests pay x%.2f (a %d%% chance of a bonus egg). Crewmates can never snatch from each other."):format(CT.snatchRange, CT.snatchHold, CT.beaconSafeRadius, CT.immunity, 1 + CT.bonusEggChance, math.round(CT.bonusEggChance * 100)))
+
+	divider(divePage)
+	section(divePage, ("CREW · invite only, up to %d divers"):format(M.crewMax))
+	local crewInfo = note(divePage, "")
+	local inviteRow = rowFrame(divePage, 46)
+	local inviteText = label({ Font = DISPLAY, TextSize = 14, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.5, -12, 1, 0), Parent = inviteRow })
+	button({ Text = "ACCEPT", Size = UDim2.new(0.25, -8, 0, 34), Position = UDim2.new(0.5, 0, 0.5, -17), TextSize = 13, Parent = inviteRow }, "gold", function()
+		act("CrewAccept")
+	end)
+	button({ Text = "DECLINE", Size = UDim2.new(0.25, -10, 0, 34), Position = UDim2.new(0.75, 0, 0.5, -17), TextSize = 13, Parent = inviteRow }, "grey", function()
+		act("CrewDecline")
+	end)
+	local leaveButton = button({ Text = "LEAVE CREW", Size = UDim2.new(1, 0, 0, 34), TextSize = 13, LayoutOrder = nextOrder(), Parent = divePage }, "grey", function()
+		act("CrewLeave")
+	end)
+	local playerRows = {}
+	for i = 1, 11 do
+		local row = rowFrame(divePage, 40)
+		local slot = { row = row, id = nil }
+		slot.name = label({ Font = DISPLAY, TextSize = 14, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.6, -12, 1, 0), Parent = row })
+		slot.button = button({ Size = UDim2.new(0.4, -10, 0, 30), Position = UDim2.new(0.6, 0, 0.5, -15), TextSize = 13, Parent = row }, "blue", function()
+			if slot.id then
+				act("CrewInvite", slot.id)
+			end
+		end)
+		playerRows[i] = slot
+	end
+	local nobodyNote = note(divePage, "Nobody else is on this server yet. Crews are always optional.")
+
+	divider(divePage)
+	section(divePage, ("COMPANIONS · %d slots, each carries one egg for you"):format(Config.Companions.slots))
+	local function cycleCompanion(i)
+		if not state then
+			return
+		end
+		local owned = state.companions.owned
+		local current = state.companions.slots[i].name
+		local taken = {}
+		for j, slot in ipairs(state.companions.slots) do
+			if j ~= i then
+				taken[slot.name] = true
+			end
+		end
+		local start = 0
+		for k, entry in ipairs(owned) do
+			if entry.name == current then
+				start = k
+			end
+		end
+		for step = 1, #owned do
+			local entry = owned[(start + step - 1) % #owned + 1]
+			if entry.name ~= current and not taken[entry.name] then
+				act("EquipCompanion", i, entry.name)
+				return
+			end
+		end
+		toast(#owned == 0 and "Hatch a Tide Egg first. Companions come from your creature collection." or "No other creature to pick. Hatch more eggs!", "info")
+	end
+	local slotRows = {}
+	for i = 1, Config.Companions.slots do
+		local row = rowFrame(divePage, 46)
+		local slotUi = {}
+		slotUi.text = label({ Font = DISPLAY, TextSize = 14, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.5, -12, 1, 0), Parent = row })
+		slotUi.pick = button({ Text = "PICK", Size = UDim2.new(0.25, -8, 0, 34), Position = UDim2.new(0.5, 0, 0.5, -17), TextSize = 13, Parent = row }, "blue", function()
+			cycleCompanion(i)
+		end)
+		slotUi.clear = button({ Text = "EMPTY", Size = UDim2.new(0.25, -10, 0, 34), Position = UDim2.new(0.75, 0, 0.5, -17), TextSize = 13, Parent = row }, "grey", function()
+			act("EquipCompanion", i, "")
+		end)
+		slotRows[i] = slotUi
+	end
+	local companionNote = note(divePage, "")
+
+	divider(divePage)
+	section(divePage, "LOADOUT")
+	local loadout = note(divePage, "")
+
+	divider(divePage)
+	section(divePage, "TRAVEL · from the Nest or the Harbor Ring")
+	local travelRow = rowFrame(divePage, 50)
 	for i, dest in ipairs({ { "NEST PLAZA", "Nest" }, { "HARBOR RING", "Harbor" }, { "MY HOME NEST", "Home" } }) do
 		button({ Text = dest[1], Size = UDim2.new(1 / 3, -12, 0, 38), Position = UDim2.new((i - 1) / 3, 6, 0.5, -19), TextSize = 13, Parent = travelRow }, "blue", function()
 			local result = act("Travel", dest[2])
@@ -1164,24 +1432,105 @@ do
 			end
 		end)
 	end
-	divider(runPage)
-	section(runPage, "RISK RULES")
-	note(runPage, table.concat({
-		"Health: 3. Each Reef Warden hit costs 1; the third hit is a wipe.",
-		"Wipe: you lose every carried egg and half the run's fish Pearls. You keep the other half, your bestiary and every pity counter.",
-		"Heat: +8 per steal, +2 per fish, -1 per 3 s while lying low. 25 patrol, 50 riptide, 75 lock-on, 100 all beacons close for 30 s.",
-		"Lock-on breaks after 6 s out of the Warden's sight. Each carried egg costs 2 WalkSpeed; hold Shift (or SPRINT) to run faster.",
-		"Extract: hold 3 s at a beacon. Then stay for the Greed Window: every 5 s adds +15% payout and +5 Heat; all 15 s adds +2 Embers. Walk away or press BANK NOW to leave.",
-		"Beacon grace: within 10 studs of a beacon when Heat hits 100, you get 10 s to extract.",
-		"A lost fish frays your rod (-20% Control) until you extract. An escaped fish that passed 90% drops a Lucky Scale (+25 Pearls).",
-		"Clean Extraction streak: +1 Ember per 3 extractions in a row, up to +3. A wipe resets it.",
-	}, "\n"))
-	local runStats = note(runPage, "")
 
-	refreshers.RUN = function()
-		restyle(calmButton, state.openTide and "grey" or "blue")
-		restyle(openButton, state.openTide and "red" or "grey")
-		runStats.Text = ("Clean streak %d · best %d · extractions %d · wipes %d"):format(state.stats.cleanStreak, state.stats.bestStreak, state.stats.extractions, state.stats.wipes)
+	divider(divePage)
+	section(divePage, "RISK RULES")
+	local moray = Config.Elites[2]
+	note(divePage, table.concat({
+		("Health: %d. The %s hits for %d and knocks your newest egg back to its shrine and a companion home. Stinging Anemone beds sting for %d and slow you; a Snapjaw Moray bites for %d. You heal fully between dives."):format(R.maxHealth, G.name, G.damage, Config.Anemone.damage, moray.damage),
+		"Wipe: you lose all unbanked cargo, every carried fish and egg. Fish banked at the Tide Cache, pity, Bestiary, rods and your base are always safe.",
+		("Wipe at heat %d or more and your next dive starts at heat %d, until you rest %d min at your Home Nest."):format(Config.HeatCarry.wipeAt, Config.HeatCarry.startHeat, Config.HeatCarry.drainSeconds // 60),
+		("Heat: +%d per steal, +%d per fish, -1 per 3 s while you lie low. 25 patrol, 50 riptide (%d s pulls every %d s), 75 lock-on, 100 all beacons close for %d s."):format(Config.Heat.perSteal, Config.Heat.perFish, Config.Heat.riptideSeconds, Config.Heat.riptideEvery, Config.Heat.beaconCloseSeconds),
+		("%s: Phase 1 when you steal your %drd egg (it guards the exit), Phase 2 at heat 75 (it chases; break sight for %d s), Phase 3 at heat 100 (faster). Every strike winds up for %.1f s: step aside."):format(G.name, G.triggerEggs, R.lockLoseSight, G.tell),
+		("Extract: hold %d s at a beacon, then choose within %d s. EXTRACT NOW, or PUSH DEEPER for +%d%% cargo, +%d heat and an angrier %s, then extract at a different beacon. No choice means extract."):format(R.beaconChannel, Config.Greed.choiceSeconds, math.round(Config.Greed.cargoPct * 100), Config.Greed.heat, G.name),
+		"Elites: dodge a Barnacle Brute's charge (it stuns you) or a Snapjaw Moray's bite, then loot their bait while they're dazed.",
+		("Each carried egg costs %d WalkSpeed unless a companion carries it. Hold Shift (or SPRINT) to run. Clean Extraction streak: +1 Ember per %d in a row, up to +%d."):format(R.carrySlowPerEgg, R.streakEmberEvery, R.streakEmberMax),
+	}, "\n"))
+	local runStats = note(divePage, "")
+
+	refreshers.DIVE = function()
+		local rod = Config.RodsById[state.rod] or Config.Rods[1]
+		for i, biome in ipairs(Config.Biomes) do
+			local labelInst = biomeLabels[i]
+			if not biome.built then
+				labelInst.Text, labelInst.TextColor3 = ("Not built yet · %s"):format(biome.guardian), C.muted
+			elseif i > rod.biomes then
+				labelInst.Text, labelInst.TextColor3 = ("Needs a rod that reaches %d biomes"):format(i), C.warn
+			else
+				labelInst.Text, labelInst.TextColor3 = ("OPEN · %s · %s"):format(biome.guardian, biome.hazard), C.good
+			end
+		end
+
+		local crew = state.crew
+		local crewSize = #crew.members
+		soloDive.Text = ("DIVE SOLO · x%.2f"):format(M.soloPearlMult)
+		crewDive.Text = crewSize >= 2 and ("DIVE WITH CREW · x%.2f"):format(1 + M.crewPerMember * (crewSize - 1)) or "DIVE WITH CREW"
+		restyle(soloDive, state.started and "grey" or "blue")
+		restyle(crewDive, (crewSize >= 2 and not state.started) and "gold" or "grey")
+		if state.started then
+			diveNote.Text = ("You're on a %s dive%s. Extract at a beacon to finish it."):format(state.mode, state.runContested and " in Contested Waters" or "")
+		else
+			diveNote.Text = ("Solo dives pay x%.2f Pearls. A Crew pays +%d%% per extra member (x%.2f with %d). Canon caps still apply: %d Pearls per fish, %d per run payout. Same Shoals, same odds either way."):format(M.soloPearlMult, math.round(M.crewPerMember * 100), 1 + M.crewPerMember * (M.crewMax - 1), M.crewMax, Config.Tiers[#Config.Tiers].fishPearls, Config.Extraction.payoutCap)
+		end
+		restyle(offButton, state.contested and "grey" or "blue")
+		restyle(onButton, state.contested and "red" or "grey")
+
+		crewInfo.Text = crewSize >= 2 and ("Your Crew (%d/%d): %s"):format(crewSize, crew.max, table.concat(crew.members, ", ")) or "You're diving solo. Invite players below to form a Crew."
+		inviteRow.Visible = crew.inviteFrom ~= nil
+		inviteText.Text = crew.inviteFrom and (crew.inviteFrom .. " invited you") or ""
+		leaveButton.Visible = crewSize >= 2
+		for i, slot in ipairs(playerRows) do
+			local other = crew.others[i]
+			slot.row.Visible = other ~= nil
+			slot.id = other and other.id
+			if other then
+				slot.name.Text = other.name
+				if other.inMyCrew then
+					slot.button.Text = "IN YOUR CREW"
+					restyle(slot.button, "grey")
+				elseif other.invited then
+					slot.button.Text = "INVITED"
+					restyle(slot.button, "grey")
+				elseif crewSize >= crew.max then
+					slot.button.Text = "CREW FULL"
+					restyle(slot.button, "grey")
+				else
+					slot.button.Text = "INVITE"
+					restyle(slot.button, "blue")
+				end
+			end
+		end
+		nobodyNote.Visible = #crew.others == 0
+
+		local awake = 0
+		for i, slotUi in ipairs(slotRows) do
+			local slot = state.companions.slots[i]
+			if slot.name == "" then
+				slotUi.text.Text = ("Slot %d · empty"):format(i)
+				slotUi.text.TextColor3 = C.muted
+			elseif slot.koLeft > 0 then
+				slotUi.text.Text = ("%s · knocked out %s"):format(slot.name, hudExtra.clock(slot.koLeft))
+				slotUi.text.TextColor3 = C.bad
+			else
+				awake += 1
+				slotUi.text.Text = ("%s · %s · awake"):format(slot.name, Config.Tiers[slot.tier].id)
+				slotUi.text.TextColor3 = Config.Tiers[slot.tier].color
+			end
+			slotUi.clear.Visible = slot.name ~= ""
+		end
+		companionNote.Text = ("%d awake: they carry %d egg(s) without slowing you. A %s hit knocks one out for %d min; a Revive Vial (you have %d) wakes it. PICK cycles through your hatched creatures."):format(awake, awake, G.name, Config.Companions.koSeconds // 60, state.vials.Revive or 0)
+
+		local dura = state.rodDura[rod.id] or Config.Durability.max
+		local bait = state.bait ~= "" and Config.BaitById[state.bait]
+		local lines = {
+			("Rod: %s · durability %d/%d%s (Old Harl repairs it)"):format(rod.name, dura, Config.Durability.max, state.rodBroken and ", BROKEN: fishes like a Drift Rod" or ""),
+			("Bait: %s"):format(bait and ("%s x%d"):format(bait.name, state.baitInv[state.bait] or 0) or "none"),
+			("Vials: Mending x%d · Revive x%d · up to %d per dive (Nim sells them)"):format(state.vials.Mending or 0, state.vials.Revive or 0, Config.VialsPerRun),
+			state.heatDebt > 0 and ("Carried heat: your next dive starts at heat %d. Rest at your Home Nest for %s to clear it."):format(state.heatDebt, hudExtra.clock(Config.HeatCarry.drainSeconds - state.heatDebtRest)) or "Carried heat: none. Your next dive starts at heat 0.",
+		}
+		loadout.Text = table.concat(lines, "\n")
+		local m = state.stats.modes[state.mode] or state.stats.modes.Solo
+		runStats.Text = ("%s record: clean streak %d · best %d · extractions %d · deepest push %d · wipes (all dives) %d"):format(state.mode, m.cleanStreak, m.bestStreak, m.extractions, m.deepestPush, state.stats.wipes)
 	end
 end
 
@@ -1440,29 +1789,83 @@ do
 		TweenService:Create(scale, TweenInfo.new(0.3, Enum.EasingStyle.Back), { Scale = 1 }):Play()
 	end
 
-	-- Greed Window panel: shows after the 3 s beacon channel while you hold position
-	local greedFrame = neonPanel({ AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -110), Size = UDim2.new(0, 360, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false }, 6, true)
+	-- Greed card (Master Patch 2): after the 3 s beacon hold, extract now or push deeper. No answer extracts.
+	local greedFrame = neonPanel({ AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -110), Size = UDim2.new(0, 380, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false }, 6, true)
 	greedFrame.Parent = gui
 	padding(10).Parent = greedFrame
 	list(6).Parent = greedFrame
 	local greedTitle = label({ Font = DISPLAY, TextSize = 20, TextColor3 = C.gold, Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, Parent = greedFrame })
 	local greedText = label({ TextSize = 13, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2, Parent = greedFrame }, { textStroke(1) })
 	local greedFill = bar(new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 12), LayoutOrder = 3, Parent = greedFrame }), UDim2.new(0, 0, 0, 0), UDim2.new(1, 0, 1, 0), "gold")
-	button({ Text = "BANK NOW", Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 4, Parent = greedFrame }, "blue", function()
-		act("BankNow")
+	local greedButtons = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 4, Parent = greedFrame })
+	local extractButton = button({ Text = "EXTRACT NOW", Size = UDim2.new(0.5, -4, 1, 0), Parent = greedButtons }, "blue", function()
+		act("GreedChoice", "extract")
+	end)
+	local pushButton = button({ Text = "PUSH DEEPER", Size = UDim2.new(0.5, -4, 1, 0), Position = UDim2.new(0.5, 4, 0, 0), Parent = greedButtons }, "red", function()
+		act("GreedChoice", "push")
 	end)
 
 	refreshGreed = function()
-		local greed = state and state.greed
-		greedFrame.Visible = greed ~= nil
-		if not greed then
+		local choice = state and state.choice
+		greedFrame.Visible = choice ~= nil
+		if not choice then
 			return
 		end
-		local elapsed = workspace:GetServerTimeNow() - greed.started
-		local window = Config.Risk.greedSeconds
-		greedTitle.Text = ("GREED WINDOW  %ds"):format(math.max(0, math.ceil(window - elapsed)))
-		greedText.Text = ("Bonus so far: +%d%% payout%s. Every 5 s adds +15%% and +5 Heat. Walk away or bank to leave."):format(greed.steps * 15, greed.steps >= 3 and " and +2 Embers" or "")
-		greedFill.Size = UDim2.new(math.clamp(elapsed / window, 0, 1), 0, 1, 0)
+		local G = Config.Greed
+		local elapsed = workspace:GetServerTimeNow() - choice.started
+		greedTitle.Text = ("EXTRACT OR PUSH DEEPER?  %ds"):format(math.max(0, math.ceil(G.choiceSeconds - elapsed)))
+		if choice.canPush then
+			greedText.Text = ("Extract now: bank your cargo at x%.1f. Push deeper: cargo x%.1f, +%d heat and the %s gets one phase angrier, then extract at a different beacon. No answer extracts."):format(state.cargoMult, state.cargoMult + G.cargoPct, G.heat, Config.Guardian.name)
+		else
+			greedText.Text = ("Your rod can't go deeper (%d of %d pushes used). Extract now to bank your cargo at x%.1f."):format(state.pushes, state.maxPushes, state.cargoMult)
+		end
+		pushButton.Visible = choice.canPush
+		extractButton.Size = choice.canPush and UDim2.new(0.5, -4, 1, 0) or UDim2.new(1, 0, 1, 0)
+		greedFill.Size = UDim2.new(math.clamp(elapsed / G.choiceSeconds, 0, 1), 0, 1, 0)
+	end
+
+	-- Big centre call-outs for tells and phase changes (every strike telegraphs for at least 0.6 s)
+	local callout = label({ Font = DISPLAY, TextSize = 38, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.34, 0), Size = UDim2.new(0, 560, 0, 48), TextXAlignment = Enum.TextXAlignment.Center, Visible = false, ZIndex = 35, Parent = gui })
+	local calloutScale = new("UIScale", { Parent = callout })
+	local calloutToken = 0
+	local function call(text, color, seconds)
+		calloutToken += 1
+		local token = calloutToken
+		callout.Text = text
+		callout.TextColor3 = color
+		callout.Visible = true
+		calloutScale.Scale = 1.3
+		TweenService:Create(calloutScale, TweenInfo.new(0.2, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+		task.delay(seconds or 1, function()
+			if token == calloutToken then
+				callout.Visible = false
+			end
+		end)
+	end
+
+	-- Riptide (Master Patch 3 Table C): a steady pull toward open water you can walk against
+	local riptide = { untilTime = 0, direction = Vector3.zero, speed = 0 }
+	HazardEvent.OnClientEvent:Connect(function(kind, direction, seconds, speed)
+		if kind == "Riptide" and typeof(direction) == "Vector3" then
+			riptide.direction = Vector3.new(direction.X, 0, direction.Z).Unit
+			riptide.speed = speed or Config.Heat.riptideSpeed
+			riptide.untilTime = os.clock() + (seconds or Config.Heat.riptideSeconds)
+			toast("Riptide! The current pulls you toward open water. Walk against it.", "warn")
+			call("RIPTIDE", C.blue, 1.2)
+		end
+	end)
+
+	-- Stinging Anemone beds slow you while you stand in them (the server deals the sting)
+	local function onAnemone(root)
+		for _, bed in ipairs(CollectionService:GetTagged("TideboundAnemone")) do
+			if bed:IsA("BasePart") then
+				local p = bed.CFrame:PointToObjectSpace(root.Position)
+				if math.abs(p.X) < bed.Size.X / 2 + 0.3 and math.abs(p.Z) < bed.Size.Z / 2 + 0.3 and p.Y > -1 and p.Y < 7 then
+					return true
+				end
+			end
+		end
+		return false
 	end
 
 	-- Sprint: Shift on keyboard, a SPRINT toggle on touch screens
@@ -1485,14 +1888,25 @@ do
 		end)
 	end
 
-	-- every frame: WalkSpeed (carry slowdown, treadmill, sprint), camera FOV and shake, vignette
+	-- every frame: WalkSpeed (carry slowdown, treadmill, sprint, stun, anemone), riptide pull, camera
+	-- FOV and shake, vignette
 	local currentFov = Config.Camera.exploration
 	RunService.RenderStepped:Connect(function(dt)
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if humanoid and state then
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid and root and state then
 			local sprinting = (sprintHeld or sprintToggle) and humanoid.MoveDirection.Magnitude > 0.1
-			humanoid.WalkSpeed = state.walkSpeed + (sprinting and Config.Risk.sprintBonus or 0)
+			local speed = state.walkSpeed + (sprinting and Config.Risk.sprintBonus or 0)
+			if workspace:GetServerTimeNow() < state.stunUntil then
+				speed = 0
+			elseif onAnemone(root) then
+				speed *= 1 - Config.Anemone.slow
+			end
+			humanoid.WalkSpeed = speed
+			if os.clock() < riptide.untilTime and humanoid.Health > 0 then
+				root.CFrame += riptide.direction * riptide.speed * dt
+			end
 			if shakeUntil > os.clock() then
 				humanoid.CameraOffset = Vector3.new((math.random() - 0.5) * shakeAmount, (math.random() - 0.5) * shakeAmount, 0)
 			elseif humanoid.CameraOffset.Magnitude > 0 then
@@ -1545,6 +1959,31 @@ do
 			screenFlash(WHITE, 0.2)
 		elseif name == "Greed" then
 			pulseHeat()
+			call("EXTRACT OR PUSH?", C.gold, 1.2)
+		elseif name == "Push" then
+			pulseHeat()
+			shake(0.2, 0.3)
+			call("PUSHED DEEPER", C.bad, 1.4)
+		elseif name == "Bank" then
+			screenFlash(C.good, 0.6)
+			call("CATCH BANKED", C.good, 1.2)
+		elseif name == "WardenTell" then
+			shake(0.15, 0.6)
+			call("WARDEN STRIKE: DODGE!", C.bad, 0.8)
+		elseif name == "EliteTell" then
+			shake(0.1, 0.4)
+			call(("%s: DODGE!"):format(tostring(payload or "ELITE"):upper()), C.warn, 0.9)
+		elseif name == "Stun" then
+			playAnim("HitReact")
+			screenFlash(C.warn, 0.5)
+			shake(0.35, 0.4)
+			call("STUNNED", C.warn, tonumber(payload) or 1.5)
+		elseif name == "Phase" then
+			pulseHeat()
+			shake(0.25, 0.5)
+			call(("%s PHASE %d"):format(Config.Guardian.name:upper(), tonumber(payload) or 1), (tonumber(payload) or 1) >= 2 and C.bad or C.warn, 1.6)
+		elseif name == "LockLost" then
+			call("YOU SHOOK IT OFF", C.good, 1.2)
 		elseif name == "Snatched" then
 			screenFlash(C.warn, 0.5)
 			shake(0.25, 0.2)
@@ -1601,13 +2040,6 @@ HazardEvent.OnClientEvent:Connect(function(kind, direction)
 		if root then
 			root.AssemblyLinearVelocity = direction.Unit * Config.Risk.knockback + Vector3.new(0, 25, 0)
 		end
-	elseif kind == "Riptide" then
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if root then
-			root.AssemblyLinearVelocity = direction.Unit * Config.Heat.riptideForce + Vector3.new(0, 18, 0)
-		end
-		toast("Riptide! The current drags you toward deep water.", "warn")
 	end
 end)
 

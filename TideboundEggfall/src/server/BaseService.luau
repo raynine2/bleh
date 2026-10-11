@@ -33,7 +33,11 @@ local friendCache = {} -- ["a:b"] = boolean
 local visitedThisSession = {} -- [index] = { [userId] = true }
 local MAX_TANK_MODELS = 30
 
-BaseService.boards = { rarest = {}, streak = {}, heat = {}, hatched = {} }
+-- Master Patch 1: every board has a Solo and a Crew version.
+BaseService.boards = {
+	Solo = { rarest = {}, streak = {}, heat = {}, push = {} },
+	Crew = { rarest = {}, streak = {}, heat = {}, push = {} },
+}
 
 local function fmt(n)
 	local s = tostring(math.floor(n))
@@ -349,7 +353,7 @@ local function refreshPlot(index)
 			end
 		end
 	end
-	setText(model, "StreakText", ("CLEAN STREAK %d · BEST %d"):format(data.stats.cleanStreak, data.stats.bestStreak))
+	setText(model, "StreakText", ("CLEAN STREAK %d · BEST %d · REEF CORES %d"):format(data.stats.cleanStreak, data.stats.bestStreak, data.trophies.ReefCore or 0))
 
 	-- Showcase Plinth: the best creature, seen from the hub
 	local plinth = model:FindFirstChild("Plinth")
@@ -443,6 +447,13 @@ end
 function BaseService.plotOrigin(player)
 	local index = plotOf[player]
 	return index and plots[index].origin
+end
+
+-- True while the player stands inside their own Home Nest plot (rest there to clear carried heat).
+function BaseService.atHome(player)
+	local origin = BaseService.plotOrigin(player)
+	local root = origin and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	return root ~= nil and PlotLayout.contains(origin, root.Position)
 end
 
 function BaseService.assign(player)
@@ -711,60 +722,70 @@ local function visitorTick()
 	end
 end
 
--- Leaderboard Hall: this server's boards, refreshed every 10 s ------------------------------------
+-- Leaderboard Hall: this server's Solo and Crew boards, refreshed every 10 s --------------------------
+
+local BOARDS = {
+	{ id = "rarest", title = "RAREST" },
+	{ id = "streak", title = "STREAK" },
+	{ id = "heat", title = "HEAT" },
+	{ id = "push", title = "PUSH" },
+}
+
+local function boardScore(stats, id)
+	if id == "rarest" then
+		return stats.bestHatchValue or 0
+	elseif id == "streak" then
+		return stats.bestStreak or 0
+	elseif id == "heat" then
+		return stats.bestHeatExtract or 0
+	end
+	return stats.deepestPush or 0
+end
+
+local function boardText(stats, id)
+	if id == "rarest" then
+		return ("%s (%s Pearls)"):format(stats.bestHatch, fmt(stats.bestHatchValue))
+	elseif id == "streak" then
+		return ("%d clean extractions"):format(stats.bestStreak)
+	elseif id == "heat" then
+		return ("extracted at Heat %d"):format(stats.bestHeatExtract)
+	end
+	return ("%d push%s deeper"):format(stats.deepestPush, stats.deepestPush == 1 and "" or "es")
+end
 
 local function updateBoards()
 	local rows = {}
 	for _, player in ipairs(Players:GetPlayers()) do
 		local data = PlayerData.get(player)
 		if data then
-			table.insert(rows, { name = player.DisplayName, data = data })
+			table.insert(rows, { name = player.DisplayName, modes = data.stats.modes })
 		end
 	end
-	local function top(scoreOf, describe)
-		table.sort(rows, function(a, b)
-			return scoreOf(a.data) > scoreOf(b.data)
-		end)
-		local out = {}
-		for i = 1, math.min(5, #rows) do
-			if scoreOf(rows[i].data) > 0 then
-				table.insert(out, { name = rows[i].name, text = describe(rows[i].data) })
+	local boards = {}
+	for _, mode in ipairs({ "Solo", "Crew" }) do
+		boards[mode] = {}
+		for _, board in ipairs(BOARDS) do
+			table.sort(rows, function(a, b)
+				return boardScore(a.modes[mode], board.id) > boardScore(b.modes[mode], board.id)
+			end)
+			local out = {}
+			for i = 1, math.min(5, #rows) do
+				local stats = rows[i].modes[mode]
+				if boardScore(stats, board.id) > 0 then
+					table.insert(out, { name = rows[i].name, text = boardText(stats, board.id) })
+				end
 			end
+			boards[mode][board.id] = out
 		end
-		return out
 	end
-	BaseService.boards = {
-		rarest = top(function(d)
-			return d.stats.bestHatchValue or 0
-		end, function(d)
-			return ("%s (%s Pearls)"):format(d.stats.bestHatch, fmt(d.stats.bestHatchValue))
-		end),
-		streak = top(function(d)
-			return d.stats.bestStreak or 0
-		end, function(d)
-			return ("%d clean extractions"):format(d.stats.bestStreak)
-		end),
-		heat = top(function(d)
-			return d.stats.bestHeatExtract or 0
-		end, function(d)
-			return ("extracted at Heat %d"):format(d.stats.bestHeatExtract)
-		end),
-		hatched = top(function(d)
-			return d.stats.hatched or 0
-		end, function(d)
-			return ("%s hatched"):format(fmt(d.stats.hatched))
-		end),
-	}
-	local lines = { "THIS SERVER'S BOARDS" }
-	for _, board in ipairs({ { "RAREST HATCH", "rarest" }, { "LONGEST STREAK", "streak" }, { "HIGHEST HEAT EXTRACTED", "heat" } }) do
+	BaseService.boards = boards
+	local lines = { "THIS SERVER'S BOARDS · TOP DIVER" }
+	for _, mode in ipairs({ "Solo", "Crew" }) do
 		table.insert(lines, "")
-		table.insert(lines, board[1])
-		local entries = BaseService.boards[board[2]]
-		if #entries == 0 then
-			table.insert(lines, "  nobody yet")
-		end
-		for i = 1, math.min(3, #entries) do
-			table.insert(lines, ("  %d. %s · %s"):format(i, entries[i].name, entries[i].text))
+		table.insert(lines, mode:upper())
+		for _, board in ipairs(BOARDS) do
+			local first = boards[mode][board.id][1]
+			table.insert(lines, ("  %s: %s"):format(board.title, first and (first.name .. " · " .. first.text) or "nobody yet"))
 		end
 	end
 	setText(deps.delta:FindFirstChild("HarborRing"), "BoardText", table.concat(lines, "\n"))

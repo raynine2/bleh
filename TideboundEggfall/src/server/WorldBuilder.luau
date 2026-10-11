@@ -1176,6 +1176,8 @@ WorldBuilder.kit = {
 	latticeHut = latticeHut,
 	TOP = TOP,
 	WATER_Y = WATER_Y,
+	-- Sunken Shoals layout, so the Master Patch threats sit on the same islands
+	shoals = { islands = ISLANDS, links = LINKS, beacons = BEACONS, eggNests = EGG_NESTS },
 	color = {
 		SNOW_GROUND = SNOW_GROUND,
 		SNOW_CAP = SNOW_CAP,
@@ -1202,6 +1204,8 @@ WorldBuilder.kit = {
 		ROOF_ORANGE = ROOF_ORANGE,
 		ROOF_SLATE = ROOF_SLATE,
 		TORII_RED = TORII_RED,
+		MINT_ROCK = MINT_ROCK,
+		BAMBOO = BAMBOO,
 	},
 }
 
