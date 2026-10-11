@@ -350,6 +350,7 @@ local eggsButton = sideButton(1, "gold", "EGGS", "ODDS", "🥚")
 sideButton(2, "blue", "SHOP", "RODS", "🎣")
 sideButton(3, "red", "BOOK", "CREATURES")
 sideButton(4, "blue", "HOME", "BASE", "🏠")
+sideButton(5, "gold", "DASH", "DASHES", "⚡") -- Patch 20
 local eggBadge = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -16, 0, -8), BackgroundColor3 = C.neon, ZIndex = 4, Parent = eggsButton }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(WHITE, 2) })
 local eggBadgeText = label({ Font = DISPLAY, TextSize = 14, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4, Parent = eggBadge })
 
@@ -857,6 +858,8 @@ local TABS = {
 	{ id = "QUESTS", title = "DAILY QUESTS", group = "home" },
 	{ id = "BOARDS", title = "LEADERBOARDS", group = "home" },
 	{ id = "DIVE", title = "DIVE & CREW", group = "home" },
+	{ id = "DASHES", title = "DASHES", group = "dash" }, -- Patch 20
+	{ id = "CAPSULES", title = "DASH CAPSULE ODDS", group = "dash" },
 }
 local groupSize = {}
 for _, tab in ipairs(TABS) do
@@ -1767,6 +1770,124 @@ openMenu = function(id)
 		TweenService:Create(menuScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 		TweenService:Create(blur, TweenInfo.new(0.22), { Size = 16 }):Play()
 		task.defer(layoutTiles)
+	end
+end
+
+-- Patch 20: the DASHES and CAPSULES tabs. Open Dash Capsules (the egg hatch, with a capsule), see every dash
+-- and its rarity, and equip up to Config.Capsules.slots of them. Everything lives in one table inside this block:
+-- this script's main chunk is at Luau's limit of 200 locals.
+do
+	local dz = { DashMoves = require(Shared:WaitForChild("DashMoves")), rows = {}, slots = {}, pity = {} }
+	dz.page = makePage("DASHES")
+	dz.odds = makePage("CAPSULES")
+
+	function dz.open()
+		if not state or HatchScene.playing() then
+			return
+		end
+		local result = act("OpenCapsule")
+		if result and result.ok then
+			if menu.Visible then
+				closeMenu()
+			end
+			task.spawn(function()
+				HatchScene.play(result.result)
+				local move = dz.DashMoves.byId[result.result.dash]
+				if move then
+					local tier = Config.Tiers[result.result.tier]
+					toast(("%s %s dash: %s%s"):format(result.result.isNew and "New" or "Duplicate", tier.id, move.name, result.result.isNew and (result.result.equipped and " (equipped)" or ": equip it in DASHES") or (" · +%d Shards"):format(result.result.shards)), result.result.isNew and "good" or "info")
+				end
+			end)
+		end
+	end
+
+	-- the capsule row: how many you have, OPEN, BUY
+	dz.action = rowFrame(dz.page, 54)
+	dz.count = label({ Font = DISPLAY, TextSize = 19, Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(0.36, -14, 1, 0), Parent = dz.action })
+	button({ Text = "OPEN CAPSULE", Size = UDim2.new(0.3, -8, 0, 38), Position = UDim2.new(0.36, 0, 0.5, -19), Parent = dz.action }, "blue", dz.open)
+	button({ Text = ("BUY · %d PEARLS"):format(Config.Capsules.pearlCost), Size = UDim2.new(0.34, -14, 0, 38), Position = UDim2.new(0.66, 2, 0.5, -19), Parent = dz.action }, "gold", function()
+		act("BuyCapsule")
+	end)
+
+	-- the equipped slots
+	section(dz.page, ("EQUIPPED · Q rolls one of these (%d slots)"):format(Config.Capsules.slots))
+	dz.slotRow = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 50), LayoutOrder = nextOrder(), Parent = dz.page }, {
+		new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	for i = 1, Config.Capsules.slots do
+		local slot = new("Frame", { Size = UDim2.new(1 / Config.Capsules.slots, -7, 1, 0), BackgroundColor3 = C.row, LayoutOrder = i, Parent = dz.slotRow }, { corner(8), stroke(C.neon, 2, 0.3) })
+		dz.slots[i] = { frame = slot, text = label({ Font = DISPLAY, TextSize = 16, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = slot }) }
+	end
+
+	-- every dash, rarest last
+	section(dz.page, "YOUR DASHES")
+	note(dz.page, "🎣 rod dashes need your rod (everyone has one). 🐟 fish dashes need a companion out. In the air only air dashes roll.")
+	local sorted = table.clone(dz.DashMoves.list)
+	table.sort(sorted, function(a, b)
+		return a.tier < b.tier or (a.tier == b.tier and a.id < b.id)
+	end)
+	for _, move in ipairs(sorted) do
+		local tier = Config.Tiers[move.tier]
+		local row = rowFrame(dz.page, 44)
+		new("Frame", { Position = UDim2.new(0, 10, 0.5, -9), Size = UDim2.new(0, 18, 0, 18), BackgroundColor3 = tier.color, Parent = row }, { corner(4), stroke(WHITE, 1) })
+		local icon = move.rod and "🎣 " or move.fish and "🐟 " or ""
+		local name = label({ Text = icon .. move.name, Font = DISPLAY, TextSize = 16, TextColor3 = tier.color, Position = UDim2.new(0, 36, 0, 2), Size = UDim2.new(0.5, -36, 0, 22), Parent = row })
+		local info = label({ Text = ("%s · %d stamina%s"):format(tier.id, move.cost, move.air and " · air" or ""), TextSize = 12, TextColor3 = C.muted, Position = UDim2.new(0, 36, 0, 22), Size = UDim2.new(0.5, -36, 0, 18), Parent = row }, { textStroke(1) })
+		local owned = label({ Font = DISPLAY, TextSize = 14, Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.18, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Center, Parent = row })
+		local equip = button({ Text = "EQUIP", Size = UDim2.new(0.3, -12, 0, 32), Position = UDim2.new(0.7, 0, 0.5, -16), TextSize = 14, Parent = row }, "blue", function()
+			act("EquipDash", move.key)
+		end)
+		dz.rows[move.key] = { name = name, info = info, owned = owned, equip = equip, move = move }
+	end
+
+	-- the CAPSULES tab: odds per pull, pity, the rules
+	section(dz.odds, "DROP RATES · per capsule (same as Tide Eggs)")
+	for t, tier in ipairs(Config.Tiers) do
+		local row = rowFrame(dz.odds, 30)
+		new("Frame", { Position = UDim2.new(0, 10, 0.5, -7), Size = UDim2.new(0, 14, 0, 14), BackgroundColor3 = tier.color, Parent = row }, { corner(3), stroke(WHITE, 1) })
+		label({ Text = tier.id, Font = DISPLAY, TextColor3 = tier.color, Position = UDim2.new(0, 32, 0, 0), Size = UDim2.new(0.24, 0, 1, 0), TextSize = 15, Parent = row })
+		label({ Text = pct(tier.rate), Font = DISPLAY, Position = UDim2.new(0.28, 10, 0, 0), Size = UDim2.new(0.15, 0, 1, 0), TextSize = 15, Parent = row })
+		local names = {}
+		for _, move in ipairs(dz.DashMoves.byTier[t] or {}) do
+			table.insert(names, move.name)
+		end
+		label({ Text = #names > 0 and table.concat(names, ", ") or "(none yet: rolls the rarity below)", Position = UDim2.new(0.45, 0, 0, 0), Size = UDim2.new(0.55, -10, 1, 0), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
+	end
+	divider(dz.odds)
+	section(dz.odds, "PITY · counted separately from eggs")
+	for _, pity in ipairs(Config.Pity) do
+		local row = rowFrame(dz.odds, 30)
+		label({ Text = pity.label, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.3, 0, 1, 0), TextSize = 14, Parent = row })
+		dz.pity[pity.key] = label({ Font = DISPLAY, TextSize = 14, Position = UDim2.new(0.3, 0, 0, 0), Size = UDim2.new(0.7, -12, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, Parent = row })
+	end
+	note(dz.odds, ("A new dash goes straight into a free slot. A duplicate gives %d Shards. Capsules cost %d Pearls; Robux can't buy them."):format(Config.Shards.duplicate, Config.Capsules.pearlCost))
+
+	refreshers.DASHES = function()
+		dz.count.Text = ("CAPSULES: %d"):format(state.capsules or 0)
+		local equipped = state.equippedDashes or {}
+		for i, slot in ipairs(dz.slots) do
+			local move = equipped[i] and dz.DashMoves.byKey[equipped[i]]
+			slot.text.Text = move and move.name or "empty"
+			slot.text.TextColor3 = move and Config.Tiers[move.tier].color or C.muted
+		end
+		for key, ui in pairs(dz.rows) do
+			local count = state.dashes and state.dashes[key] or 0
+			local on = table.find(equipped, key) ~= nil
+			ui.owned.Text = count > 0 and ("x%d"):format(count) or "LOCKED"
+			ui.owned.TextColor3 = count > 0 and C.text or C.muted
+			ui.equip.Visible = count > 0
+			ui.equip.Caption.Text = on and "UNEQUIP" or "EQUIP"
+			restyle(ui.equip, on and "gold" or "blue")
+		end
+	end
+	refreshers.CAPSULES = function()
+		for _, row in ipairs(Gacha.pityProgress(state.dashPity or {})) do
+			local labelInst = dz.pity[row.key]
+			if labelInst then
+				labelInst.Text = row.remaining <= 1 and "NEXT CAPSULE!" or ("%d / %d · %d left"):format(row.count, row.at, row.remaining)
+				labelInst.TextColor3 = row.remaining <= 1 and C.gold or C.text
+			end
+		end
 	end
 end
 
@@ -2733,7 +2854,7 @@ end
 
 -- Wiring -------------------------------------------------------------------------------
 
-local PANEL_TO_TAB = { Odds = "ODDS", Tackle = "RODS" }
+local PANEL_TO_TAB = { Odds = "ODDS", Tackle = "RODS", Dashes = "DASHES" }
 
 local function refreshAll()
 	refreshHUD()

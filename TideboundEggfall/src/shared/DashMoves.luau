@@ -12,6 +12,10 @@
 --   9 Fish Surf     (fish) your companion slides under your feet and you surf it
 --  10 Fish Rocket   (fish) your companion rams you from behind and you fly off like a superhero
 --  11 Tail Slap     (fish) your companion tail-slaps you into a somersault; you end up sitting, dizzy
+--  12 Tidal Warp    you dissolve into a rushing wave of light and burst back out further on (Celestial)
+-- Patch 20: every move has a rarity (`tier`, Config.Tiers: Common 1 .. Celestial 7) and a save `key`. You own
+-- moves by opening Dash Capsules (the same rates and pity as Tide Eggs) and equip up to Config.Capsules.slots of
+-- them; Q only rolls equipped moves.
 -- Each move: how you move (`profile`: dash, arc, hook or glide, with its numbers), how long the body pose lasts
 -- (`length`), its colours, and a pose function in TideboundMotion's keys. Fish moves also say where the
 -- companion goes (DashMoves.fish). TideboundDash moves you and plays the effects; TideboundMotion poses you;
@@ -81,6 +85,8 @@ end
 DashMoves.list = {
 	{
 		id = 1,
+		key = "Zoomies",
+		tier = 1,
 		name = "ZOOMIES",
 		cost = 20,
 		air = true,
@@ -94,6 +100,8 @@ DashMoves.list = {
 	},
 	{
 		id = 2,
+		key = "PenguinSlide",
+		tier = 2,
 		name = "PENGUIN SLIDE",
 		cost = 22,
 		profile = { kind = "dash", speed = 64, time = 0.5, floor = 0.55 },
@@ -107,6 +115,8 @@ DashMoves.list = {
 	},
 	{
 		id = 3,
+		key = "WheelLegs",
+		tier = 1,
 		name = "WHEEL LEGS",
 		cost = 20,
 		profile = { kind = "dash", speed = 68, time = 0.36 },
@@ -120,6 +130,8 @@ DashMoves.list = {
 	},
 	{
 		id = 4,
+		key = "BarrelRoll",
+		tier = 2,
 		name = "BARREL ROLL",
 		cost = 20,
 		air = true,
@@ -133,6 +145,8 @@ DashMoves.list = {
 	},
 	{
 		id = 5,
+		key = "Cannonball",
+		tier = 3,
 		name = "CANNONBALL",
 		cost = 24,
 		profile = { kind = "arc", speed = 52, lift = 44, time = 0.5 },
@@ -147,6 +161,8 @@ DashMoves.list = {
 	},
 	{
 		id = 6,
+		key = "PoleVault",
+		tier = 5,
 		name = "POLE VAULT",
 		cost = 26,
 		rod = true,
@@ -168,6 +184,8 @@ DashMoves.list = {
 	},
 	{
 		id = 7,
+		key = "HookShot",
+		tier = 4,
 		name = "HOOK SHOT",
 		cost = 26,
 		rod = true,
@@ -191,6 +209,8 @@ DashMoves.list = {
 	},
 	{
 		id = 8,
+		key = "RodCopter",
+		tier = 6,
 		name = "ROD COPTER",
 		cost = 28,
 		rod = true,
@@ -206,6 +226,8 @@ DashMoves.list = {
 	},
 	{
 		id = 9,
+		key = "FishSurf",
+		tier = 4,
 		name = "FISH SURF",
 		cost = 24,
 		fish = true,
@@ -220,6 +242,8 @@ DashMoves.list = {
 	},
 	{
 		id = 10,
+		key = "FishRocket",
+		tier = 5,
 		name = "FISH ROCKET",
 		cost = 26,
 		fish = true,
@@ -237,6 +261,8 @@ DashMoves.list = {
 	},
 	{
 		id = 11,
+		key = "TailSlap",
+		tier = 3,
 		name = "TAIL SLAP",
 		cost = 22,
 		fish = true,
@@ -258,11 +284,37 @@ DashMoves.list = {
 			return mix(p, { rootUp = -1.75, rootX = 0.15, waistX = 0.1, neckZ = 0.35 * wob, neckX = 0.1 * math.cos(t * 7), shRX = -0.6, shRZ = 0.45, elRX = 0.2, shLX = -0.6, shLZ = -0.45, elLX = 0.2, hipRX = 1.5, hipRZ = 0.25, kneeRX = -0.35, hipLX = 1.5, hipLZ = -0.25, kneeLX = -0.35 }, smooth((u - 0.46) / 0.08))
 		end,
 	},
+	{
+		id = 12,
+		key = "TidalWarp",
+		tier = 7,
+		name = "TIDAL WARP",
+		cost = 30,
+		air = true,
+		profile = { kind = "dash", speed = 150, time = 0.2, delay = 0.06 },
+		length = 0.8,
+		colors = { Color3.fromRGB(140, 255, 250), Color3.fromRGB(255, 160, 250) },
+		pose = function(u, t)
+			-- gather: arms crossed, crouched, then gone in a wave; burst back out arms wide, glowing
+			local p = { rootUp = -0.7, waistX = -0.3, neckX = -0.3, shRX = 1.6, shRZ = -0.6, elRX = 2.0, shLX = 1.6, shLZ = 0.6, elLX = 2.0, hipRX = 0.9, kneeRX = -1.5, hipLX = 0.9, kneeLX = -1.5 }
+			local out = smooth((u - 0.28) / 0.08)
+			if out > 0 then
+				local b = math.sin(t * 12) * 0.05
+				mix(p, { rootUp = 0.3 + b, waistX = 0.35, neckX = -0.35, shRX = 2.2, shRZ = 1.2, elRX = 0.1, shLX = 2.2, shLZ = -1.2, elLX = 0.1, hipRX = 0.2, kneeRX = -0.3, hipLX = -0.1, kneeLX = -0.5, hipRZ = 0.2, hipLZ = -0.2 }, out)
+			end
+			return p
+		end,
+	},
 }
 
 DashMoves.byId = {}
+DashMoves.byKey = {}
+DashMoves.byTier = {} -- [tier] = { moves } (Patch 20: what a capsule can roll at each rarity)
 for _, move in ipairs(DashMoves.list) do
 	DashMoves.byId[move.id] = move
+	DashMoves.byKey[move.key] = move
+	DashMoves.byTier[move.tier] = DashMoves.byTier[move.tier] or {}
+	table.insert(DashMoves.byTier[move.tier], move)
 end
 
 function DashMoves.pose(id, u, t)

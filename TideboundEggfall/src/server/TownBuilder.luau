@@ -23,7 +23,7 @@ local PC = PropKit.color
 
 local TownBuilder = {}
 
-local VERSION = 7
+local VERSION = 8
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -881,10 +881,27 @@ local function buildWinter(parent, rng)
 	PropKit.inlays(folder, v(0, 125), 30, TOP, rng, PC.PAVER, 10)
 	PropKit.inlays(folder, v(170, 0), 26, TOP, rng, PC.PAVER, 8)
 	-- vending machines round the plaza's edge
-	for _, spec in ipairs({ { v(54, -24), "BAIT MACHINE", Color3.fromRGB(60, 120, 220) }, { v(-50, 30), "EGG MACHINE", Color3.fromRGB(230, 70, 110) }, { v(-50, -30), "XP MACHINE", Color3.fromRGB(60, 160, 230) } }) do
+	for _, spec in ipairs({ { v(54, -24), "BAIT MACHINE", Color3.fromRGB(60, 120, 220) }, { v(-50, 30), "EGG MACHINE", Color3.fromRGB(230, 70, 110) }, { v(-50, -30), "DASH CAPSULES", Color3.fromRGB(255, 170, 40) } }) do
 		local cf = facing(spec[1], v(0, 0))
-		PropKit.vendingMachine(folder, cf, spec[2], spec[3])
+		local machine = PropKit.vendingMachine(folder, cf, spec[2], spec[3])
 		reserve(spec[1], 4)
+		if spec[2] == "DASH CAPSULES" then
+			-- Patch 20: a gacha globe full of capsules on top, and the prompt that opens the DASHES tab
+			local top = cf * CFrame.new(0, 9.4, 0)
+			local globe = K.part({ Name = "CapsuleGlobe", Shape = Enum.PartType.Ball, Size = Vector3.new(4.6, 4.6, 4.6), CFrame = top * CFrame.new(0, 2.3, 0), Color = Color3.fromRGB(200, 240, 255), Material = Enum.Material.Glass, Transparency = 0.45, CanCollide = false, Parent = machine })
+			local capsuleRng = Random.new(20)
+			for _ = 1, 9 do
+				local at = globe.Position + Vector3.new(capsuleRng:NextNumber(-1.2, 1.2), capsuleRng:NextNumber(-1.5, 0.6), capsuleRng:NextNumber(-1.2, 1.2))
+				local hue = capsuleRng:NextNumber()
+				K.decor({ Name = "Capsule", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(at), Color = Color3.fromHSV(hue, 0.6, 1), Material = Enum.Material.Neon, Parent = machine })
+			end
+			K.decor({ Name = "GlobeCap", Size = Vector3.new(2, 0.6, 2), CFrame = top * CFrame.new(0, 4.8, 0), Color = Color3.fromRGB(255, 170, 40), Parent = machine })
+			K.light(globe, Color3.fromRGB(255, 200, 120), 14, 1.2)
+			local body = machine:FindFirstChild("Body")
+			if body then
+				K.prompt(body, "Open Capsules", "Dash Capsule Machine", { Panel = "Dashes" }, 0, 10)
+			end
+		end
 	end
 	-- glowing ice crystals and snowy igloos out on the edges of town
 	local placed = 0

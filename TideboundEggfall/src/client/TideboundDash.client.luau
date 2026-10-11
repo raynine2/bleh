@@ -628,6 +628,70 @@ FX[11] = { -- Tail Slap: SLAP!, a rolling tumble of dust, dizzy stars after
 	end,
 }
 
+FX[12] = { -- Tidal Warp: you melt into a rushing wave of light and burst back out in a prism splash
+	start = function(e)
+		e.data.hidden = {}
+		Audio.play("DashSplash", e.root, 0.7)
+	end,
+	step = function(e, u)
+		local d = e.data
+		local hide = u > 0.05 and u < 0.3
+		if hide and not d.isHidden then
+			d.isHidden = true
+			for _, inst in ipairs(e.character:GetDescendants()) do
+				if inst:IsA("BasePart") or inst:IsA("Decal") then
+					table.insert(d.hidden, inst)
+					inst.LocalTransparencyModifier = 1
+				end
+			end
+			K.sparks(e.root.Position, 24, e.move.colors[1], 24)
+			Fx.ring(e.root.Position, e.move.colors[1], 7, 0.35, 0.4)
+			if e.isMe then
+				MotionBus.kick = { at = os.clock(), amount = 14, length = 0.5 }
+			end
+		end
+		if d.isHidden and hide then
+			-- the wave: a crest of glassy light and foam rushing along with you
+			local cf = e.root.CFrame
+			for k = -2, 2 do
+				local at = (cf * CFrame.new(k * 0.9, -1.5 + math.abs(k) * -0.3, 0)).Position
+				local crest = K.part(Enum.PartType.Ball, Vector3.new(1.6, 2.4 - math.abs(k) * 0.4, 1.6), CFrame.new(at), Color3.fromHSV((os.clock() * 0.8 + k * 0.08) % 1, 0.45, 1), nil, 0.25)
+				K.tween(crest, 0.4, { Size = crest.Size * 0.2, Transparency = 1, CFrame = CFrame.new(at + Vector3.new(0, 1.5, 0)) })
+				Debris:AddItem(crest, 0.42)
+			end
+			K.smoke(K.feet(e) + Vector3.new(0, 0.5, 0), 3, Color3.fromRGB(200, 250, 255), 1.4, 6)
+			K.streaks(e.root, cf.LookVector, e.move.colors[2], 2)
+		end
+		if not hide and d.isHidden then
+			d.isHidden = false
+			for _, inst in ipairs(d.hidden) do
+				inst.LocalTransparencyModifier = 0
+			end
+			d.hidden = {}
+			-- burst back out: a prism splash, rings in every colour, a word
+			local at = e.root.Position
+			for i = 0, 3 do
+				task.delay(i * 0.06, function()
+					Fx.ring(K.ground(at, at - Vector3.new(0, 3, 0)) + Vector3.new(0, 0.3, 0), Color3.fromHSV(i / 4, 0.5, 1), 6 + i * 3, 0.45, 0.4)
+				end)
+			end
+			K.sparks(at, 40, e.move.colors[2], 30)
+			Fx.cubes(at, { e.move.colors[1], e.move.colors[2], Color3.new(1, 1, 1) }, { spread = 10, size = 0.5, life = 0.7, count = 24 })
+			Fx.word(at + Vector3.new(0, 4.5, 0), "WARP!", { Color3.fromRGB(255, 255, 255), e.move.colors[1] }, 1.1)
+			Audio.play("DashSplash", e.root, 1.2)
+			Audio.play("DashPop", e.root, 0.8)
+			if e.isMe then
+				FishingFeel.shake(0.2, 0.2)
+			end
+		end
+	end,
+	finish = function(e)
+		for _, inst in ipairs(e.data.hidden or {}) do
+			inst.LocalTransparencyModifier = 0
+		end
+	end,
+}
+
 -- Running effects -------------------------------------------------------------------------------------------------
 
 local running = {} -- [character] = e
@@ -771,11 +835,29 @@ local function pickMove(character, humanoid)
 	local hasFish = K.companion(player, nil) ~= nil
 	local inAir = not grounded(humanoid)
 	local stamina = MotionBus.stamina and MotionBus.stamina.value or ST.max
+	-- Patch 20: only the dashes you've equipped (the server puts their ids on you as "Dashes")
+	local equipped = nil
+	local list = player:GetAttribute("Dashes")
+	if type(list) == "string" and list ~= "" then
+		equipped = {}
+		for id in list:gmatch("%d+") do
+			equipped[tonumber(id)] = true
+		end
+	end
 	local options = {}
 	for _, move in ipairs(DashMoves.list) do
-		local ok = (not move.rod or hasRod) and (not move.fish or hasFish) and (not inAir or move.air) and move.id ~= me.lastId and stamina >= move.cost * 0.5
+		local ok = (not equipped or equipped[move.id]) and (not move.rod or hasRod) and (not move.fish or hasFish) and (not inAir or move.air) and stamina >= move.cost * 0.5
 		if ok then
 			table.insert(options, move)
+		end
+	end
+	-- never the same one twice in a row, unless it's the only one you can do
+	if #options > 1 then
+		for i, move in ipairs(options) do
+			if move.id == me.lastId then
+				table.remove(options, i)
+				break
+			end
 		end
 	end
 	if #options == 0 then

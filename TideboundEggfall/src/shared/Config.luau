@@ -52,6 +52,11 @@ Config.Eggs = {
 
 Config.Shards = { unique = 1, duplicate = 10 }
 
+-- Patch 20: Dash Capsules. Same rates (Config.Tiers) and pity (Config.Pity, counted separately) as Tide Eggs,
+-- but each pull is a dash move (DashMoves) of that rarity. A duplicate gives Shards like a creature does. You
+-- equip up to `slots` dashes; Q rolls one of them. Everyone starts with Zoomies equipped and one capsule.
+Config.Capsules = { name = "Dash Capsule", pearlCost = 400, slots = 3, starterDash = "Zoomies" }
+
 -- Locked rod stats table. Costs are Pearls; Celestial Rod is prestige only.
 Config.Rods = {
 	{ id = "Drift", name = "Drift Rod", lureSpeed = 1.00, luck = 1.00, control = 1.00, resilience = 1.00, biomes = 3, cost = 0 },

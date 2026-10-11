@@ -380,6 +380,11 @@ local function buildState(player)
 		bait = data.bait,
 		baitInv = data.baitInv,
 		pity = data.pity.TideEgg,
+		-- Patch 20: dash capsules
+		capsules = data.capsules,
+		dashes = data.dashes,
+		equippedDashes = data.equippedDashes,
+		dashPity = data.pity.DashCapsule,
 		history = data.history,
 		collection = data.collection,
 		bestiary = data.bestiary,
@@ -810,6 +815,11 @@ DashEvent.OnServerEvent:Connect(function(player, what, value, target)
 	local t = now()
 	local move = type(value) == "number" and DashMoves.byId[value] or nil
 	if not run or not root or not move or t - (lastDash[player] or 0) < Config.Stamina.dashCooldown * 0.8 then
+		return
+	end
+	-- Patch 20: only dashes you've equipped
+	local data = PlayerData.get(player)
+	if data and not table.find(data.equippedDashes, move.key) then
 		return
 	end
 	if run.session or t < math.max(run.travelUntil, run.stunUntil) then
@@ -1521,6 +1531,88 @@ function handlers.Hatch(player, data, run, count)
 	return { ok = true, result = best, results = results }
 end
 
+-- Patch 20: Dash Capsules ----------------------------------------------------------------------------------------
+-- Same rates and pity as Tide Eggs (counted separately); each pull is a dash move of the rolled rarity.
+
+-- The equipped dashes ride on the player as "Dashes" (ids, comma-separated) so every client's TideboundDash
+-- knows what you can roll; the server checks dashes against it too.
+local function syncDashes(player, data)
+	local ids = {}
+	for _, key in ipairs(data.equippedDashes) do
+		local move = DashMoves.byKey[key]
+		if move then
+			table.insert(ids, tostring(move.id))
+		end
+	end
+	player:SetAttribute("Dashes", table.concat(ids, ","))
+end
+
+function handlers.BuyCapsule(player, data)
+	local cost = Config.Capsules.pearlCost
+	if data.pearls < cost then
+		return { error = ("A Dash Capsule costs %d Pearls."):format(cost) }
+	end
+	data.pearls -= cost
+	data.capsules += 1
+	return { ok = true }
+end
+
+function handlers.OpenCapsule(player, data, run)
+	if data.capsules < 1 then
+		return { error = "No Dash Capsules. Buy one at the capsule machine in the plaza." }
+	end
+	if run.started then
+		return { error = "Open capsules in town, not on a dive." }
+	end
+	data.capsules -= 1
+	local tierIndex, pityKey = Gacha.rollTier(data.pity.DashCapsule, rng)
+	-- a rarity with no dash yet falls back to the nearest one below
+	local pool = nil
+	for t = tierIndex, 1, -1 do
+		pool = DashMoves.byTier[t]
+		if pool then
+			tierIndex = t
+			break
+		end
+	end
+	local move = pool[rng:NextInteger(1, #pool)]
+	local isNew = (data.dashes[move.key] or 0) == 0
+	data.dashes[move.key] = (data.dashes[move.key] or 0) + 1
+	local shards = isNew and Config.Shards.unique or Config.Shards.duplicate
+	data.shards += shards
+	-- a new dash goes straight into a free slot
+	if isNew and #data.equippedDashes < Config.Capsules.slots then
+		table.insert(data.equippedDashes, move.key)
+		syncDashes(player, data)
+	end
+	if tierIndex >= 5 then
+		notifyAll(("%s pulled the %s dash %s!"):format(player.DisplayName, Config.Tiers[tierIndex].id, move.name), "rare")
+	end
+	return { ok = true, result = { kind = "capsule", tier = tierIndex, dash = move.id, creature = move.name, isNew = isNew, shards = shards, pity = pityKey, equipped = table.find(data.equippedDashes, move.key) ~= nil } }
+end
+
+-- Equips a dash you own (into a free slot), or unequips it (you always keep at least one).
+function handlers.EquipDash(player, data, run, key)
+	local move = type(key) == "string" and DashMoves.byKey[key]
+	if not move or (data.dashes[key] or 0) < 1 then
+		return { error = "You don't own that dash yet." }
+	end
+	local at = table.find(data.equippedDashes, key)
+	if at then
+		if #data.equippedDashes <= 1 then
+			return { error = "Keep at least one dash equipped." }
+		end
+		table.remove(data.equippedDashes, at)
+	else
+		if #data.equippedDashes >= Config.Capsules.slots then
+			return { error = ("All %d dash slots are full: unequip one first."):format(Config.Capsules.slots) }
+		end
+		table.insert(data.equippedDashes, key)
+	end
+	syncDashes(player, data)
+	return { ok = true }
+end
+
 function handlers.ClaimQuest(player, data, run, questId)
 	local quests = questsFor(data)
 	for _, quest in ipairs(Config.Quests) do
@@ -2006,6 +2098,20 @@ end)
 local function onPlayerAdded(player)
 	local data = PlayerData.load(player)
 	runs[player] = newRun()
+	-- Patch 20: keep only real, owned dashes equipped (never none), and tell every client what you can roll
+	local kept = {}
+	for _, key in ipairs(data.equippedDashes) do
+		if DashMoves.byKey[key] and (data.dashes[key] or 0) > 0 and not table.find(kept, key) and #kept < Config.Capsules.slots then
+			table.insert(kept, key)
+		end
+	end
+	if #kept == 0 then
+		local starter = Config.Capsules.starterDash
+		data.dashes[starter] = math.max(1, data.dashes[starter] or 0)
+		kept = { starter }
+	end
+	data.equippedDashes = kept
+	syncDashes(player, data)
 	-- after the client has loaded, so the toast is seen
 	task.delay(4, function()
 		if player.Parent then
@@ -2068,13 +2174,15 @@ local function onPlayerAdded(player)
 	push(player)
 	notify(player, "Welcome to Tidebound: Eggfall! Talk to Gate Warden Sel to dive, bank fish at the Tide Cache, steal eggs, then extract at a beacon.", "info")
 
-	-- Studio testing only (never in a live server): start with 10 Tide Eggs, and chat /eggs 25 or /pearls 5000
+	-- Studio testing only (never in a live server): start with 10 Tide Eggs and 10 Dash Capsules, and chat
+	-- /eggs 25, /capsules 25 or /pearls 5000
 	if RunService:IsStudio() then
 		data.eggs = math.max(data.eggs, 10)
+		data.capsules = math.max(data.capsules, 10)
 		push(player)
 		task.delay(5, function()
 			if player.Parent then
-				notify(player, "Studio test: you have Tide Eggs to hatch. Chat /eggs 25 or /pearls 5000 for more.", "info")
+				notify(player, "Studio test: you have Tide Eggs and Dash Capsules. Chat /eggs 25, /capsules 25 or /pearls 5000 for more.", "info")
 			end
 		end)
 		player.Chatted:Connect(function(message)
@@ -2087,6 +2195,9 @@ local function onPlayerAdded(player)
 			if command == "eggs" then
 				current.eggs += n
 				notify(player, ("Studio test: +%d Tide Eggs."):format(n), "good")
+			elseif command == "capsules" then
+				current.capsules += n
+				notify(player, ("Studio test: +%d Dash Capsules."):format(n), "good")
 			elseif command == "pearls" then
 				current.pearls += n
 				notify(player, ("Studio test: +%d Pearls."):format(n), "good")

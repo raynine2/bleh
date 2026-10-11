@@ -6,6 +6,9 @@
 --   4. It bursts: a white flash, shell chunks, a storm of yellow sparkles, lightning, shock rings, a camera kick.
 --   5. The creature spins in the light with rays behind it, its rarity and name in big pixel letters.
 -- HatchScene.mountBoards() also hangs the reference's pixel odds card over the Tide Egg Shrine.
+-- Patch 20: a Dash Capsule ({ kind = "capsule", tier, dash, creature = the dash's name }) plays the very same
+-- scene with a voxel gacha capsule instead of the egg, dash coins on the wheel, and a spinning dash medallion
+-- with light trails orbiting it instead of the creature.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,6 +23,7 @@ local Fx = require(Shared:WaitForChild("Fx"))
 local Audio = require(Shared:WaitForChild("Audio"))
 local MotionBus = require(Shared:WaitForChild("MotionBus"))
 local CreatureModels = require(Shared:WaitForChild("CreatureModels"))
+local DashMoves = require(Shared:WaitForChild("DashMoves")) -- Patch 20: Dash Capsules hatch the same way
 
 local HatchScene = {}
 
@@ -152,6 +156,115 @@ local function buildEgg(parent, style, rng)
 	glow.Parent = pieces[4].part
 	model.Parent = parent
 	return { model = model, pieces = pieces, cracks = {}, mark = mark, light = glow }
+end
+
+-- Patch 20: the voxel Dash Capsule: a glassy coloured dome over a white base, a gold band round the middle,
+-- bubbles of light in the dome and a "?" on its front. Same piece list as the egg, so it shakes, cracks, swells
+-- and bursts exactly the same way.
+local CAPSULE_PROFILE = { { -2.4, 2.8 }, { -1.6, 3.7 }, { -0.8, 4.0 }, { 0, 4.1 }, { 0.8, 4.0 }, { 1.6, 3.7 }, { 2.4, 2.9 }, { 3.1, 1.8 } }
+local CAPSULE_DOMES = { Color3.fromRGB(255, 90, 140), Color3.fromRGB(90, 200, 255), Color3.fromRGB(140, 255, 150), Color3.fromRGB(255, 200, 70), Color3.fromRGB(190, 120, 255), Color3.fromRGB(255, 140, 60) }
+
+local function capsuleStyle(rng)
+	local dome = CAPSULE_DOMES[rng:NextInteger(1, #CAPSULE_DOMES)]
+	return { shell = dome, shade = Color3.fromRGB(236, 240, 248), spot = Color3.fromRGB(255, 214, 90), mark = WHITE, dome = dome }
+end
+
+local function buildCapsule(parent, style, rng)
+	local model = Instance.new("Model")
+	model.Name = "HatchCapsule"
+	local pieces = {}
+	local function add(p, offset)
+		table.insert(pieces, { part = p, size = p.Size, offset = offset })
+	end
+	for _, row in ipairs(CAPSULE_PROFILE) do
+		local y, w = row[1], row[2]
+		local top = y > 0.4
+		local band = math.abs(y) < 0.1
+		local color = band and style.spot or (top and style.dome or style.shade)
+		local material = band and Enum.Material.Neon or (top and Enum.Material.Glass or Enum.Material.SmoothPlastic)
+		for _, size in ipairs({ Vector3.new(w, 0.82, w), Vector3.new(w * 0.8, 0.82, w * 1.08), Vector3.new(w * 1.08, 0.82, w * 0.8) }) do
+			local p = newPart(model, top and "Dome" or "Shell", size, color, material)
+			if top then
+				p.Transparency = 0.25
+			end
+			add(p, CFrame.new(0, y, 0))
+		end
+	end
+	-- bubbles of light floating in the dome, and a white highlight
+	for _ = 1, rng:NextInteger(4, 6) do
+		local a = rng:NextNumber(0, TAU)
+		local r = rng:NextNumber(0.3, 1.2)
+		local size = rng:NextNumber(0.5, 0.9)
+		add(newPart(model, "Spot", Vector3.new(size, size, size), Color3.fromHSV(rng:NextNumber(), 0.4, 1), Enum.Material.Neon, Enum.PartType.Ball), CFrame.new(math.cos(a) * r, rng:NextNumber(1, 2.4), math.sin(a) * r))
+	end
+	add(newPart(model, "Spot", Vector3.new(0.5, 1.2, 0.3), WHITE, Enum.Material.Neon), CFrame.new(-1.2, 1.9, -1.55) * CFrame.Angles(0, 0, 0.4))
+	local face = newPart(model, "Face", Vector3.new(2.6, 2.6, 0.2), style.dome)
+	face.Transparency = 1
+	add(face, CFrame.new(0, 1.3, -2.08))
+	local gui = new("SurfaceGui", { Face = Enum.NormalId.Front, LightInfluence = 0, Brightness = 2, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 50, Parent = face })
+	local mark = pixelText({ parent = gui, text = "?", size = UDim2.fromScale(1, 1), color = WHITE, stroke = style.dome:Lerp(Color3.new(0, 0, 0), 0.6), thickness = 6 })
+	local glow = Instance.new("PointLight")
+	glow.Range = 14
+	glow.Brightness = 0
+	glow.Color = WHITE
+	glow.Parent = pieces[4].part
+	model.Parent = parent
+	return { model = model, pieces = pieces, cracks = {}, mark = mark, light = glow }
+end
+
+-- Patch 20: the dash medallion shown when a capsule opens: a big spinning coin in the rarity's colour with the
+-- dash's icon, and three balls of light orbiting it on trails in the dash's colours. Returns a model (for
+-- ScaleTo), its body, and update(u) to spin the orbits.
+local function buildMedallion(parent, move, color, at)
+	local model = Instance.new("Model")
+	model.Name = "DashMedallion"
+	local body = newPart(model, "Body", Vector3.new(0.8, 6, 6), color, Enum.Material.Neon, Enum.PartType.Cylinder)
+	body.CFrame = CFrame.new(at) * CFrame.Angles(0, math.rad(90), 0)
+	local face = newPart(model, "Face", Vector3.new(0.9, 5, 5), WHITE, Enum.Material.SmoothPlastic, Enum.PartType.Cylinder)
+	face.CFrame = body.CFrame
+	for _, side in ipairs({ Enum.NormalId.Right, Enum.NormalId.Left }) do
+		local gui = new("SurfaceGui", { Face = side, LightInfluence = 0, Brightness = 2, SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud, PixelsPerStud = 60, Parent = face })
+		local icon = move.rod and "🎣" or move.fish and "🐟" or "⚡"
+		new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = icon, TextScaled = true, Font = Enum.Font.GothamBold, TextColor3 = color, Parent = gui })
+	end
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = body
+	weld.Part1 = face
+	weld.Parent = body
+	face.Anchored = false
+	model.PrimaryPart = body
+	model.Parent = parent
+	local orbs = {}
+	for i = 1, 3 do
+		local orb = newPart(parent, "Orb", Vector3.new(0.7, 0.7, 0.7), move.colors[(i % 2) + 1], Enum.Material.Neon, Enum.PartType.Ball)
+		orb.CastShadow = false
+		local a0 = Instance.new("Attachment")
+		a0.Position = Vector3.new(0, 0.3, 0)
+		a0.Parent = orb
+		local a1 = Instance.new("Attachment")
+		a1.Position = Vector3.new(0, -0.3, 0)
+		a1.Parent = orb
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = a0
+		trail.Attachment1 = a1
+		trail.Lifetime = 0.45
+		trail.LightEmission = 1
+		trail.FaceCamera = true
+		trail.Color = ColorSequence.new(move.colors[(i % 2) + 1], move.colors[((i + 1) % 2) + 1])
+		trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) })
+		trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.6), NumberSequenceKeypoint.new(1, 0) })
+		trail.Parent = orb
+		orbs[i] = orb
+	end
+	local function update(u, center)
+		for i, orb in ipairs(orbs) do
+			local a = u * (3 + i * 0.4) + i * TAU / 3
+			local tilt = i * 0.9
+			local offset = CFrame.Angles(tilt, 0, tilt * 0.5) * Vector3.new(math.cos(a) * 5.2, 0, math.sin(a) * 5.2)
+			orb.CFrame = CFrame.new(center + offset)
+		end
+	end
+	return model, body, update
 end
 
 local function poseEgg(egg, pivot, scale)
@@ -379,8 +492,9 @@ function HatchScene.play(result)
 	local eggBase = Vector3.new(spot.X, floorY, spot.Z)
 	local facing = CFrame.lookAt(eggBase, Vector3.new(root.Position.X, floorY, root.Position.Z))
 	local eggRng = Random.new()
-	local style = randomStyle(eggRng)
-	local egg = buildEgg(folder, style, eggRng)
+	local isCapsule = result.kind == "capsule"
+	local style = isCapsule and capsuleStyle(eggRng) or randomStyle(eggRng)
+	local egg = isCapsule and buildCapsule(folder, style, eggRng) or buildEgg(folder, style, eggRng)
 	local anchor = newPart(folder, "Anchor", Vector3.new(0.2, 0.2, 0.2), WHITE)
 	anchor.Transparency = 1
 
@@ -442,7 +556,8 @@ function HatchScene.play(result)
 			local twin = coins[i - slots]
 			local t = twin and twin.tier or wheelRng:NextInteger(1, #Config.Tiers)
 			local names = Config.Tiers[t].creatures
-			local name = twin and twin.name or names[wheelRng:NextInteger(1, #names)]
+			local dashes = isCapsule and DashMoves.byTier[t]
+			local name = twin and twin.name or (dashes and dashes[wheelRng:NextInteger(1, #dashes)].name or names[wheelRng:NextInteger(1, #names)])
 			coins[i] = { tier = t, name = name, frame = coin(ui.strip, i, t, name) }
 		end
 		ui.strip.Size = UDim2.new(0, slots * 2 * COIN, 1, 0)
@@ -636,9 +751,15 @@ function HatchScene.play(result)
 
 		-- 4. the creature: spinning in the light, rays behind it, its rarity and name in big letters
 		local creatureAt = eggBase + Vector3.new(0, 4, 0)
-		local creature = CreatureModels.build(tierIndex, result.mutation, CFrame.new(creatureAt), 5)
-		creature.Parent = folder
-		local body = creature.PrimaryPart
+		local creature, body, orbit = nil, nil, nil
+		local move = isCapsule and DashMoves.byId[result.dash]
+		if move then
+			creature, body, orbit = buildMedallion(folder, move, color, creatureAt)
+		else
+			creature = CreatureModels.build(tierIndex, result.mutation, CFrame.new(creatureAt), 5)
+			creature.Parent = folder
+			body = creature.PrimaryPart
+		end
 		local rays, raySpin = rayBurst(anchor, color)
 		anchor.CFrame = CFrame.new(creatureAt - (camera.CFrame.Position - creatureAt).Unit * 3)
 		local toCam = (root.Position - eggBase).Unit
@@ -654,6 +775,9 @@ function HatchScene.play(result)
 		local badgeBits = {}
 		if result.isNew then
 			table.insert(badgeBits, "NEW!")
+		end
+		if move and result.isNew and result.equipped then
+			table.insert(badgeBits, "EQUIPPED")
 		end
 		if mutation and mutation.id ~= "None" then
 			table.insert(badgeBits, mutation.id:upper())
@@ -677,7 +801,10 @@ function HatchScene.play(result)
 			-- pops up, then bobs and spins
 			local rise = smooth(u / 0.35)
 			local s = 0.2 + 0.8 * rise + 0.12 * math.max(0, 1 - u / 0.5) * math.sin(u * 30)
-			body.CFrame = CFrame.new(creatureAt + Vector3.new(0, math.sin(u * 2.4) * 0.4, 0)) * CFrame.Angles(0, u * 1.6, 0)
+			body.CFrame = CFrame.new(creatureAt + Vector3.new(0, math.sin(u * 2.4) * 0.4, 0)) * CFrame.Angles(0, u * 1.6, 0) * (move and CFrame.Angles(0, math.rad(90), 0) or CFrame.identity)
+			if orbit then
+				orbit(u, creatureAt)
+			end
 			if creature:GetScale() ~= s then
 				creature:ScaleTo(math.max(0.05, s))
 			end
