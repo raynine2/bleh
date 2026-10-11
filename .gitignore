@@ -1,0 +1,4 @@
+
+# Obsidian app state (the vault notes themselves are tracked)
+TideboundEggfall/vault/.obsidian/workspace*.json
+TideboundEggfall/vault/.obsidian/cache
