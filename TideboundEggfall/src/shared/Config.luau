@@ -17,15 +17,17 @@ Config.Currencies = {
 }
 
 -- 7 rarity tiers. `rate` is the Tide Egg base odds (sums to 100.00).
+-- Colours follow the canon rarity spectrum (GDD Section 7 Rule 1): White, Green, Blue, Purple, then Gold for
+-- Legendary, Mythic (deep gold) and Celestial (pale gold); see Biomes.rarityBands.
 -- `fishRate` is the Sunken Shoals fishing table before rod/bait luck (sums to 100.00).
 Config.Tiers = {
-	{ id = "Common", rate = 58.00, fishRate = 55.00, color = Color3.fromRGB(176, 190, 197), pearlValue = 50, fishPearls = 25, creatures = { "Tide Sprite", "Barnacle Pup" } },
-	{ id = "Uncommon", rate = 24.00, fishRate = 25.00, color = Color3.fromRGB(102, 214, 140), pearlValue = 120, fishPearls = 35, creatures = { "Kelp Crawler", "Shellback Newt" } },
-	{ id = "Rare", rate = 12.00, fishRate = 12.00, color = Color3.fromRGB(74, 160, 255), pearlValue = 300, fishPearls = 50, creatures = { "Storm Eel", "Coral Drake" } },
-	{ id = "Epic", rate = 4.50, fishRate = 5.00, color = Color3.fromRGB(176, 102, 255), pearlValue = 800, fishPearls = 70, creatures = { "Abyss Angler", "Rift Serpent" } },
-	{ id = "Legendary", rate = 1.20, fishRate = 2.20, color = Color3.fromRGB(255, 184, 48), pearlValue = 2500, fishPearls = 90, creatures = { "Tempest Wyrm", "Leviathan Calf" } },
-	{ id = "Mythic", rate = 0.25, fishRate = 0.65, color = Color3.fromRGB(255, 72, 120), pearlValue = 8000, fishPearls = 105, creatures = { "Aurora Kraken", "Deep Sovereign" } },
-	{ id = "Celestial", rate = 0.05, fishRate = 0.15, color = Color3.fromRGB(140, 255, 250), pearlValue = 30000, fishPearls = 120, creatures = { "Tidebound God", "Prismatic Leviathan" } },
+	{ id = "Common", rate = 58.00, fishRate = 55.00, color = Color3.fromRGB(240, 244, 248), pearlValue = 50, fishPearls = 25, creatures = { "Tide Sprite", "Barnacle Pup" } },
+	{ id = "Uncommon", rate = 24.00, fishRate = 25.00, color = Color3.fromRGB(80, 220, 120), pearlValue = 120, fishPearls = 35, creatures = { "Kelp Crawler", "Shellback Newt" } },
+	{ id = "Rare", rate = 12.00, fishRate = 12.00, color = Color3.fromRGB(60, 150, 255), pearlValue = 300, fishPearls = 50, creatures = { "Storm Eel", "Coral Drake" } },
+	{ id = "Epic", rate = 4.50, fishRate = 5.00, color = Color3.fromRGB(170, 90, 255), pearlValue = 800, fishPearls = 70, creatures = { "Abyss Angler", "Rift Serpent" } },
+	{ id = "Legendary", rate = 1.20, fishRate = 2.20, color = Color3.fromRGB(255, 196, 40), pearlValue = 2500, fishPearls = 90, creatures = { "Tempest Wyrm", "Leviathan Calf" } },
+	{ id = "Mythic", rate = 0.25, fishRate = 0.65, color = Color3.fromRGB(255, 170, 20), pearlValue = 8000, fishPearls = 105, creatures = { "Aurora Kraken", "Deep Sovereign" } },
+	{ id = "Celestial", rate = 0.05, fishRate = 0.15, color = Color3.fromRGB(255, 228, 130), pearlValue = 30000, fishPearls = 120, creatures = { "Tidebound God", "Prismatic Leviathan" } },
 }
 
 -- Independent roll on every hatch (sums to 100.00).

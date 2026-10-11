@@ -456,26 +456,30 @@ local function setupEnvironment()
 	-- the lanterns and windows to light their surroundings like the references.)
 	-- Patch 15: much dimmer. The snow glared because bright ambient, high exposure and a low bloom threshold all
 	-- stacked on near-white ground; now the light is softer and only real light sources (neon, lanterns) bloom.
-	Lighting.ClockTime = 14.6
-	Lighting.GeographicLatitude = 30
-	Lighting.Brightness = 1.5
-	Lighting.ExposureCompensation = -0.65
-	Lighting.Ambient = Color3.fromRGB(92, 102, 128)
-	Lighting.OutdoorAmbient = Color3.fromRGB(108, 120, 150)
+	-- GDD Section 7 Table A (global lighting) and Table B/C for the Open Sea, the default biome. Clients blend to the
+	-- biome they stand in (TideboundBiomeLook); these are the server's own values and what Studio shows in edit mode.
+	local Biomes = require(game:GetService("ReplicatedStorage"):WaitForChild("Tidebound"):WaitForChild("Biomes"))
+	local A, open = Biomes.lighting, Biomes.list.OpenSea
+	Lighting.ClockTime = A.dayClock
+	Lighting.GeographicLatitude = A.GeographicLatitude
+	Lighting.Brightness = A.Brightness
+	Lighting.ExposureCompensation = Biomes.exposure()
+	Lighting.Ambient = A.Ambient
+	Lighting.OutdoorAmbient = A.OutdoorAmbient
 	Lighting.ColorShift_Top = Color3.fromRGB(200, 214, 240)
 	Lighting.ColorShift_Bottom = Color3.fromRGB(90, 110, 150)
-	Lighting.EnvironmentDiffuseScale = 0.4
+	Lighting.EnvironmentDiffuseScale = A.EnvironmentDiffuseScale
 	Lighting.EnvironmentSpecularScale = 0.2
 	Lighting.GlobalShadows = true
-	Lighting.ShadowSoftness = 0.35
+	Lighting.ShadowSoftness = A.ShadowSoftness
 
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
-	atmosphere.Density = 0.32
-	atmosphere.Offset = 0.25
-	atmosphere.Color = Color3.fromRGB(150, 176, 214)
-	atmosphere.Decay = Color3.fromRGB(92, 120, 176)
-	atmosphere.Glare = 0
-	atmosphere.Haze = 1
+	atmosphere.Density = open.atmosphere.Density
+	atmosphere.Offset = open.atmosphere.Offset
+	atmosphere.Color = open.atmosphere.Color
+	atmosphere.Decay = Biomes.decayColor("OpenSea")
+	atmosphere.Glare = open.atmosphere.Glare
+	atmosphere.Haze = Biomes.haze("OpenSea")
 	atmosphere.Parent = Lighting
 
 	for _, name in ipairs({ "TideboundRays" }) do
@@ -492,11 +496,12 @@ local function setupEnvironment()
 		end
 		e.Parent = Lighting
 	end
-	effect("ColorCorrectionEffect", "TideboundGrade", { Saturation = 0.2, Contrast = 0.14, Brightness = -0.1, TintColor = Color3.fromRGB(232, 240, 255) })
-	effect("BloomEffect", "TideboundBloom", { Intensity = 0.25, Size = 22, Threshold = 2.2 })
-	effect("SunRaysEffect", "TideboundSunRays", { Intensity = 0.015, Spread = 0.5 })
+	local post = open.post
+	effect("ColorCorrectionEffect", "TideboundGrade", { Saturation = post.saturation, Contrast = post.contrast, Brightness = 0, TintColor = post.tint })
+	effect("BloomEffect", "TideboundBloom", { Intensity = post.bloomIntensity, Size = post.bloomSize, Threshold = Biomes.bloomThreshold("OpenSea") })
+	effect("SunRaysEffect", "TideboundSunRays", { Intensity = post.sunIntensity, Spread = post.sunSpread })
 
-	workspace.GlobalWind = Vector3.new(6, 0, 3)
+	workspace.GlobalWind = open.wind.vector -- WindService takes over once the game starts (GDD Section 8 Table C)
 
 	local terrain = workspace.Terrain
 	terrain.WaterColor = Color3.fromRGB(56, 190, 190)
