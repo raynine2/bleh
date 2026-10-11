@@ -2305,7 +2305,7 @@ local function onPlayerAdded(player)
 		push(player)
 		task.delay(5, function()
 			if player.Parent then
-				notify(player, "Studio test: you have Tide Eggs and Dash Capsules. Chat /eggs 25, /capsules 25 or /pearls 5000 for more.", "info")
+				notify(player, "Studio test: you have Tide Eggs and Dash Capsules. Chat /eggs 25, /capsules 25, /pearls 5000, or /rods to unlock the trial rods.", "info")
 			end
 		end)
 		player.Chatted:Connect(function(message)
@@ -2318,6 +2318,11 @@ local function onPlayerAdded(player)
 			if command == "eggs" then
 				current.eggs += n
 				notify(player, ("Studio test: +%d Tide Eggs."):format(n), "good")
+			elseif command == "rods" then
+				for rodId in pairs(Config.RodTrials) do
+					current.ownedRods[rodId] = true
+				end
+				notify(player, "Studio test: every trial rod unlocked. Equip one in RODS and press R.", "good")
 			elseif command == "capsules" then
 				current.capsules += n
 				notify(player, ("Studio test: +%d Dash Capsules."):format(n), "good")
