@@ -77,7 +77,24 @@ local function template()
 		fedUntil = 0,
 		admires = { day = 0, count = 0, visitors = {} },
 		quests = { day = 0, progress = {}, claimed = {} },
-		settings = { contested = false, privacy = "Public" },
+		-- GDD Sections 6 / 10 / 12 (LiveOps): weekly goals, the live event, the season pass, collection goals,
+		-- cosmetics, and audio / VFX / accessibility settings (the Settings_<UserId> row lives here too)
+		weekly = { week = 0, progress = {}, claimed = {} },
+		eventProgress = { id = "", progress = {}, claimed = {} },
+		season = { id = "", xp = 0, claimedFree = {}, claimedPremium = {} },
+		collectionClaimed = {},
+		cosmetics = { owned = {}, trail = "", title = "" },
+		settings = {
+			contested = false,
+			privacy = "Public",
+			musicVolume = 1,
+			sfxVolume = 1,
+			ambienceVolume = 1,
+			uiVolume = 1,
+			reduceFlashing = false,
+			cameraShake = true,
+			vfxQuality = "Auto",
+		},
 		guestbook = {},
 		lastSeen = 0,
 	}
@@ -109,22 +126,34 @@ local function keyFor(player)
 	return "p_" .. player.UserId
 end
 
+-- Section 10 Table C: saves go through UpdateAsync with a version check. Every save bumps `saveVersion`; a save
+-- whose version doesn't match what this server loaded means another server wrote since, so it is refused rather
+-- than overwriting newer progress. `session` marks which server holds the profile, so a fast rejoin waits for the
+-- old server's last save before loading.
+local SESSION_STALE = 90 -- seconds after which a session mark from a crashed server is ignored
+
 function PlayerData.load(player)
 	local data = nil
 	local canSave = store ~= nil
 	if store then
 		local loaded = false
-		for attempt = 1, 3 do
+		for attempt = 1, 5 do
 			local ok, result = pcall(function()
 				return store:GetAsync(keyFor(player))
 			end)
 			if ok then
 				data = result
 				loaded = true
-				break
+				local session = type(data) == "table" and data.session
+				local busy = type(session) == "table" and session.job ~= game.JobId and os.time() - (session.t or 0) < SESSION_STALE
+				if not busy or attempt >= 4 then
+					break
+				end
+				task.wait(2) -- another server is still saving this player; give it a moment
+			else
+				warn(("[Tidebound] Load attempt %d failed for %s: %s"):format(attempt, player.Name, tostring(result)))
+				task.wait(1)
 			end
-			warn(("[Tidebound] Load attempt %d failed for %s: %s"):format(attempt, player.Name, tostring(result)))
-			task.wait(1)
 		end
 		-- Never overwrite a save we failed to read.
 		canSave = loaded
@@ -133,7 +162,7 @@ function PlayerData.load(player)
 		data = template()
 	end
 	reconcile(data, template())
-	profiles[player] = { data = data, canSave = canSave }
+	profiles[player] = { data = data, canSave = canSave, version = data.saveVersion or 0 }
 	return data
 end
 
@@ -142,22 +171,42 @@ function PlayerData.get(player)
 	return profile and profile.data
 end
 
-function PlayerData.save(player)
+function PlayerData.save(player, releasing)
 	local profile = profiles[player]
 	if not profile or not profile.canSave or not store then
 		return
 	end
+	-- one save at a time per player, so the 60 s save and the leave save never race each other's version
+	while profile.saving do
+		task.wait(0.1)
+	end
+	profile.saving = true
 	profile.data.lastSeen = os.time()
+	local conflict = false
 	local ok, err = pcall(function()
-		store:SetAsync(keyFor(player), profile.data)
+		store:UpdateAsync(keyFor(player), function(old)
+			conflict = false
+			if type(old) == "table" and (old.saveVersion or 0) ~= profile.version then
+				conflict = true
+				return nil -- cancels the write: newer data from another server is kept
+			end
+			profile.data.saveVersion = profile.version + 1
+			profile.data.session = not releasing and { job = game.JobId, t = os.time() } or nil
+			return profile.data
+		end)
 	end)
 	if not ok then
 		warn("[Tidebound] Save failed for", player.Name, err)
+	elseif conflict then
+		warn("[Tidebound] Save skipped for", player.Name, "(a newer save from another server exists)")
+	else
+		profile.version += 1
 	end
+	profile.saving = false
 end
 
 function PlayerData.release(player)
-	PlayerData.save(player)
+	PlayerData.save(player, true)
 	profiles[player] = nil
 end
 

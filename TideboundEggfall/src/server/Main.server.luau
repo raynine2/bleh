@@ -46,6 +46,8 @@ local ShoalsBuilder = require(script.Parent:WaitForChild("ShoalsBuilder"))
 local Mobs = require(script.Parent:WaitForChild("Mobs"))
 local DashMoves = require(Shared:WaitForChild("DashMoves"))
 local RodSkills = require(Shared:WaitForChild("RodSkills"))
+local LiveOps = require(script.Parent:WaitForChild("LiveOps")) -- GDD Sections 6/10/12: quests, season, shop, boards
+local WindService = require(script.Parent:WaitForChild("WindService")) -- GDD Sections 8/10: GlobalWind and weather
 local CollectionService = game:GetService("CollectionService")
 
 -- the remotes come first, so clients never wait on the world build (or on a builder that fails)
@@ -256,26 +258,14 @@ local function nearBeacon(position, radius)
 	return false
 end
 
--- Daily quests (Quill's board): progress resets at 00:00 UTC.
+-- Daily quests (Quill's board): LiveOps owns them now (3 a day from a pool, reset at 00:00 UTC), alongside the
+-- weekly goals, the live event and season XP. Every game event below is counted there.
 local function questsFor(data)
-	local today = math.floor(os.time() / 86400)
-	if data.quests.day ~= today then
-		data.quests = { day = today, progress = {}, claimed = {} }
-	end
-	return data.quests
+	return LiveOps.dailyView(data)
 end
 
-local function questProgress(player, data, id, amount)
-	local quests = questsFor(data)
-	for _, quest in ipairs(Config.Quests) do
-		if quest.id == id and not quests.claimed[id] then
-			local before = quests.progress[id] or 0
-			quests.progress[id] = math.min(quest.goal, before + (amount or 1))
-			if before < quest.goal and quests.progress[id] >= quest.goal then
-				notify(player, ("Quest complete: %s. Claim it at Quill's board or the QUESTS tab."):format(quest.text), "good")
-			end
-		end
-	end
+local function questProgress(player, _data, id, amount)
+	LiveOps.track(player, id, amount)
 end
 
 -- Rod durability (missing entry = full) -------------------------------------------------------
@@ -460,6 +450,8 @@ local function push(player)
 end
 
 BaseService.init({ delta = delta, notify = notify, push = push })
+LiveOps.init({ notify = notify, push = push, remotes = remotes })
+WindService.start()
 Crew.init({
 	notify = notify,
 	push = push,
@@ -780,6 +772,7 @@ local function onKill(player, kind)
 	end
 	data.mobKills[kind] = (data.mobKills[kind] or 0) + 1
 	data.mobKills.any = (data.mobKills.any or 0) + 1
+	questProgress(player, data, "mob", 1) -- GDD Section 12: quests, goals and season XP
 	checkTrials(player, data)
 	push(player)
 end
@@ -1020,6 +1013,7 @@ local function onBankCatch(player)
 	run.bankedPearls += pearls
 	run.carriedPearls, run.carriedFish = 0, 0
 	cue(player, "Bank")
+	questProgress(player, data, "bank", 1)
 	notify(player, ("Banked %d fish as %d Pearls. No wipe can touch them now."):format(fish, pearls), "good")
 	push(player)
 end
@@ -1119,6 +1113,7 @@ local function pushDeeper(player, run)
 		notify(player, ("You pushed deeper: cargo x%.1f, heat +%d, and the %s gets angrier. Extract at a different beacon."):format(cargo, GREED.heat, guardianFor(run).cfg.name), "warn")
 	end
 	cue(player, "Push")
+	questProgress(player, nil, "push", 1)
 	addHeat(player, GREED.heat)
 	push(player)
 end
@@ -1306,6 +1301,9 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 	data.stats.fishCaught += 1
 	data.bestiary[session.fish] = true
 	questProgress(player, data, "fish", 1)
+	if session.tier >= 3 then
+		questProgress(player, data, "rareFish", 1)
+	end
 	local lines
 	if session.pier then
 		pearls = math.floor(pearls * pierPct)
@@ -1327,6 +1325,7 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 			table.insert(lines, bonus)
 		end
 	end
+	questProgress(player, data, "pearls", pearls)
 	-- weight is for show: a squared roll keeps big fish rare, and "Top X%" is that roll's percentile
 	local range = REVEAL.weights[session.tier]
 	local u = rng:NextNumber()
@@ -1569,6 +1568,8 @@ function handlers.Hatch(player, data, run, count)
 			best = result
 		end
 	end
+	LiveOps.onPull(player, data) -- mirror the pity counters to the MemoryStore cache (Section 10)
+	questProgress(player, data, "hatch", count)
 	local sold, soldCount = BaseService.enforceStorage(data)
 	if soldCount > 0 then
 		notify(player, ("Storage full: sold %d lowest-value creature(s) for %d Pearls. A Nest Vault holds more."):format(soldCount, sold), "warn")
@@ -1732,22 +1733,7 @@ function handlers.Trials(player, data)
 end
 
 function handlers.ClaimQuest(player, data, run, questId)
-	local quests = questsFor(data)
-	for _, quest in ipairs(Config.Quests) do
-		if quest.id == questId then
-			if quests.claimed[questId] then
-				return { error = "Already claimed today." }
-			end
-			if (quests.progress[questId] or 0) < quest.goal then
-				return { error = "Not finished yet." }
-			end
-			quests.claimed[questId] = true
-			data.pearls += quest.reward
-			notify(player, ("Quest reward: +%d Pearls."):format(quest.reward), "good")
-			return { ok = true }
-		end
-	end
-	return { error = "Unknown quest." }
+	return LiveOps.claimDaily(player, data, questId)
 end
 
 function handlers.Travel(player, data, run, destination)
@@ -1896,6 +1882,12 @@ local function newGuardian(id, model, pathFolder, cfg, depth, hoverY, noGoCenter
 		pauseUntil = 0,
 		active = false,
 	}
+end
+
+-- GDD Section 9: each guardian has a vocal signature the clients play (TideboundAudio reads the tag and attribute)
+for _, pair in ipairs({ { shoals:WaitForChild("ReefWarden"), "TideGuardian" }, { kelp:WaitForChild("KelpLeviathan"), "KelpWraith" } }) do
+	pair[1]:SetAttribute("Vocal", pair[2])
+	CollectionService:AddTag(pair[1], "TideboundGuardian")
 end
 
 local guardians = {
@@ -2235,6 +2227,7 @@ local function onPlayerAdded(player)
 	syncDashes(player, data)
 	-- Patch 21: a trial whose goals were lowered since you last played unlocks now
 	checkTrials(player, data)
+	LiveOps.onPlayerAdded(player, data)
 	-- after the client has loaded, so the toast is seen
 	task.delay(4, function()
 		if player.Parent then
@@ -2348,6 +2341,7 @@ Players.PlayerRemoving:Connect(function(player)
 	Rods.release(player)
 	fishTokens[player] = nil
 	pendingAnnounce[player] = nil
+	LiveOps.onPlayerRemoving(player)
 	PlayerData.release(player)
 	runs[player] = nil
 	incomeCarry[player] = nil
