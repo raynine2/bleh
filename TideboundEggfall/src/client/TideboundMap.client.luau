@@ -2,7 +2,7 @@
 --   Minimap  a round map in the top-right corner that follows you, north up: the town's coast and streets,
 --            every island (sand shore, land, trees), bridges, beacons, Tide Caches, geysers, wild eggs, the
 --            Warden's Rock, the Maelstrom and other divers. A golden ring with a compass, zoom buttons, the name
---            of where you are on a ribbon, and soft anime clouds drifting over it and puffing round its rim.
+--            of where you are on a ribbon. Nothing covers the map itself.
 --   Sea chart click the minimap (or press N) for the whole map, framed in big anime clouds, with every island
 --            named and a legend. M hides the minimap.
 
@@ -306,12 +306,6 @@ new("Frame", { Name = "WindowEdge", AnchorPoint = Vector2.new(0.5, 0.5), Positio
 local arrow = new("TextLabel", { Name = "You", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 20, 0, 20), BackgroundTransparency = 1, Font = Enum.Font.GothamBlack, TextScaled = true, Text = "▲", TextColor3 = WHITE, TextStrokeColor3 = Color3.fromRGB(230, 60, 40), TextStrokeTransparency = 0, ZIndex = 60, Parent = window })
 local pulse = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 20, 0, 20), BackgroundTransparency = 1, ZIndex = 59, Parent = window }, { round(), stroke(WHITE, 2, 0.2) })
 
--- clouds drifting over the map
-local drifting = {}
-for i = 1, 3 do
-	local c = animeCloud(window, SIZE * (0.55 + 0.15 * (i % 2)), 40, 0.35)
-	table.insert(drifting, { frame = c, x = (i - 1) / 3, y = 0.1 + 0.3 * i, speed = 0.012 + 0.006 * i })
-end
 
 -- the compass, the zoom buttons and the ribbon with the place name
 local compass = new("Frame", { Name = "Compass", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0, 4), Size = UDim2.new(0, 26, 0, 26), BackgroundColor3 = Color3.fromRGB(220, 60, 50), ZIndex = 70, Parent = ring }, { round(), stroke(INK, 2.5) })
@@ -336,14 +330,6 @@ local ribbon = new("Frame", { Name = "Ribbon", AnchorPoint = Vector2.new(0.5, 0)
 })
 local placeLabel = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, -10, 1, -6), Position = UDim2.new(0, 5, 0, 3), Font = DISPLAY, TextScaled = true, Text = "EGGFALL TOWN", TextColor3 = WHITE, ZIndex = 73, Parent = ribbon }, { stroke(INK, 2) })
 
--- clouds puffing round the bottom of the ring, outside it
-local rimClouds = {}
-for i, spec in ipairs({ { -0.16, 0.66, 0.5 }, { 0.72, 0.7, 0.46 }, { 0.3, 0.86, 0.36 } }) do
-	local c = animeCloud(holder, SIZE * spec[3], 80 + i * 3, 0)
-	c.AnchorPoint = Vector2.new(0, 0)
-	c.Position = UDim2.new(spec[1], 0, spec[2], 0)
-	table.insert(rimClouds, { frame = c, base = c.Position, seed = i * 1.7 })
-end
 
 new("TextLabel", { Name = "Hint", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, SIZE + 18), Size = UDim2.new(1, 0, 0, 14), Font = Enum.Font.GothamBold, TextScaled = true, Text = touch and "tap the map: sea chart" or "N: sea chart · M: hide", TextColor3 = WHITE, TextStrokeTransparency = 0.3, ZIndex = 72, Parent = holder })
 
@@ -522,14 +508,6 @@ RunService.RenderStepped:Connect(function(dt)
 				others[p] = nil
 			end
 		end
-	end
-	-- the clouds drift across the window and bob round the rim
-	for _, c in ipairs(drifting) do
-		c.x = (c.x + c.speed * dt) % 1.6
-		c.frame.Position = UDim2.new(c.x - 0.6, 0, c.y, 0)
-	end
-	for _, c in ipairs(rimClouds) do
-		c.frame.Position = c.base + UDim2.new(0, math.sin(t * 0.8 + c.seed) * 3, 0, math.cos(t * 0.6 + c.seed) * 2)
 	end
 	if chartOpen then
 		for _, c in ipairs(chartClouds) do
