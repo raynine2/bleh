@@ -1,0 +1,21 @@
+{
+  "name": "TideboundEggfall",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Tidebound": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "Tidebound": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "$path": "src/client"
+      }
+    }
+  }
+}
