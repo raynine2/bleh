@@ -1977,6 +1977,35 @@ local function onPlayerAdded(player)
 
 	push(player)
 	notify(player, "Welcome to Tidebound: Eggfall! Talk to Gate Warden Sel to dive, bank fish at the Tide Cache, steal eggs, then extract at a beacon.", "info")
+
+	-- Studio testing only (never in a live server): start with 10 Tide Eggs, and chat /eggs 25 or /pearls 5000
+	if RunService:IsStudio() then
+		data.eggs = math.max(data.eggs, 10)
+		push(player)
+		task.delay(5, function()
+			if player.Parent then
+				notify(player, "Studio test: you have Tide Eggs to hatch. Chat /eggs 25 or /pearls 5000 for more.", "info")
+			end
+		end)
+		player.Chatted:Connect(function(message)
+			local command, amount = message:lower():match("^/(%a+)%s*(%d*)")
+			local current = PlayerData.get(player)
+			if not current or not command then
+				return
+			end
+			local n = math.clamp(tonumber(amount) or 10, 1, 100000)
+			if command == "eggs" then
+				current.eggs += n
+				notify(player, ("Studio test: +%d Tide Eggs."):format(n), "good")
+			elseif command == "pearls" then
+				current.pearls += n
+				notify(player, ("Studio test: +%d Pearls."):format(n), "good")
+			else
+				return
+			end
+			push(player)
+		end)
+	end
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
