@@ -759,8 +759,7 @@ function HatchScene.mountBoards()
 	task.spawn(function()
 		while true do
 			local world = workspace:FindFirstChild("TideboundWorld")
-			local nest = world and world:FindFirstChild("Nest")
-			local egg = nest and nest:FindFirstChild("ShrineEgg")
+			local egg = world and world:FindFirstChild("ShrineEgg", true)
 			if egg and egg:IsA("BasePart") then
 				oddsCard(egg)
 			end

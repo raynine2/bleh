@@ -23,7 +23,7 @@ local PC = PropKit.color
 
 local TownBuilder = {}
 
-local VERSION = 5
+local VERSION = 6
 
 local K = WorldBuilder.kit
 local D = DescentBuilder.kit
@@ -110,7 +110,7 @@ local GRID = 6
 local function buildLand(parent)
 	local function kindAt(x, z)
 		local p = v(x, z)
-		if p.Magnitude <= T.plazaRadius + 4 then
+		if math.abs(p.X) <= 54 and math.abs(p.Z) <= 54 then
 			return "plaza"
 		end
 		for _, shape in ipairs(LAND) do
@@ -249,102 +249,6 @@ end
 
 -- Buildings ---------------------------------------------------------------------------------------------------
 
--- Patch 13: a detailed shopfront in the reference's style. A studded stone plinth, walls with chunky corner
--- pillars and trim bands, a cornice and parapet, big framed display windows with glass and mullions, a panelled
--- door with a glowing transom, a striped awning with a scalloped edge on brackets, a framed sign with a neon
--- border, a flag on the roof that flaps in the wind, and a potted plant, crates or a bench out front.
-local function neonShop(parent, center, target, title, color, w, d, h)
-	w, d, h = w or 14, d or 10, h or 10
-	local cf = facing(center, target)
-	local model = Instance.new("Model")
-	model.Name = "Shop"
-	model.Parent = parent
-	local wall = color:Lerp(Color3.fromRGB(236, 230, 220), 0.55)
-	local trim = color:Lerp(Color3.fromRGB(40, 30, 50), 0.45)
-	local dark = Color3.fromRGB(46, 40, 52)
-	local front = -d / 2
-	local function studs(p)
-		p.Material = Enum.Material.Plastic
-		p.TopSurface = Enum.SurfaceType.Studs
-		return p
-	end
-	studs(part({ Name = "Plinth", Size = Vector3.new(w + 1.6, 1, d + 1.6), CFrame = cf * CFrame.new(0, 0.5, 0), Color = Color3.fromRGB(150, 152, 162), Parent = model }))
-	part({ Name = "Body", Size = Vector3.new(w, h, d), CFrame = cf * CFrame.new(0, 1 + h / 2, 0), Color = wall, Parent = model })
-	-- corner pillars and trim bands
-	for _, x in ipairs({ -w / 2, w / 2 }) do
-		for _, z in ipairs({ -d / 2, d / 2 }) do
-			decor({ Name = "Pillar", Size = Vector3.new(1.4, h + 0.4, 1.4), CFrame = cf * CFrame.new(x, 1 + h / 2, z), Color = trim, Parent = model })
-		end
-	end
-	decor({ Name = "TrimBand", Size = Vector3.new(w + 0.4, 0.6, d + 0.4), CFrame = cf * CFrame.new(0, 1 + h * 0.6, 0), Color = trim, Parent = model })
-	decor({ Name = "Cornice", Size = Vector3.new(w + 1.6, 0.8, d + 1.6), CFrame = cf * CFrame.new(0, 1 + h + 0.4, 0), Color = trim, Parent = model })
-	studs(decor({ Name = "Roof", Size = Vector3.new(w + 0.8, 0.6, d + 0.8), CFrame = cf * CFrame.new(0, 1 + h + 1.1, 0), Color = Color3.fromRGB(120, 124, 136), Parent = model }))
-	for _, x in ipairs({ -w / 2 - 0.4, w / 2 + 0.4 }) do
-		decor({ Name = "Parapet", Size = Vector3.new(0.6, 1, d + 1.6), CFrame = cf * CFrame.new(x, 1 + h + 1.3, 0), Color = trim, Parent = model })
-	end
-	-- display windows either side of the door
-	local winW = (w - 5) / 2 - 1
-	for _, side in ipairs({ -1, 1 }) do
-		local at = cf * CFrame.new(side * (2.5 + winW / 2 + 0.3), 1 + 3.4, front - 0.12)
-		decor({ Name = "WindowFrame", Size = Vector3.new(winW + 0.8, 4.6, 0.4), CFrame = at, Color = dark, Parent = model })
-		decor({ Name = "Glass", Size = Vector3.new(winW, 3.8, 0.3), CFrame = at * CFrame.new(0, 0, -0.1), Color = Color3.fromRGB(150, 210, 240), Material = Enum.Material.Glass, Transparency = 0.3, Parent = model })
-		decor({ Name = "WindowGlow", Size = Vector3.new(winW - 0.4, 3.4, 0.1), CFrame = at * CFrame.new(0, 0, 0.12), Color = Color3.fromRGB(255, 232, 180), Material = Enum.Material.Neon, Transparency = 0.45, Parent = model })
-		decor({ Name = "Mullion", Size = Vector3.new(0.25, 3.8, 0.4), CFrame = at * CFrame.new(0, 0, -0.15), Color = dark, Parent = model })
-		decor({ Name = "Sill", Size = Vector3.new(winW + 1.2, 0.4, 0.9), CFrame = at * CFrame.new(0, -2.45, -0.35), Color = trim, Parent = model })
-	end
-	-- the door, its frame and a glowing transom
-	local door = cf * CFrame.new(0, 1 + 2.5, front - 0.12)
-	decor({ Name = "DoorFrame", Size = Vector3.new(4, 5.6, 0.4), CFrame = door * CFrame.new(0, 0.3, 0), Color = dark, Parent = model })
-	decor({ Name = "Door", Size = Vector3.new(3, 4.6, 0.3), CFrame = door * CFrame.new(0, -0.2, -0.12), Color = color:Lerp(Color3.new(0, 0, 0), 0.25), Parent = model })
-	decor({ Name = "DoorGlass", Size = Vector3.new(1.8, 1.8, 0.2), CFrame = door * CFrame.new(0, 0.7, -0.25), Color = Color3.fromRGB(255, 232, 180), Material = Enum.Material.Neon, Transparency = 0.3, Parent = model })
-	decor({ Name = "Transom", Size = Vector3.new(3, 0.6, 0.2), CFrame = door * CFrame.new(0, 2.6, -0.2), Color = color, Material = Enum.Material.Neon, Parent = model })
-	studs(part({ Name = "Step", Size = Vector3.new(4.4, 0.5, 1.6), CFrame = cf * CFrame.new(0, 0.25, front - 1.6), Color = Color3.fromRGB(150, 152, 162), Parent = model }))
-	-- striped awning on brackets, with a scalloped edge
-	local stripes = math.max(5, math.floor(w / 2))
-	for i = 1, stripes do
-		local x = -w / 2 + (i - 0.5) * (w / stripes)
-		local c = (i % 2 == 0) and WHITE or color
-		decor({ Name = "Awning", Size = Vector3.new(w / stripes + 0.02, 0.3, 3.4), CFrame = cf * CFrame.new(x, 1 + 6.4, front - 1.5) * CFrame.Angles(math.rad(-20), 0, 0), Color = c, Parent = model })
-		decor({ Name = "Scallop", Size = Vector3.new(w / stripes * 0.8, 0.7, 0.3), CFrame = cf * CFrame.new(x, 1 + 5.55, front - 3.1), Color = c, Parent = model })
-	end
-	for _, side in ipairs({ -1, 1 }) do
-		decor({ Name = "Bracket", Size = Vector3.new(0.3, 0.3, 3), CFrame = cf * CFrame.new(side * (w / 2 - 0.4), 1 + 6, front - 1.4) * CFrame.Angles(math.rad(-30), 0, 0), Color = dark, Parent = model })
-	end
-	-- the sign: a framed board with a neon border, above the awning
-	local signCf = cf * CFrame.new(0, 1 + h - 1.6, front - 0.5)
-	local board = decor({ Name = "Sign", Size = Vector3.new(w - 3, 2.6, 0.5), CFrame = signCf, Color = Color3.fromRGB(28, 22, 40), Parent = model })
-	surfaceText(board, title, color:Lerp(WHITE, 0.25))
-	for _, spec in ipairs({ { 0, 1.4, w - 2.4, 0.25 }, { 0, -1.4, w - 2.4, 0.25 }, { -(w - 3) / 2 - 0.2, 0, 0.25, 3 }, { (w - 3) / 2 + 0.2, 0, 0.25, 3 } }) do
-		decor({ Name = "SignNeon", Size = Vector3.new(spec[3], spec[4], 0.3), CFrame = signCf * CFrame.new(spec[1], spec[2], -0.1), Color = color, Material = Enum.Material.Neon, Parent = model })
-	end
-	light(board, color, 16, 1.2)
-	-- a flag on the roof that flaps in the wind
-	local pole = cf * CFrame.new(w / 2 - 1, 1 + h + 1.4, d / 2 - 1)
-	decor({ Name = "FlagPole", Size = Vector3.new(0.3, 6, 0.3), CFrame = pole * CFrame.new(0, 3, 0), Color = Color3.fromRGB(200, 200, 206), Parent = model })
-	K.windy(decor({ Name = "Flag", Size = Vector3.new(0.12, 1.6, 2.6), CFrame = pole * CFrame.new(0, 5.1, 1.3), Color = color, Parent = model }))
-	-- a little life out front
-	local extra = math.random(1, 3)
-	local beside = cf * CFrame.new(w / 2 + 1.6, 0, front - 1)
-	if extra == 1 then
-		decor({ Name = "Pot", Size = Vector3.new(1.6, 1.4, 1.6), CFrame = beside * CFrame.new(0, 0.7, 0), Color = Color3.fromRGB(176, 96, 70), Parent = model })
-		for k = 1, 4 do
-			K.windy(decor({ Name = "Leaf", Size = Vector3.new(0.6, 1.8, 0.6), CFrame = beside * CFrame.new(math.cos(k * 1.6) * 0.4, 2.1, math.sin(k * 1.6) * 0.4) * CFrame.Angles(math.cos(k) * 0.4, 0, math.sin(k) * 0.4), Color = Color3.fromRGB(70, 160, 70), Parent = model }))
-		end
-	elseif extra == 2 then
-		K.crate(model, beside * CFrame.new(0, 1.3, 0))
-		K.crate(model, beside * CFrame.new(0.3, 3.9, 0.2) * CFrame.Angles(0, 0.4, 0))
-	else
-		local bench = cf * CFrame.new(-w / 2 - 2, 0, front - 1.2)
-		decor({ Name = "BenchSeat", Size = Vector3.new(0.9, 0.4, 3.6), CFrame = bench * CFrame.new(0, 1.2, 0), Color = Color3.fromRGB(150, 104, 68), Parent = model })
-		decor({ Name = "BenchBack", Size = Vector3.new(0.3, 1.2, 3.6), CFrame = bench * CFrame.new(-0.4, 1.9, 0), Color = Color3.fromRGB(150, 104, 68), Parent = model })
-		for _, z in ipairs({ -1.4, 1.4 }) do
-			decor({ Name = "BenchLeg", Size = Vector3.new(0.9, 1, 0.3), CFrame = bench * CFrame.new(0, 0.5, z), Color = dark, Parent = model })
-		end
-	end
-	reserve(center, math.max(w, d) * 0.75)
-	return cf
-end
-
 local function warehouse(parent, center, target, w, d, h, roof)
 	local cf = facing(center, target)
 	local model = Instance.new("Model")
@@ -443,8 +347,10 @@ local function buildDocks(parent, rng)
 	-- north side: a warehouse, the fish market hall and a crane; south side: the Salty Egg tavern, a boat shed
 	warehouse(folder, v(78, 30), v(78, 0), 22, 14, 10, P.ROOF_SLATE)
 	warehouse(folder, v(176, -20), v(176, 0), 24, 16, 11, P.ROOF_ORANGE)
-	neonShop(folder, v(72, -28), v(72, 0), "THE SALTY EGG", Color3.fromRGB(255, 170, 80), 18, 12, 11)
-	neonShop(folder, v(140, -20), v(140, 0), "BAIT & BITS", Color3.fromRGB(140, 255, 140), 14, 10, 9)
+	PropKit.frameShop(folder, at(v(72, -28), TOP), at(v(72, 0), TOP), 18, 12, 12, "THE SALTY EGG", Color3.fromRGB(230, 120, 40))
+	PropKit.glassShop(folder, at(v(140, -20), TOP), at(v(140, 0), TOP), 14, 10, 10, "BAIT & BITS", Color3.fromRGB(80, 200, 110))
+	reserve(v(72, -28), 12)
+	reserve(v(140, -20), 10)
 
 	-- the fish market: an open hall on posts, stalls with fish on ice
 	local hallCf = facing(v(160, 20), v(160, 0))
@@ -573,7 +479,8 @@ local function buildMarket(parent, rng)
 	end
 	reserve(square, 9)
 	-- an arcade and a teahouse at the ends of Market Row
-	local arcadeCf = neonShop(folder, v(40, 182), n.M6, "ARCADE", NEONS[2], 18, 12, 13)
+	local arcadeCf = PropKit.frameShop(folder, at(v(40, 182), TOP), at(n.M6, TOP), 18, 12, 13, "ARCADE", Color3.fromRGB(200, 60, 200))
+	reserve(v(40, 182), 12)
 	for i = 1, 6 do
 		decor({ Name = "ArcadeBulb", Shape = Enum.PartType.Ball, Size = Vector3.new(0.8, 0.8, 0.8), CFrame = arcadeCf * CFrame.new(-8 + i * 2.3, 13.8, -6.3), Color = NEONS[(i % #NEONS) + 1], Material = Enum.Material.Neon, Parent = folder })
 	end
@@ -582,8 +489,10 @@ local function buildMarket(parent, rng)
 	surfaceText(tea, "TEAHOUSE", Color3.fromRGB(255, 200, 150))
 	reserve(v(-40, 180), 9)
 	-- more shops round the edge of the market
-	neonShop(folder, v(-62, 120), n.M3, "RODS R US", NEONS[4], 12, 10, 9)
-	neonShop(folder, v(62, 120), n.M4, "EGG CARE", NEONS[1], 12, 10, 9)
+	PropKit.glassShop(folder, at(v(-62, 120), TOP), at(n.M3, TOP), 14, 11, 10, "RODS R US", Color3.fromRGB(60, 140, 230))
+	PropKit.frameShop(folder, at(v(62, 120), TOP), at(n.M4, TOP), 13, 10, 11, "EGG CARE", Color3.fromRGB(230, 70, 110))
+	reserve(v(-62, 120), 10)
+	reserve(v(62, 120), 10)
 	K.timberHouse(folder, at(v(-30, 158), TOP), at(n.M5, TOP), 11, 9, 9, P.ROOF_SLATE)
 	K.timberHouse(folder, at(v(30, 158), TOP), at(n.M5, TOP), 11, 9, 9, P.ROOF_ORANGE)
 	reserve(v(-30, 158), 8)
@@ -1016,6 +925,149 @@ local function buildWinter(parent, rng)
 	end
 end
 
+-- Patch 15: the hub plaza, rebuilt from the reference snow town. Everything players use stays where it was
+-- (the NPCs and the Tide Slide stand round these spots): the Tide Egg shrine (-24, 12) in front of a big glass
+-- EGG SHOP, the incubator (-24, -12) in front of a red HATCHERY, the tackle stall (18, -32), the Nest beacon
+-- (26, 22) and the spawn (0, -24). In the middle a frozen fountain with an ice crystal and a gold egg; log cabins
+-- on the corners; lamps, benches, pines, crystals and inlays round the square.
+local function buildHub(parent, rng)
+	local hub = Instance.new("Folder")
+	hub.Name = "Hub"
+	hub.Parent = parent
+	local plaza = v(0, 0)
+
+	-- grey paving: a darker border round the square and a cross of darker paths to the four exits
+	for _, spec in ipairs({ { v(0, -52), Vector3.new(108, 0, 4) }, { v(0, 52), Vector3.new(108, 0, 4) }, { v(-52, 0), Vector3.new(4, 0, 108) }, { v(52, 0), Vector3.new(4, 0, 108) } }) do
+		PropKit.studs(decor({ Name = "PlazaBorder", Size = Vector3.new(spec[2].X, 0.3, spec[2].Z), CFrame = CFrame.new(spec[1].X, TOP + 0.15, spec[1].Z), Color = PC.PAVER_DARK, Parent = hub })).CanQuery = true
+	end
+	for _, spec in ipairs({ { v(0, 33), Vector3.new(6, 0, 38) }, { v(0, -36), Vector3.new(6, 0, 32) }, { v(33, 0), Vector3.new(38, 0, 6) }, { v(-36, 0), Vector3.new(32, 0, 6) } }) do
+		PropKit.studs(decor({ Name = "PlazaPath", Size = Vector3.new(spec[2].X, 0.25, spec[2].Z), CFrame = CFrame.new(spec[1].X, TOP + 0.12, spec[1].Z), Color = PC.PAVER, Parent = hub })).CanQuery = true
+	end
+
+	-- the frozen fountain: a stepped studded basin, glowing ice inside, an ice crystal and a gold egg on a column
+	K.voxelDisk(hub, "FountainStep", plaza, 12, TOP - 0.5, TOP + 0.8, PC.PAVER_DARK, 2)
+	K.voxelDisk(hub, "FountainRim", plaza, 10.5, TOP + 0.8, TOP + 2.6, Color3.fromRGB(176, 186, 206), 1.5, 8.5)
+	local ice = K.voxelDisk(hub, "FountainIce", plaza, 8.6, TOP + 0.8, TOP + 1.8, Color3.fromRGB(110, 210, 250), 1.5)
+	for _, p in ipairs(ice) do
+		p.Material = Enum.Material.Glass
+		p.Transparency = 0.2
+	end
+	local glow = decor({ Name = "FountainGlow", Size = Vector3.new(14, 0.2, 14), CFrame = CFrame.new(0, TOP + 1, 0), Color = Color3.fromRGB(60, 200, 255), Material = Enum.Material.Neon, Transparency = 0.3, Parent = hub })
+	light(glow, Color3.fromRGB(110, 220, 255), 24, 1)
+	PropKit.iceCrystal(hub, Vector3.new(0, TOP + 1.8, 0), rng, 1.3)
+	PropKit.studs(part({ Name = "EggColumn", Size = Vector3.new(3, 9, 3), CFrame = CFrame.new(0, TOP + 6.3, 4.5), Color = Color3.fromRGB(176, 186, 206), Parent = hub }))
+	local goldEgg = K.eggShape(hub, "GoldEgg", CFrame.new(0, TOP + 13.4, 4.5), Vector3.new(3.4, 4.4, 3.4), Color3.fromRGB(255, 200, 70))
+	goldEgg.Material = Enum.Material.Neon
+	goldEgg.Transparency = 0.1
+	light(goldEgg, Color3.fromRGB(255, 200, 90), 18, 1.2)
+	K.sparkles(goldEgg, Color3.fromRGB(255, 230, 140), 4)
+	reserve(plaza, 13)
+
+	-- the EGG SHOP (the reference's glass SELL building) and the Tide Egg shrine in front of it
+	PropKit.glassShop(hub, at(v(-42, 16), TOP), at(plaza, TOP), 16, 12, 11, "TIDE EGGS", Color3.fromRGB(240, 196, 50))
+	local shrineAt = at(v(-24, 12), TOP)
+	PropKit.studs(part({ Name = "ShrineStep", Size = Vector3.new(10, 1, 10), CFrame = CFrame.new(shrineAt + Vector3.new(0, 0.5, 0)), Color = PC.PAVER_DARK, Parent = hub }))
+	local pedestal = PropKit.studs(part({ Name = "ShrinePedestal", Size = Vector3.new(7, 2.4, 7), CFrame = CFrame.new(shrineAt + Vector3.new(0, 2.2, 0)), Color = Color3.fromRGB(240, 196, 50), Parent = hub }))
+	decor({ Name = "PedestalGlow", Size = Vector3.new(7.4, 0.4, 7.4), CFrame = CFrame.new(shrineAt + Vector3.new(0, 3.2, 0)), Color = Color3.fromRGB(255, 230, 140), Material = Enum.Material.Neon, Parent = hub })
+	local shrineEgg = K.eggShape(hub, "ShrineEgg", CFrame.new(shrineAt + Vector3.new(0, 7, 0)), Vector3.new(5, 7, 5), Color3.fromRGB(236, 244, 255))
+	for i = 1, 6 do
+		local a = i * math.pi * 2 / 6
+		K.eggShape(hub, "EggSpot", CFrame.new(shrineAt + Vector3.new(math.cos(a) * 2.35, 6.4 + (i % 2) * 1.8, math.sin(a) * 2.35)), Vector3.new(0.9, 1.1, 0.9), Color3.fromRGB(70, 170, 230))
+	end
+	light(shrineEgg, Color3.fromRGB(200, 230, 255), 14, 0.8)
+	K.prompt(pedestal, "Odds & Buy", "Tide Egg Shrine", { Panel = "Odds" })
+	K.billboard(shrineEgg, "TIDE EGGS", "Odds and pity", 6)
+	reserve(v(-24, 12), 7)
+	reserve(v(-42, 16), 11)
+
+	-- the HATCHERY (a red framed shop) and the incubator in front of it: a studded crate of straw under a heat lamp
+	PropKit.frameShop(hub, at(v(-42, -16), TOP), at(plaza, TOP), 15, 11, 11, "HATCHERY", PC.NEON_RED)
+	local incAt = at(v(-24, -12), TOP)
+	local incubator = PropKit.studs(part({ Name = "IncubatorBase", Size = Vector3.new(8, 2, 8), CFrame = CFrame.new(incAt + Vector3.new(0, 1, 0)), Color = PC.WOOD, Parent = hub }))
+	decor({ Name = "Straw", Size = Vector3.new(6.6, 0.6, 6.6), CFrame = CFrame.new(incAt + Vector3.new(0, 2.2, 0)), Color = Color3.fromRGB(232, 200, 110), Parent = hub })
+	for _, x in ipairs({ -3.6, 3.6 }) do
+		for _, z in ipairs({ -3.6, 3.6 }) do
+			PropKit.studs(decor({ Name = "IncubatorPost", Size = Vector3.new(0.9, 6.5, 0.9), CFrame = CFrame.new(incAt + Vector3.new(x, 4.25, z)), Color = PC.WOOD_DARK, Parent = hub }))
+		end
+	end
+	PropKit.studs(decor({ Name = "IncubatorRoof", Size = Vector3.new(9.4, 0.8, 9.4), CFrame = CFrame.new(incAt + Vector3.new(0, 7.8, 0)), Color = PC.NEON_RED, Parent = hub }))
+	PropKit.studs(decor({ Name = "IncubatorSnow", Size = Vector3.new(9, 0.5, 9), CFrame = CFrame.new(incAt + Vector3.new(0, 8.4, 0)), Color = PC.SNOW, Parent = hub }))
+	local heat = decor({ Name = "HeatLamp", Size = Vector3.new(1.6, 0.8, 1.6), CFrame = CFrame.new(incAt + Vector3.new(0, 7, 0)), Color = Color3.fromRGB(255, 150, 70), Material = Enum.Material.Neon, Parent = hub })
+	light(heat, Color3.fromRGB(255, 150, 80), 14, 1.4)
+	K.eggShape(hub, "IncubatingEgg", CFrame.new(incAt + Vector3.new(0, 4, 0)), Vector3.new(2.6, 3.4, 2.6), Color3.fromRGB(248, 236, 210))
+	K.prompt(incubator, "Hatch Eggs", "Incubator", { Panel = "Odds" })
+	K.billboard(incubator, "INCUBATOR", "Hatch your eggs", 9)
+	reserve(v(-24, -12), 7)
+	reserve(v(-42, -16), 11)
+
+	-- the tackle stall (Old Harl stands behind its counter) with rods on a rack beside it
+	local stallCf, stall = PropKit.stripedStall(hub, at(v(18, -32), TOP), at(plaza, TOP), Color3.fromRGB(220, 60, 60), PC.WHITE)
+	local counter = stall:FindFirstChild("Counter")
+	if counter then
+		K.prompt(counter, "Rods & Bait", "Tackle Shop", { Panel = "Tackle" })
+	end
+	local sign = decor({ Name = "TackleSign", Size = Vector3.new(10, 2.2, 0.4), CFrame = stallCf * CFrame.new(0, 10.4, -2.6), Color = Color3.fromRGB(30, 24, 40), Parent = hub })
+	surfaceText(sign, "TACKLE SHOP!", Color3.fromRGB(110, 236, 255))
+	local rodColors = { Color3.fromRGB(150, 100, 60), Color3.fromRGB(230, 90, 100), Color3.fromRGB(80, 120, 230), Color3.fromRGB(255, 200, 70), Color3.fromRGB(160, 90, 230) }
+	for i, color in ipairs(rodColors) do
+		decor({ Name = "RackRod", Size = Vector3.new(0.35, 7, 0.35), CFrame = stallCf * CFrame.new(6.4, 3.6, -1.6 + i * 0.7) * CFrame.Angles(0, 0, math.rad(10)), Color = color, Parent = hub })
+	end
+	PropKit.studs(decor({ Name = "Rack", Size = Vector3.new(1, 0.6, 4.2), CFrame = stallCf * CFrame.new(6.4, 1.2, 0.5), Color = PC.WOOD_DARK, Parent = hub }))
+	reserve(v(18, -32), 8)
+
+	-- the Nest beacon on a studded platform with a glowing ring
+	local beaconAt = at(v(26, 22), TOP)
+	K.voxelDisk(hub, "BeaconPlatform", v(26, 22), 5, TOP - 0.3, TOP + 1, PC.PAVER_DARK, 1)
+	local ring = decor({ Name = "BeaconRing", Size = Vector3.new(11, 0.2, 11), CFrame = CFrame.new(beaconAt + Vector3.new(0, 1.05, 0)), Color = Color3.fromRGB(90, 255, 200), Material = Enum.Material.Neon, Transparency = 0.6, Parent = hub })
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.2, 11, 11)
+	ring.CFrame = CFrame.new(beaconAt + Vector3.new(0, 1.05, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	local beacon = part({ Name = "NestBeacon", Size = Vector3.new(2.6, 8, 2.6), CFrame = CFrame.new(beaconAt + Vector3.new(0, 5.5, 0)) * CFrame.Angles(0, math.rad(45), 0), Color = Color3.fromRGB(90, 255, 200), Material = Enum.Material.Neon, Transparency = 0.1, Parent = hub })
+	light(beacon, Color3.fromRGB(90, 255, 200), 16, 1.2)
+	K.prompt(beacon, "Extract", "Nest Beacon", { Action = "Extract" }, 1, 12)
+	K.billboard(beacon, "EXTRACT", "Bank your haul", 6)
+	reserve(v(26, 22), 7)
+
+	-- log cabins on the four corners
+	for _, spec in ipairs({ { v(40, 34), v(40, 0) }, { v(40, -34), v(40, 0) }, { v(-36, 42), v(-36, 0) }, { v(-36, -42), v(-36, 0) } }) do
+		PropKit.logCabin(hub, at(spec[1], TOP), at(spec[2], TOP), 13, 10, 9, rng)
+		reserve(spec[1], 10)
+	end
+	-- lamps, benches round the fountain, pines and crystals in the corners, snow mounds
+	for _, p in ipairs({ v(14, 18), v(-12, 30), v(32, -18), v(8, -42), v(-14, -40), v(30, 44) }) do
+		if free(p, 1.5) then
+			PropKit.gallowsLamp(hub, at(p, TOP), at(plaza, TOP))
+			reserve(p, 2)
+		end
+	end
+	for i = 0, 3 do
+		local a = math.rad(i * 90 + 45)
+		local p = v(math.cos(a) * 17, math.sin(a) * 17)
+		if free(p, 2) then
+			local cf = CFrame.lookAt(at(p, TOP), at(plaza, TOP))
+			PropKit.studs(decor({ Name = "BenchSeat", Size = Vector3.new(4, 0.5, 1.4), CFrame = cf * CFrame.new(0, 1.3, 0), Color = PC.WOOD, Parent = hub }))
+			decor({ Name = "BenchBack", Size = Vector3.new(4, 1.4, 0.4), CFrame = cf * CFrame.new(0, 2.2, 0.6), Color = PC.WOOD, Parent = hub })
+			for _, x in ipairs({ -1.6, 1.6 }) do
+				decor({ Name = "BenchLeg", Size = Vector3.new(0.4, 1.1, 1.2), CFrame = cf * CFrame.new(x, 0.55, 0), Color = PC.WOOD_DARK, Parent = hub })
+			end
+			reserve(p, 2.5)
+		end
+	end
+	for _, p in ipairs({ v(48, 48), v(-48, 48), v(48, -48), v(-48, -48), v(50, 12), v(-50, 8) }) do
+		if free(p, 3) then
+			K.pineTree(hub, at(p, TOP), rng:NextNumber(1.2, 1.5))
+			PropKit.snowMound(hub, at(p + v(3, 2), TOP), rng, 0.9)
+			reserve(p, 3)
+		end
+	end
+	for _, p in ipairs({ v(-8, 46), v(46, -6), v(-46, -6) }) do
+		if free(p, 3) then
+			PropKit.iceCrystal(hub, at(p, TOP), rng, 1.2)
+			reserve(p, 3)
+		end
+	end
+end
+
 -- Snow-capped voxel ice mountains rising out of the sea beyond the town (outside the play area), with glowing
 -- crystals on their ledges, so the hub sits in a valley the way the references' towns do.
 local function buildBackdrop(parent, rng)
@@ -1064,6 +1116,7 @@ local function build(root)
 	streets.Name = "Streets"
 	streets.Parent = root
 	buildStreets(streets)
+	buildHub(root, rng)
 	buildWinter(root, rng)
 	buildHouses(root, rng)
 	buildGreenery(root, rng)

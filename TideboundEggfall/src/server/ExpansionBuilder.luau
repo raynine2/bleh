@@ -9,11 +9,12 @@ local CollectionService = game:GetService("CollectionService")
 
 local WorldBuilder = require(script.Parent:WaitForChild("WorldBuilder"))
 local PlotLayout = require(script.Parent:WaitForChild("PlotLayout"))
+local PropKit = require(script.Parent:WaitForChild("PropKit"))
 local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("Tidebound"):WaitForChild("Config"))
 
 local ExpansionBuilder = {}
 
-local VERSION = 6
+local VERSION = 7
 
 local K = WorldBuilder.kit
 local P = K.color
@@ -210,7 +211,8 @@ local function buildHarbor(root)
 
 	-- Leaderboard Hall (Archivist Ophel): REF 5 timber house with a big REF 4 red neon board in front
 	local hallAt = onRing(-45, stationR + 8)
-	local hallCf = K.timberHouse(harbor, hallAt, HUB, 16, 10, 12, P.ROOF_SLATE)
+	-- Patch 15: the reference town's red framed shop
+	local hallCf = PropKit.frameShop(harbor, hallAt, HUB, 16, 10, 12, "LEADERBOARD HALL", NEON_RED)
 	local boardCf = hallCf * CFrame.new(0, 0, -9)
 	for _, x in ipairs({ -6.5, 6.5 }) do
 		part({ Name = "HallBoardPost", Size = Vector3.new(0.8, 12, 0.8), CFrame = boardCf * CFrame.new(x, 6, 0), Color = Color3.fromRGB(30, 20, 34), Parent = harbor })
@@ -232,19 +234,20 @@ local function buildHarbor(root)
 		boardLabel.TextWrapped = true
 		boardLabel.TextYAlignment = Enum.TextYAlignment.Top
 	end
-	neonSign(harbor, hallCf * CFrame.new(0, 13.5, -5.4), 12, 2.4, "LEADERBOARD HALL", NEON_RED)
 	prompt(hallBoard, "Boards", "Leaderboard Hall", { Panel = "BOARDS" }, 0, 14)
 	npc(harbor, "ArchivistOphel", boardCf * CFrame.new(9, 0, -1), "person", Color3.fromRGB(70, 60, 120), Color3.fromRGB(40, 30, 70))
 
 	-- Bait Shop (Nim): the REF 3 striped awning stall
-	local baitCf, baitCounter = K.awningStall(harbor, onRing(-90, stationR), HUB, "BAIT SHOP!", "WORMS & MITES")
-	baitCounter.Parent.Name = "BaitShop"
+	local baitCf, baitStall = PropKit.stripedStall(harbor, onRing(-90, stationR), HUB, Color3.fromRGB(70, 180, 90), PropKit.color.WHITE)
+	baitStall.Name = "BaitShop"
+	local baitCounter = baitStall:FindFirstChild("Counter")
+	local baitSign = decor({ Name = "BaitSign", Size = Vector3.new(10, 2.2, 0.4), CFrame = baitCf * CFrame.new(0, 10.4, -2.6), Color = SIGN_DARK, Parent = harbor })
+	surfaceText(baitSign, "BAIT SHOP!", Color3.fromRGB(140, 255, 140))
 	prompt(baitCounter, "Bait", "Bait Shop", { Panel = "BAIT" }, 0, 12)
 	npc(harbor, "Nim", baitCf * CFrame.new(-4, 0.6, 1.2), "person", Color3.fromRGB(120, 200, 90), Color3.fromRGB(230, 200, 70))
 
 	-- Trading Post (Tradesman Kobb)
-	local tradeCf = K.timberHouse(harbor, onRing(-135, stationR + 6), HUB, 14, 10, 10, P.ROOF_ORANGE)
-	neonSign(harbor, tradeCf * CFrame.new(0, 11.8, -5.4), 11, 2.2, "TRADING POST", Color3.fromRGB(255, 200, 80))
+	local tradeCf = PropKit.glassShop(harbor, onRing(-135, stationR + 6), HUB, 14, 10, 10, "TRADING POST", Color3.fromRGB(240, 196, 50))
 	K.crate(harbor, tradeCf * CFrame.new(-6, 1.3, -7))
 	K.crate(harbor, tradeCf * CFrame.new(-6, 3.9, -7) * CFrame.Angles(0, 0.5, 0))
 	npc(harbor, "TradesmanKobb", tradeCf * CFrame.new(3, 0, -8), "person", Color3.fromRGB(150, 104, 68), Color3.fromRGB(96, 64, 46))

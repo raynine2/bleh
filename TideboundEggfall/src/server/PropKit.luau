@@ -368,7 +368,55 @@ function PropKit.stripedStall(parent, center, facing, colorA, colorB)
 	for i = 1, 6 do
 		decor({ Name = "Goods", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 1, 1), CFrame = cf * CFrame.new(-3.4 + i * 1.1, 3.5, -1.4), Color = goods[(i % #goods) + 1], Material = Enum.Material.Neon, Parent = model })
 	end
-	return cf
+	return cf, model
+end
+
+-- The reference's glass shop (the big "SELL" building): a thick studded frame in a bright colour round glass
+-- walls, a glowing floor inside, a display plinth with something on it, a slanted roof sign with huge letters.
+function PropKit.glassShop(parent, center, facing, w, d, h, title, frameColor)
+	local cf = look(center, facing)
+	local model = Instance.new("Model")
+	model.Name = "GlassShop"
+	model.Parent = parent
+	local frame = frameColor or Color3.fromRGB(240, 196, 50)
+	local dark = Color3.fromRGB(60, 64, 78)
+	sbrick({ Name = "Base", Size = Vector3.new(w + 2, 1.2, d + 2), CFrame = cf * CFrame.new(0, 0.6, 0), Color = dark, Parent = model })
+	decor({ Name = "GlowFloor", Size = Vector3.new(w - 1, 0.2, d - 1), CFrame = cf * CFrame.new(0, 1.3, 0), Color = Color3.fromRGB(120, 220, 255), Material = Enum.Material.Neon, Transparency = 0.4, Parent = model })
+	-- the frame: corner columns, top and bottom beams on every side
+	for _, x in ipairs({ -w / 2, w / 2 }) do
+		for _, z in ipairs({ -d / 2, d / 2 }) do
+			sbrick({ Name = "Column", Size = Vector3.new(1.6, h, 1.6), CFrame = cf * CFrame.new(x, 1.2 + h / 2, z), Color = frame, Parent = model })
+		end
+	end
+	for _, y in ipairs({ 1.2 + 0.5, 1.2 + h - 0.6 }) do
+		for _, z in ipairs({ -d / 2, d / 2 }) do
+			sbrick({ Name = "Beam", Size = Vector3.new(w + 1.6, 1.2, 1.4), CFrame = cf * CFrame.new(0, y, z), Color = frame, Parent = model })
+		end
+		for _, x in ipairs({ -w / 2, w / 2 }) do
+			sbrick({ Name = "Beam", Size = Vector3.new(1.4, 1.2, d + 1.6), CFrame = cf * CFrame.new(x, y, 0), Color = frame, Parent = model })
+		end
+	end
+	-- glass walls with mullions; the front has a doorway in the middle
+	for _, spec in ipairs({ { 0, d / 2, w, 0 }, { -w / 2, 0, d, 90 }, { w / 2, 0, d, 90 } }) do
+		local at = cf * CFrame.new(spec[1], 1.2 + h / 2, spec[2]) * CFrame.Angles(0, math.rad(spec[4]), 0)
+		part({ Name = "Glass", Size = Vector3.new(spec[3] - 1.6, h - 2.4, 0.3), CFrame = at, Color = Color3.fromRGB(150, 220, 245), Material = Enum.Material.Glass, Transparency = 0.55, Parent = model })
+	end
+	for _, side in ipairs({ -1, 1 }) do
+		part({ Name = "FrontGlass", Size = Vector3.new(w / 2 - 3.2, h - 2.4, 0.3), CFrame = cf * CFrame.new(side * (w / 4 + 1.2), 1.2 + h / 2, -d / 2), Color = Color3.fromRGB(150, 220, 245), Material = Enum.Material.Glass, Transparency = 0.55, Parent = model })
+		sdecor({ Name = "Mullion", Size = Vector3.new(0.6, h - 2.4, 0.6), CFrame = cf * CFrame.new(side * 2.4, 1.2 + h / 2, -d / 2), Color = frame, Parent = model })
+	end
+	-- the roof slab and the slanted sign on top with huge letters
+	sbrick({ Name = "Roof", Size = Vector3.new(w + 2, 1, d + 2), CFrame = cf * CFrame.new(0, 1.2 + h + 0.5, 0), Color = dark, Parent = model })
+	local signCf = cf * CFrame.new(0, 1.2 + h + 4.5, -d / 4) * CFrame.Angles(math.rad(-15), 0, 0)
+	local sign = sdecor({ Name = "RoofSign", Size = Vector3.new(w + 1, 6, 1), CFrame = signCf, Color = frame:Lerp(Color3.new(0, 0, 0), 0.25), Parent = model })
+	decor({ Name = "SignFace", Size = Vector3.new(w - 0.6, 4.8, 0.4), CFrame = signCf * CFrame.new(0, 0, -0.55), Color = Color3.fromRGB(30, 30, 44), Parent = model })
+	surfaceText(model:FindFirstChild("SignFace"), title, frame:Lerp(Color3.new(1, 1, 1), 0.2))
+	light(sign, frame, 20, 1)
+	for _, x in ipairs({ -w / 3, w / 3 }) do
+		decor({ Name = "SignLeg", Size = Vector3.new(0.8, 4, 0.8), CFrame = cf * CFrame.new(x, 1.2 + h + 2.4, -d / 4 + 0.6), Color = dark, Parent = model })
+	end
+	light(model:FindFirstChild("GlowFloor"), Color3.fromRGB(120, 220, 255), 18, 1)
+	return cf, model
 end
 
 -- Nature --------------------------------------------------------------------------------------------------------

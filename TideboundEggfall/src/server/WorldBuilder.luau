@@ -11,7 +11,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local WorldBuilder = {}
 
-local VERSION = 13
+local VERSION = 14
 
 -- REF 1 palette
 -- Patch 12: the snow is a soft blue-grey, not paper white, so it doesn't glare
@@ -805,153 +805,25 @@ local function toriiGate(parent, at, span, height)
 	end
 end
 
+-- Patch 15: the hub plaza (the egg shop, incubator, tackle stall, Nest beacon and everything round them) is
+-- TownBuilder's now, built from the reference-style PropKit. This only keeps the Nest folder and the spawn.
 local function buildNest(world)
 	local nest = Instance.new("Folder")
 	nest.Name = "Nest"
 	nest.Parent = world
-	local rng = Random.new(42)
-	local plaza = Vector3.new(0, TOP, 0)
-
-	-- the ground under the plaza is the town island's (TownBuilder)
-
-	-- fountain: grey stone basin wall, gold rim, blue water, square tan monument in the middle
-	disk(nest, "FountainWall", plaza + Vector3.new(0, 1.3, 0), 9, 2.6, STONE)
-	disk(nest, "FountainRim", plaza + Vector3.new(0, 2.8, 0), 9.2, 0.5, GOLD)
-	local water = disk(nest, "FountainWater", plaza + Vector3.new(0, 1.9, 0), 8, 2.4, FOUNTAIN_BLUE)
-	water.CanCollide = false
-	water.Transparency = 0.05
-	part({ Name = "MonumentBase", Size = Vector3.new(6, 1.6, 6), CFrame = CFrame.new(plaza + Vector3.new(0, 3.2, 0)), Color = TAN, Parent = nest })
-	part({ Name = "MonumentPlinth", Size = Vector3.new(4, 1.2, 4), CFrame = CFrame.new(plaza + Vector3.new(0, 4.6, 0)), Color = GOLD, Parent = nest })
-	part({ Name = "MonumentColumn", Size = Vector3.new(2.6, 6, 2.6), CFrame = CFrame.new(plaza + Vector3.new(0, 8.2, 0)), Color = STONE, Parent = nest })
-	part({ Name = "MonumentCollar", Size = Vector3.new(3.2, 0.8, 3.2), CFrame = CFrame.new(plaza + Vector3.new(0, 11.6, 0)), Color = TAN, Parent = nest })
-	part({ Name = "MonumentCap", Size = Vector3.new(2.2, 2, 2.2), CFrame = CFrame.new(plaza + Vector3.new(0, 13, 0)), Color = STONE, Parent = nest })
-	part({ Name = "MonumentTop", Size = Vector3.new(1, 1.2, 1), CFrame = CFrame.new(plaza + Vector3.new(0, 14.6, 0)), Color = GOLD, Parent = nest })
-	particles(water, {
-		Color = ColorSequence.new(Color3.fromRGB(210, 240, 255)),
-		Rate = 12,
-		Lifetime = NumberRange.new(0.6, 0.9),
-		Speed = NumberRange.new(2, 4),
-		SpreadAngle = Vector2.new(60, 60),
-		Acceleration = Vector3.new(0, -12, 0),
-		Size = NumberSequence.new(0.3, 0.1),
-		Transparency = NumberSequence.new(0.3, 1),
-		EmissionDirection = Enum.NormalId.Right,
-	})
-	for i = 1, 4 do
-		local angle = math.rad(45 + i * 90)
-		local at = plaza + Vector3.new(math.cos(angle) * 9.4, 0, math.sin(angle) * 9.4)
-		part({ Name = "FinialPillar", Size = Vector3.new(2.2, 4.4, 2.2), CFrame = CFrame.new(at + Vector3.new(0, 2.2, 0)), Color = STONE, Parent = nest })
-		part({ Name = "FinialBall", Shape = Enum.PartType.Ball, Size = Vector3.new(2.2, 2.2, 2.2), CFrame = CFrame.new(at + Vector3.new(0, 5.5, 0)), Color = STONE, Parent = nest })
-	end
-
-	-- separate wooden plank steps leading out of the plaza
-	plankSteps(nest, Vector3.new(12, 0, 0), Vector3.new(46, 0, 0), 6)
-	plankSteps(nest, Vector3.new(-11, 0, 5), Vector3.new(-20, 0, 9), 5)
-	plankSteps(nest, Vector3.new(-11, 0, -5), Vector3.new(-20, 0, -9), 5)
-	plankSteps(nest, Vector3.new(5, 0, -11), Vector3.new(13, 0, -22), 5)
-	plankSteps(nest, Vector3.new(8, 0, 9), Vector3.new(21, 0, 19), 5)
-	plankSteps(nest, Vector3.new(0, 0, -12), Vector3.new(0, 0, -20), 5)
-
 	local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
 	if spawn then
 		spawn.Size = Vector3.new(8, 0.4, 8)
-		spawn.CFrame = CFrame.new(0, TOP + 0.2, -24)
-		spawn.Color = SNOW_GROUND
-		spawn.Material = Enum.Material.SmoothPlastic
+		spawn.CFrame = CFrame.new(0, TOP + 0.4, -24)
+		spawn.Color = Color3.fromRGB(150, 162, 186)
+		spawn.Material = Enum.Material.Plastic
+		spawn.TopSurface = Enum.SurfaceType.Studs
 		for _, child in ipairs(spawn:GetChildren()) do
 			if child:IsA("Decal") then
 				child.Transparency = 1
 			end
 		end
 	end
-
-	-- Tide Egg shrine: REF 3 storefront behind a stone pedestal with the big spotted egg
-	neonStorefront(nest, Vector3.new(-40, TOP, 14), plaza, "TIDE EGGS", Color3.fromRGB(255, 90, 110), Color3.fromRGB(255, 50, 80))
-	local shrineAt = Vector3.new(-24, TOP, 12)
-	part({ Name = "ShrineStep", Size = Vector3.new(10, 1, 10), CFrame = CFrame.new(shrineAt + Vector3.new(0, 0.5, 0)), Color = STONE, Parent = nest })
-	local pedestal = part({ Name = "ShrinePedestal", Size = Vector3.new(7, 2, 7), CFrame = CFrame.new(shrineAt + Vector3.new(0, 2, 0)), Color = TAN, Parent = nest })
-	local shrineEgg = eggShape(nest, "ShrineEgg", CFrame.new(shrineAt + Vector3.new(0, 6.6, 0)), Vector3.new(5, 7, 5), Color3.fromRGB(250, 246, 236))
-	for i = 1, 5 do
-		local angle = i * math.pi * 2 / 5
-		eggShape(nest, "EggSpot", CFrame.new(shrineAt + Vector3.new(math.cos(angle) * 2.35, 6.2 + (i % 2) * 1.6, math.sin(angle) * 2.35)), Vector3.new(0.9, 1.1, 0.9), FOUNTAIN_BLUE)
-	end
-	prompt(pedestal, "Odds & Buy", "Tide Egg Shrine", { Panel = "Odds" })
-	billboard(shrineEgg, "TIDE EGGS", "Odds and pity", 6)
-
-	-- Incubator: wooden frame with straw and an egg, in front of the REF 1 grey house
-	greyHouse(nest, Vector3.new(-40, TOP, -16), plaza)
-	local incAt = Vector3.new(-24, TOP, -12)
-	local incubatorBase = part({ Name = "IncubatorBase", Size = Vector3.new(8, 2, 8), CFrame = CFrame.new(incAt + Vector3.new(0, 1, 0)), Color = PLANK, Parent = nest })
-	decor({ Name = "Straw", Size = Vector3.new(6.6, 0.6, 6.6), CFrame = CFrame.new(incAt + Vector3.new(0, 2.2, 0)), Color = Color3.fromRGB(232, 200, 110), Parent = nest })
-	for _, x in ipairs({ -3.6, 3.6 }) do
-		for _, z in ipairs({ -3.6, 3.6 }) do
-			decor({ Name = "IncubatorPost", Size = Vector3.new(0.8, 6, 0.8), CFrame = CFrame.new(incAt + Vector3.new(x, 4, z)), Color = LAMP_WOOD, Parent = nest })
-		end
-	end
-	decor({ Name = "IncubatorRoof", Size = Vector3.new(9, 0.8, 9), CFrame = CFrame.new(incAt + Vector3.new(0, 7.4, 0)), Color = SNOW_CAP, Parent = nest })
-	eggShape(nest, "IncubatingEgg", CFrame.new(incAt + Vector3.new(0, 4, 0)), Vector3.new(2.6, 3.4, 2.6), Color3.fromRGB(248, 236, 210))
-	prompt(incubatorBase, "Hatch Eggs", "Incubator", { Panel = "Odds" })
-	billboard(incubatorBase, "INCUBATOR", "Hatch your eggs", 9)
-
-	-- Tackle shop: REF 3 striped awning stall
-	local _, counter = awningStall(nest, Vector3.new(18, TOP, -32), plaza, "TACKLE SHOP!", "RODS & BAIT")
-	prompt(counter, "Rods & Bait", "Tackle Shop", { Panel = "Tackle" })
-	crate(nest, CFrame.new(29, TOP + 1.3, -22) * CFrame.Angles(0, 0.3, 0))
-	crate(nest, CFrame.new(29.4, TOP + 3.9, -22.2) * CFrame.Angles(0, 0.7, 0))
-
-	-- Nest beacon: stone base with a crystal (the server recolours it when beacons close)
-	part({ Name = "NestBeaconBase", Size = Vector3.new(6, 1.5, 6), CFrame = CFrame.new(26, TOP + 0.75, 22), Color = STONE, Parent = nest })
-	local nestBeacon = part({ Name = "NestBeacon", Size = Vector3.new(2.6, 8, 2.6), CFrame = CFrame.new(26, TOP + 5.5, 22) * CFrame.Angles(0, math.rad(45), 0), Color = BEACON, Transparency = 0.1, Parent = nest })
-	prompt(nestBeacon, "Extract", "Nest Beacon", { Action = "Extract" }, 1, 12)
-	billboard(nestBeacon, "EXTRACT", "Bank your haul", 6)
-
-	-- REF 5: timber houses lining the walk to Harbor Street, and the torii gate with paper lanterns
-	timberHouse(nest, Vector3.new(36, TOP, 18), Vector3.new(36, TOP, 0), 11, 9, 9, ROOF_ORANGE)
-	timberHouse(nest, Vector3.new(36, TOP, -18), Vector3.new(36, TOP, 0), 11, 9, 9, ROOF_SLATE)
-	timberHouse(nest, Vector3.new(38, TOP, 32), Vector3.new(38, TOP, 0), 10, 8, 12, ROOF_ORANGE)
-	timberHouse(nest, Vector3.new(38, TOP, -32), Vector3.new(38, TOP, 0), 10, 8, 12, ROOF_ORANGE)
-	toriiGate(nest, Vector3.new(47, TOP, 0), 11, 16)
-
-	for _, at in ipairs({ Vector3.new(13, TOP, 7), Vector3.new(13, TOP, -7), Vector3.new(-13, TOP, 16), Vector3.new(-13, TOP, -16), Vector3.new(30, TOP, 5), Vector3.new(44, TOP, -5), Vector3.new(6, TOP, -28), Vector3.new(-6, TOP, 26) }) do
-		lampPost(nest, at, plaza)
-	end
-	crate(nest, CFrame.new(44, TOP + 1.3, 8))
-	crate(nest, CFrame.new(41.5, TOP + 1.3, 9.6) * CFrame.Angles(0, 0.5, 0))
-	crate(nest, CFrame.new(-8, TOP + 1.3, -32))
-
-	for _, at in ipairs({ Vector3.new(-40, TOP, -34), Vector3.new(26, TOP, 42), Vector3.new(-36, TOP, 34), Vector3.new(46, TOP, -44), Vector3.new(4, TOP, 38) }) do
-		voxelTree(nest, at, rng, 1.2)
-	end
-	for _, at in ipairs({ Vector3.new(-40, TOP, 2), Vector3.new(-26, TOP, 40), Vector3.new(20, TOP, 42), Vector3.new(-14, TOP, -40) }) do
-		pineTree(nest, at, 1.1)
-	end
-	for _, at in ipairs({ Vector3.new(-30, TOP, 36), Vector3.new(12, TOP, 30) }) do
-		for i = 1, 3 do
-			part({ Name = "StoneBlock", Size = Vector3.new(2.4, 2.4, 2.4), CFrame = CFrame.new(at + Vector3.new(i * 2.2 - 4, 1.2 + (i == 2 and 2.4 or 0), (i % 2) * 1.5)), Color = COBBLE, Material = Enum.Material.Cobblestone, Parent = nest })
-		end
-	end
-	for _ = 1, 16 do
-		local at = Vector3.new(rng:NextNumber(-44, 44), TOP, rng:NextNumber(-44, 44))
-		if at.Magnitude > 14 and math.abs(at.Z) > 5 then
-			flowerTuft(nest, at, rng)
-		end
-	end
-
-	-- light snow drifting over the hub
-	local snow = decor({ Name = "SnowEmitter", Size = Vector3.new(130, 1, 130), CFrame = CFrame.new(-10, 70, 0), Transparency = 1, Parent = nest })
-	particles(snow, {
-		Color = ColorSequence.new(Color3.new(1, 1, 1)),
-		Rate = 40,
-		Lifetime = NumberRange.new(14, 18),
-		Speed = NumberRange.new(3, 5),
-		Size = NumberSequence.new(0.25),
-		Transparency = NumberSequence.new(0.1),
-		EmissionDirection = Enum.NormalId.Bottom,
-		SpreadAngle = Vector2.new(10, 10),
-		Drag = 0.3,
-		WindAffectsDrag = true,
-	})
-
 end
 
 -- Sunken Shoals (REF 2) ----------------------------------------------------------------------
