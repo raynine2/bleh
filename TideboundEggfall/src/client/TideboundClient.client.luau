@@ -2100,7 +2100,18 @@ do
 	local sprintBlend = 0
 	local dashStart, dashReadyAt, dashDir = 0, 0, Vector3.new(0, 0, -1)
 	local dashMover = nil
-	local dashEvent = Shared:WaitForChild("Remotes"):WaitForChild("Dash")
+	-- found without waiting, so a server that hasn't got it yet never holds up the rest of this script
+	local dashEvent: RemoteEvent? = Remotes:FindFirstChild("Dash") :: RemoteEvent?
+	if not dashEvent then
+		task.spawn(function()
+			dashEvent = Remotes:WaitForChild("Dash") :: RemoteEvent
+		end)
+	end
+	local function tellServer(what, value)
+		if dashEvent then
+			dashEvent:FireServer(what, value)
+		end
+	end
 
 	-- the stamina bar: a slim pill at the bottom of the screen that only shows while it isn't full
 	local staminaBar = new("Frame", { Name = "Stamina", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -26), Size = UDim2.new(0, 230, 0, 12), BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.25, Visible = false, Parent = gui }, {
@@ -2113,6 +2124,7 @@ do
 	})
 	local staminaIcon = new("TextLabel", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0), Size = UDim2.new(0, 20, 0, 20), Text = "⚡", TextScaled = true, Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(255, 230, 90), Parent = staminaBar })
 	local staminaShownAt = 0
+	local staminaWarned = false
 
 	local function canMove(humanoid)
 		return state and humanoid.Health > 0 and workspace:GetServerTimeNow() >= state.stunUntil and not FishingFeel.frozen and not MotionBus.cutscene and FishingFeel.phase == "" and not humanoid.Sit
@@ -2147,7 +2159,7 @@ do
 		local kind = math.random(1, 3)
 		MotionBus.dash[character] = { start = now, kind = kind }
 		MotionBus.kick = { at = now, amount = ST.dashFov, length = 0.45 }
-		dashEvent:FireServer("dash", kind)
+		tellServer("dash", kind)
 		-- the push: a horizontal velocity that eases from the burst back down to your run (gravity still acts)
 		local attachment = root:FindFirstChild("DashAttachment") or new("Attachment", { Name = "DashAttachment", Parent = root })
 		if dashMover then
@@ -2195,7 +2207,7 @@ do
 			dashMover:Destroy()
 			dashMover = nil
 		end
-		dashEvent:FireServer("tired", false)
+		tellServer("tired", false)
 	end)
 
 	-- stamina drains while you sprint, refills after a short rest (faster standing still)
@@ -2209,14 +2221,14 @@ do
 			if stamina <= 0 then
 				winded = true
 				MotionBus.tired[humanoid.Parent] = true
-				dashEvent:FireServer("tired", true)
+				tellServer("tired", true)
 			end
 		elseif now - lastDrain > ST.regenDelay then
 			stamina = math.min(ST.max, stamina + ST.regen * (moving and 1 or ST.regenStill) * dt)
 			if winded and stamina >= ST.recoverAt then
 				winded = false
 				MotionBus.tired[humanoid.Parent] = nil
-				dashEvent:FireServer("tired", false)
+				tellServer("tired", false)
 			end
 		end
 		-- the bar
@@ -2243,7 +2255,14 @@ do
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 		if humanoid and root and state then
-			local sprinting = updateStamina(dt, humanoid, sprintHeld or sprintToggle)
+			local wantSprint = sprintHeld or sprintToggle
+			local ok, result = pcall(updateStamina, dt, humanoid, wantSprint)
+			if not ok and not staminaWarned then
+				staminaWarned = true
+				warn("[Tidebound] stamina:", result)
+			end
+			-- if stamina ever breaks, sprinting still works
+			local sprinting = if ok then result else wantSprint and humanoid.MoveDirection.Magnitude > 0.1
 			-- Patch 18: the sprint eases in and out instead of snapping
 			sprintBlend += ((sprinting and 1 or 0) - sprintBlend) * math.min(1, dt * (sprinting and ST.sprintEase or ST.sprintEase * 1.6))
 			local speed = state.walkSpeed + Config.Risk.sprintBonus * sprintBlend

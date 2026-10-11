@@ -43,18 +43,10 @@ local Rods = require(script.Parent:WaitForChild("Rods"))
 local DescentBuilder = require(script.Parent:WaitForChild("DescentBuilder"))
 local TownBuilder = require(script.Parent:WaitForChild("TownBuilder"))
 local ShoalsBuilder = require(script.Parent:WaitForChild("ShoalsBuilder"))
-local HorizonBuilder = require(script.Parent:WaitForChild("HorizonBuilder"))
 local Mobs = require(script.Parent:WaitForChild("Mobs"))
 local CollectionService = game:GetService("CollectionService")
 
-local world = WorldBuilder.build()
-TownBuilder.build(world)
-local shoals = ShoalsBuilder.build(world)
-local delta = ExpansionBuilder.build(world)
-local descent = DescentBuilder.build(world)
-task.spawn(HorizonBuilder.build, world) -- Patch 17: the far sea and skyline (decoration only, so it builds alongside)
-local kelp = descent:WaitForChild("KelpCathedral")
-
+-- the remotes come first, so clients never wait on the world build (or on a builder that fails)
 local remotes = Shared:FindFirstChild("Remotes") or Instance.new("Folder")
 remotes.Name = "Remotes"
 remotes.Parent = Shared
@@ -75,6 +67,28 @@ local HazardEvent = remote("RemoteEvent", "Hazard")
 local CueEvent = remote("RemoteEvent", "Cue") -- feel cues (Delta Section 10): animations, camera, screen effects
 local SwipeEvent = remote("RemoteEvent", "Swipe") -- Patch 10: the client asks to swipe its rod
 local DashEvent = remote("RemoteEvent", "Dash") -- Patch 18: the client dashed (or got winded); everyone sees it
+
+local world = WorldBuilder.build()
+TownBuilder.build(world)
+local shoals = ShoalsBuilder.build(world)
+local delta = ExpansionBuilder.build(world)
+local descent = DescentBuilder.build(world)
+-- Patch 17: the far sea and skyline. Decoration only, so it builds alongside, and nothing waits on it or
+-- breaks if it fails.
+task.spawn(function()
+	local module = script.Parent:WaitForChild("HorizonBuilder", 15)
+	if not module then
+		warn("[Tidebound] HorizonBuilder is missing (is Rojo synced?): building without the horizon")
+		return
+	end
+	local ok, err = pcall(function()
+		require(module).build(world)
+	end)
+	if not ok then
+		warn("[Tidebound] The horizon failed to build:", err)
+	end
+end)
+local kelp = descent:WaitForChild("KelpCathedral")
 
 local R = Config.Risk
 local G = Config.Guardian
