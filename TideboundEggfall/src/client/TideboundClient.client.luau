@@ -353,28 +353,69 @@ sideButton(4, "blue", "HOME", "BASE", "🏠")
 local eggBadge = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -16, 0, -8), BackgroundColor3 = C.neon, ZIndex = 4, Parent = eggsButton }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(WHITE, 2) })
 local eggBadgeText = label({ Font = DISPLAY, TextSize = 14, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4, Parent = eggBadge })
 
--- Heat meter
-local heatFrame = neonPanel({ AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Size = UDim2.new(0.4, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y }, 6, true)
-heatFrame.Parent = gui
-padding(8).Parent = heatFrame
-new("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, Parent = heatFrame })
-new("UISizeConstraint", { MinSize = Vector2.new(260, 0), MaxSize = Vector2.new(420, math.huge), Parent = heatFrame })
-local heatTitle = label({ Font = DISPLAY, TextSize = 18, Size = UDim2.new(1, 0, 0, 20), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1, Parent = heatFrame })
-local heatTrack = new("Frame", { Size = UDim2.new(1, 0, 0, 14), BackgroundColor3 = Color3.fromRGB(40, 40, 44), LayoutOrder = 2, Parent = heatFrame }, { corner(4), stroke(Color3.fromRGB(120, 120, 126), 1.5) })
-local heatFill = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = WHITE, Parent = heatTrack }, { corner(4) })
-local heatGloss = gloss(TILE.blue.top, TILE.blue.bottom)
-heatGloss.Parent = heatFill
+-- Heat meter (Patch 17): a slim pill at the top that only appears on a dive or while something is at stake, with
+-- small chips under it for what matters right now (health, cargo, eggs, the guardian's phase, closed beacons...).
+-- The long explanations went: crossing a heat threshold already pops a toast.
+local heatFrame = new("Frame", { Name = "HeatHud", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 8), Size = UDim2.new(0, 340, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Visible = false, Parent = gui })
+new("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, Parent = heatFrame })
+local heatPill = new("Frame", { Name = "Pill", Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.25, LayoutOrder = 1, Parent = heatFrame }, { corner(17), new("UIStroke", { Color = WHITE, Thickness = 1.5, Transparency = 0.75 }) })
+label({ Text = "🔥", TextSize = 18, Size = UDim2.new(0, 26, 1, 0), Position = UDim2.new(0, 8, 0, 0), TextXAlignment = Enum.TextXAlignment.Center, Parent = heatPill })
+label({ Font = DISPLAY, Text = "HEAT", TextSize = 15, Size = UDim2.new(0, 44, 1, 0), Position = UDim2.new(0, 36, 0, 0), Parent = heatPill }, { textStroke(1) })
+local heatTrack = new("Frame", { Position = UDim2.new(0, 84, 0.5, -6), Size = UDim2.new(1, -134, 0, 12), BackgroundColor3 = Color3.fromRGB(44, 48, 64), Parent = heatPill }, { corner(6) })
+local heatFill = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(90, 190, 255), Parent = heatTrack }, { corner(6), new("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(190, 190, 200)) }) })
 for _, mark in ipairs({ 25, 50, 75 }) do
-	new("Frame", { Size = UDim2.new(0, 2, 1, 6), Position = UDim2.new(mark / 100, -1, 0, -3), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 2, Parent = heatTrack })
+	new("Frame", { Size = UDim2.new(0, 2, 1, 0), Position = UDim2.new(mark / 100, -1, 0, 0), BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.3, BorderSizePixel = 0, ZIndex = 2, Parent = heatTrack })
 end
-local heatInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 3, Parent = heatFrame }, { textStroke(1) })
-local haulInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 4, Parent = heatFrame }, { textStroke(1) })
--- Master Patches 1-3: health, guardian phase, dive mode, rod, carried heat and weather under the heat bar
-local riskInfo = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Font = DISPLAY, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 5, Parent = heatFrame }, { textStroke(1.5) })
-local lastHeatStyle = nil
+local heatValue = label({ Font = DISPLAY, TextSize = 18, Size = UDim2.new(0, 40, 1, 0), Position = UDim2.new(1, -46, 0, 0), TextXAlignment = Enum.TextXAlignment.Right, Parent = heatPill }, { textStroke(1) })
+local chipRow = new("Frame", { Name = "Chips", Size = UDim2.new(1, 120, 0, 24), BackgroundTransparency = 1, LayoutOrder = 2, Parent = heatFrame }, {
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Center, Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+})
+local chips = {}
+local function chip(id, order, text, color, visible)
+	local c = chips[id]
+	if not c then
+		c = new("Frame", { Name = id, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.25, LayoutOrder = order, Parent = chipRow }, {
+			corner(12),
+			new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }),
+		})
+		c:SetAttribute("Stroke", true)
+		new("UIStroke", { Color = WHITE, Thickness = 1.2, Transparency = 0.6, Parent = c })
+		label({ Name = "Text", Font = DISPLAY, TextSize = 14, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Parent = c }, { textStroke(1) })
+		chips[id] = c
+	end
+	c.Visible = visible ~= false
+	if c.Visible then
+		local t = c:FindFirstChild("Text")
+		t.Text = text
+		t.TextColor3 = color or C.text
+		c.UIStroke.Color = color or WHITE
+	end
+	return c
+end
+local heatShown = false
+local function showHeat(show)
+	if show == heatShown then
+		return
+	end
+	heatShown = show
+	if show then
+		heatFrame.Visible = true
+		heatFrame.Position = UDim2.new(0.5, 0, 0, -70)
+		TweenService:Create(heatFrame, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.new(0.5, 0, 0, 8) }):Play()
+	else
+		local tween = TweenService:Create(heatFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(0.5, 0, 0, -70) })
+		tween:Play()
+		tween.Completed:Connect(function()
+			if not heatShown then
+				heatFrame.Visible = false
+			end
+		end)
+	end
+end
+local HEAT_COLORS = { Color3.fromRGB(90, 190, 255), Color3.fromRGB(255, 200, 60), Color3.fromRGB(255, 120, 50), Color3.fromRGB(255, 60, 60) }
 local hudExtra = {}
 do
-	hudExtra.weather = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Font = DISPLAY, TextSize = 14, TextColor3 = Color3.fromRGB(150, 230, 255), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 6, Visible = false, Parent = heatFrame }, { textStroke(1.5) })
+	hudExtra.weather = label({ Size = UDim2.new(1, 60, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Font = DISPLAY, TextSize = 14, TextColor3 = Color3.fromRGB(150, 230, 255), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 3, Visible = false, Parent = heatFrame }, { textStroke(1.5) })
 	-- vial buttons under the currency pills: Mending during a dive, Revive whenever a companion is out
 	local vialRow = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 32), LayoutOrder = 6, Visible = false, Parent = hud })
 	hudExtra.vialRow = vialRow
@@ -410,63 +451,36 @@ local function refreshHUD()
 
 	local now = workspace:GetServerTimeNow()
 	local heat = state.heat
-	heatFill.Size = UDim2.new(heat / Config.Heat.max, 0, 1, 0)
-	local style = heat >= 75 and "red" or heat >= 25 and "gold" or "blue"
-	if style ~= lastHeatStyle then
-		lastHeatStyle = style
-		heatGloss.Color = ColorSequence.new(TILE[style].top, TILE[style].bottom)
-	end
-	heatTitle.Text = ("HEAT  %d / %d"):format(heat, Config.Heat.max)
-	local status = "Calm waters. Heat falls by 1 every 3s while you lie low."
-	for _, threshold in ipairs(Config.Heat.thresholds) do
-		if heat >= threshold.at then
-			status = threshold.label
-		end
-	end
 	local closed = state.beaconsClosedUntil - now
-	if closed > 0 then
-		status = ("Extraction beacons closed for %ds"):format(math.ceil(closed))
-		if state.graceUntil > now then
-			status ..= (" · beacon grace: extract within %ds"):format(math.ceil(state.graceUntil - now))
-		end
+	local atStake = state.carriedPearls > 0 or state.carriedEggs > 0 or state.bankedPearls > 0
+	showHeat(state.started or heat > 0 or atStake or state.health < state.maxHealth or state.locked or closed > 0)
+	TweenService:Create(heatFill, TweenInfo.new(0.3), { Size = UDim2.new(heat / Config.Heat.max, 0, 1, 0) }):Play()
+	local band = heat >= 100 and 4 or heat >= 75 and 3 or heat >= 50 and 2 or heat >= 25 and 2 or 1
+	heatFill.BackgroundColor3 = heat >= 25 and heat < 50 and HEAT_COLORS[1]:Lerp(HEAT_COLORS[2], 0.5) or HEAT_COLORS[band]
+	heatValue.Text = tostring(heat)
+	heatValue.TextColor3 = heat >= 75 and C.bad or heat >= 50 and C.warn or C.text
+
+	-- the chips: only what matters right now
+	chip("hp", 1, ("❤ %d"):format(state.health), state.health < state.maxHealth * 0.35 and C.bad or (state.health < state.maxHealth and C.warn or C.good), state.health < state.maxHealth or state.started)
+	chip("fish", 2, ("🐟 %d · %s"):format(state.carriedFish, fmt(state.carriedPearls)), C.warn, state.carriedPearls > 0)
+	chip("eggs", 3, ("🥚 %d"):format(state.carriedEggs), C.warn, state.carriedEggs > 0)
+	chip("banked", 4, ("✔ %s banked"):format(fmt(state.bankedPearls)), C.good, state.bankedPearls > 0 and state.carriedPearls == 0)
+	chip("cargo", 5, ("x%.1f cargo"):format(state.cargoMult), C.gold, state.cargoMult > 1)
+	chip("phase", 6, ("%s P%d"):format(state.depth == 2 and "LEVIATHAN" or "WARDEN", state.phase), C.bad, state.phase > 0)
+	chip("locked", 7, "LOCKED ON", C.bad, state.locked)
+	chip("stun", 8, "STUNNED", C.warn, state.stunUntil > now)
+	local closedText = ("BEACONS CLOSED %ds"):format(math.max(0, math.ceil(closed)))
+	if state.graceUntil > now then
+		closedText ..= (" · GRACE %ds"):format(math.ceil(state.graceUntil - now))
 	end
-	heatInfo.Text = status
-	if state.carriedPearls > 0 or state.carriedEggs > 0 then
-		local mult = state.cargoMult > 1 and (" · x%.1f when you extract"):format(state.cargoMult) or ""
-		haulInfo.Text = ("Cargo at risk: %d fish (%s Pearls) and %d egg(s)%s. A wipe loses all of it, so bank fish at the Tide Cache."):format(state.carriedFish, fmt(state.carriedPearls), state.carriedEggs, mult)
-		haulInfo.TextColor3 = C.warn
-	elseif state.bankedPearls > 0 then
-		haulInfo.Text = ("Banked this dive: %s Pearls, safe from any wipe. Extract at a beacon to finish."):format(fmt(state.bankedPearls))
-		haulInfo.TextColor3 = C.good
-	else
-		haulInfo.Text = "Nothing at risk. Talk to Gate Warden Sel to dive, then fish the glowing spots or steal a wild egg."
-		haulInfo.TextColor3 = C.muted
-	end
-	local parts = { ("HP %d/%d"):format(state.health, state.maxHealth) }
-	if state.started and (state.depth or 1) > 1 then
-		table.insert(parts, ("%s · depth %d"):format(state.biomeName, state.depth))
-	end
-	if state.phase > 0 then
-		table.insert(parts, ("%s Phase %d"):format(state.depth == 2 and "Leviathan" or "Warden", state.phase))
-	end
-	if state.locked then
-		table.insert(parts, "LOCKED ON")
-	end
-	if state.stunUntil > now then
-		table.insert(parts, "STUNNED")
-	end
-	table.insert(parts, ("%s x%.2f"):format(state.mode, state.modeMult))
-	if (state.started and state.runContested) or (not state.started and state.contested) then
-		table.insert(parts, "Contested ON")
-	end
-	if state.heatDebt > 0 then
-		table.insert(parts, ("Carried heat %d"):format(state.heatDebt))
-	end
-	if state.immuneUntil > now then
-		table.insert(parts, "Snatch immune")
-	end
-	riskInfo.Text = table.concat(parts, "  ·  ")
-	riskInfo.TextColor3 = state.locked and C.bad or (state.health < state.maxHealth and C.warn or C.text)
+	chip("closed", 9, closedText, C.bad, closed > 0)
+	chip("depth", 10, state.biomeName or "", Color3.fromRGB(140, 255, 220), state.started and (state.depth or 1) > 1)
+	chip("contested", 11, "CONTESTED", Color3.fromRGB(255, 140, 200), (state.started and state.runContested) or (not state.started and state.contested))
+	chip("debt", 12, ("Carried heat %d"):format(state.heatDebt), C.warn, state.heatDebt > 0)
+	chip("immune", 13, "Snatch immune", C.good, state.immuneUntil > now)
+	chip("mode", 14, ("%s x%.2f"):format(state.mode, state.modeMult), C.muted, state.started)
+	local lockPulse = state.locked and (0.25 + 0.2 * math.sin(os.clock() * 8)) or 0.25
+	heatPill.BackgroundTransparency = lockPulse
 
 	-- Glass Calm banner from its 20 s warning until it ends
 	local weather = state.weather
