@@ -293,6 +293,30 @@ Config.Fishing = {
 	startProgress = 0.3,
 }
 
+-- Master Patch 6: the fish reveal. Seconds per phase; the tier climb holds `step` on every tier it passes.
+-- The server rolls the tier at the cast and the mutation and weight at the landing; the reveal only shows it.
+Config.Reveal = {
+	silhouette = 0.4, -- Phase 1
+	step = 0.3, -- Phase 2, per tier
+	card = 0.8, -- Phase 3
+	celebrate = 0.8, -- Phase 4
+	back = 0.5, -- Phase 5
+	nearMissChance = 0.4, -- fish only, below Celestial: the climb goes one tier past, holds, then drains back
+	nearMissHold = 0.3,
+	nearMissDrain = 0.3,
+	npcLookRadius = 60, -- Mythic and up: NPCs this close turn to look
+	landSeconds = 1.35, -- Patch 5: Land-Flip (1.0 s at half speed) and Land-Hold (0.35 s) come first
+	-- weight in kg per tier, for show only (never changes Pearls)
+	weights = { { 0.2, 1.5 }, { 0.8, 4 }, { 2, 9 }, { 5, 20 }, { 12, 45 }, { 30, 110 }, { 80, 300 } },
+}
+
+-- 2.8 s for a Common up to 4.6 s for a Celestial; the near-miss adds 0.6 s.
+function Config.revealSeconds(tierIndex, nearMiss)
+	local r = Config.Reveal
+	local seconds = r.silhouette + tierIndex * r.step + r.card + r.celebrate + r.back
+	return seconds + (nearMiss and r.nearMissHold + r.nearMissDrain or 0)
+end
+
 Config.Aquarium = {
 	capacity = 10, -- creatures that earn passive income
 	maxStored = 200,

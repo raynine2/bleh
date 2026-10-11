@@ -10,6 +10,7 @@ local CollectionService = game:GetService("CollectionService")
 local Shared = ReplicatedStorage:WaitForChild("Tidebound")
 local Config = require(Shared:WaitForChild("Config"))
 local CreatureModels = require(Shared:WaitForChild("CreatureModels"))
+local RodModels = require(Shared:WaitForChild("RodModels"))
 local PlayerData = require(script.Parent:WaitForChild("PlayerData"))
 local PlotLayout = require(script.Parent:WaitForChild("PlotLayout"))
 
@@ -396,21 +397,30 @@ local function refreshPlot(index)
 		end
 	end
 
-	-- Rod Workshop: every owned rod hangs on the rack
+	-- Rod Workshop: every owned rod stands on the rack as its real model (Master Patch 7)
 	if data.zones.workshop then
 		local roomCf = PlotLayout.roomCFrame(origin, PlotLayout.rooms.workshop)
-		local colors = { Color3.fromRGB(74, 70, 74), Color3.fromRGB(230, 90, 100), Color3.fromRGB(80, 120, 230), Color3.fromRGB(60, 40, 110), Color3.fromRGB(255, 120, 220), Color3.fromRGB(140, 255, 250) }
 		for i, rod in ipairs(Config.Rods) do
 			if data.ownedRods[rod.id] then
-				local stick = Instance.new("Part")
-				stick.Name = "RackRod"
-				stick.Anchored = true
-				stick.CanCollide = false
-				stick.Size = Vector3.new(0.35, 6, 0.35)
-				stick.CFrame = roomCf * CFrame.new(-6 + (i - 1) * 2.4, 4.2, PlotLayout.rooms.workshop.size.Z / 2 - 1.8) * CFrame.Angles(0, 0, math.rad(8))
-				stick.Color = colors[i]
-				stick.Material = rod.id == "Celestial" and Enum.Material.Neon or Enum.Material.SmoothPlastic
-				stick.Parent = display
+				local peg = Instance.new("Part")
+				peg.Name = "RackPeg"
+				peg.Anchored = true
+				peg.CanCollide = false
+				peg.CanQuery = false
+				peg.Transparency = 1
+				peg.Size = Vector3.new(0.4, 0.4, 0.4)
+				peg.CFrame = roomCf * CFrame.new(-6 + (i - 1) * 2.4, 1, PlotLayout.rooms.workshop.size.Z / 2 - 1.8) * CFrame.Angles(0, 0, math.rad(8))
+				peg.Parent = display
+				local rodModel = RodModels.build(rod.id)
+				rodModel.Name = "RackRod"
+				local weld = Instance.new("Weld")
+				weld.Part0 = peg
+				weld.Part1 = rodModel.PrimaryPart
+				weld.C0 = CFrame.new(0, RodModels.HANDLE / 2, 0)
+				weld.Parent = rodModel.PrimaryPart
+				rodModel:PivotTo(peg.CFrame * weld.C0)
+				CollectionService:AddTag(rodModel, "TideboundRod")
+				rodModel.Parent = display
 			end
 		end
 	end

@@ -23,6 +23,7 @@ local FishingEvent = Remotes:WaitForChild("Fishing")
 local HazardEvent = Remotes:WaitForChild("Hazard")
 local CueEvent = Remotes:WaitForChild("Cue")
 local Animations = require(Shared:WaitForChild("Animations"))
+local FishingFeel = require(Shared:WaitForChild("FishingFeel")) -- Master Patch 5: TideboundRod reads it
 
 local DISPLAY = Enum.Font.FredokaOne
 local BODY = Enum.Font.BuilderSansBold
@@ -302,7 +303,7 @@ end
 -- HUD ---------------------------------------------------------------------------------
 
 local openMenu -- forward declaration
-local playAnim, stopAnim -- forward declarations (defined with the minigame)
+local playAnim -- forward declaration (defined with the minigame)
 local situation = nil -- "fishing" while reeling, for the camera (Delta Section 10 Table C)
 
 local hud = new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 14, 0, 14), Size = UDim2.new(0, 176, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = gui }, { list(8) })
@@ -380,6 +381,7 @@ do
 	hudExtra.revive = button({ Size = UDim2.new(1, 0, 1, 0), TextSize = 13, Parent = vialRow }, "gold", function()
 		act("UseVial", "Revive")
 	end)
+	hudExtra.reveal = function(_result) end -- the fish reveal (Master Patch 6), set further down
 	hudExtra.clock = function(seconds)
 		seconds = math.max(0, math.ceil(seconds))
 		return ("%d:%02d"):format(seconds // 60, seconds % 60)
@@ -542,16 +544,14 @@ playAnim = function(name)
 		animTracks[name] = track
 	end
 end
-stopAnim = function(name)
-	local track = animTracks[name]
-	if track then
-		track:Stop()
-		animTracks[name] = nil
-	end
-end
 
 local fishing = false
 local function runMinigame(cast)
+	-- a cast can arrive as the last reveal is closing; let that finish first
+	local waited = 0
+	while fishing and waited < 5 do
+		waited += task.wait(0.1)
+	end
 	if fishing then
 		return
 	end
@@ -562,13 +562,18 @@ local function runMinigame(cast)
 	fishTitle.TextColor3 = C.text
 	fishTitle.Text = (cast.pier and "Pier cast" or "Casting") .. (cast.bait and (" with " .. cast.bait) or "") .. "..."
 	fishHint.Text = cast.broken and "Wait for the bite. Your rod is broken, so it fishes like a Drift Rod until Old Harl repairs it." or "Wait for the bite."
-	playAnim("Cast")
+	-- Master Patch 5: windup, release and landing take 0.9 s, then the rod idles until the bite
+	FishingFeel.cast, FishingFeel.result, FishingFeel.tension = cast, nil, 0
+	FishingFeel.set("cast")
 	situation = "fishing"
-	task.wait(cast.biteWait)
-	playAnim("ReelIn")
+	task.wait(math.max(cast.biteWait, 0.9))
 
+	-- the bite tell and the hook set (18 frames) come before the reel bar
+	FishingFeel.set("bite")
 	fishTitle.Text = "BITE! Reel it in!"
 	fishTitle.TextColor3 = C.gold
+	task.wait(0.3)
+	FishingFeel.set("reel")
 	fishHint.Text = "Hold click (or touch) to push the bar right. Keep the fish inside it."
 	reelTrack.Visible, progressTrack.Visible = true, true
 	local rng = Random.new()
@@ -605,6 +610,11 @@ local function runMinigame(cast)
 			progress -= f.lossPerSecond / cast.resilience * dt
 			perfect = false
 		end
+		-- the rod bends 0.6 while the fish sits in the bar and up to 0.9 as it pulls away; the screen shakes
+		-- with it, harder for rarer fish
+		local away = inside and 0 or math.clamp(0.5 + math.min(math.abs(fishPos - barPos), math.abs(fishPos - barPos - barWidth)) * 2, 0, 1)
+		FishingFeel.tension += (away - FishingFeel.tension) * math.min(1, dt * 6)
+		FishingFeel.shake(0.02 + 0.05 * FishingFeel.tension * (0.6 + 0.15 * cast.difficulty), 0.05)
 		reelBar.Position = UDim2.new(barPos, 0, 0, 0)
 		reelBar.BackgroundColor3 = inside and Color3.fromRGB(170, 255, 200) or Color3.fromRGB(255, 180, 180)
 		fishIcon.Position = UDim2.new(fishPos, 0, 0.5, 0)
@@ -621,10 +631,28 @@ local function runMinigame(cast)
 
 	fishTitle.TextColor3 = caught and C.good or C.bad
 	fishTitle.Text = caught and (perfect and "PERFECT CATCH!" or "CAUGHT!") or "It got away..."
-	act("FinishCast", cast.id, caught, perfect, peak)
-	stopAnim("ReelIn")
-	situation = nil
-	task.wait(1.2)
+	reelTrack.Visible, progressTrack.Visible = false, false
+	fishHint.Text = ""
+	if not caught then
+		FishingFeel.set("break")
+	end
+	local result = act("FinishCast", cast.id, caught, perfect, peak)
+	if caught and type(result) == "table" and result.caught then
+		-- Master Patches 5 and 6: the fish flips into your hands, then the reveal plays
+		FishingFeel.result = result
+		FishingFeel.set("land")
+		hudExtra.reveal(result)
+	else
+		if caught then
+			FishingFeel.set("break")
+			fishTitle.TextColor3 = C.bad
+			fishTitle.Text = "The line snapped..."
+		end
+		situation = nil
+		task.wait(1.2)
+	end
+	FishingFeel.set("")
+	FishingFeel.result = nil
 	fishFrame.Visible = false
 	fishing = false
 end
@@ -973,6 +1001,14 @@ for i, tier in ipairs(Config.Tiers) do
 	label({ Text = tier.id, Font = DISPLAY, TextColor3 = tier.color, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.24, 0, 1, 0), TextSize = 14, Parent = row })
 	fishOddsRows[i] = label({ Font = DISPLAY, Position = UDim2.new(0.26, 0, 0, 0), Size = UDim2.new(0.18, 0, 1, 0), TextSize = 14, Parent = row })
 	label({ Text = ("%s · %d Pearls"):format(table.concat(Config.Biomes[1].fish[i], ", "), tier.fishPearls), Position = UDim2.new(0.45, 0, 0, 0), Size = UDim2.new(0.55, -10, 1, 0), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
+end
+do
+	-- Master Patch 6: fish roll the same mutation table as eggs, so its odds are shown here too
+	local parts = {}
+	for _, m in ipairs(Config.Mutations) do
+		table.insert(parts, m.id == "None" and ("None %g%%"):format(m.rate) or ("%s %g%% x%.2f"):format(m.id, m.rate, m.mult))
+	end
+	note(baitPage, ("Every catch also rolls the mutation table: %s. A mutation multiplies the fish's Pearls, still capped at %d per fish. Weight is for show and never changes Pearls."):format(table.concat(parts, ", "), Config.Tiers[#Config.Tiers].fishPearls))
 end
 
 refreshers.BAIT = function()
@@ -1782,6 +1818,7 @@ do
 		shakeAmount = amount
 		shakeUntil = os.clock() + seconds
 	end
+	FishingFeel.shake = shake
 
 	local function pulseHeat()
 		local scale = heatFrame:FindFirstChild("Pulse") or new("UIScale", { Name = "Pulse", Parent = heatFrame })
@@ -1898,13 +1935,13 @@ do
 		if humanoid and root and state then
 			local sprinting = (sprintHeld or sprintToggle) and humanoid.MoveDirection.Magnitude > 0.1
 			local speed = state.walkSpeed + (sprinting and Config.Risk.sprintBonus or 0)
-			if workspace:GetServerTimeNow() < state.stunUntil then
+			if workspace:GetServerTimeNow() < state.stunUntil or FishingFeel.frozen then
 				speed = 0
 			elseif onAnemone(root) then
 				speed *= 1 - Config.Anemone.slow
 			end
 			humanoid.WalkSpeed = speed
-			if os.clock() < riptide.untilTime and humanoid.Health > 0 then
+			if os.clock() < riptide.untilTime and humanoid.Health > 0 and not FishingFeel.frozen then
 				root.CFrame += riptide.direction * riptide.speed * dt
 			end
 			if shakeUntil > os.clock() then
@@ -1924,7 +1961,8 @@ do
 				target = Config.Camera.chase
 			end
 			currentFov += (target - currentFov) * math.min(1, dt * 4)
-			camera.FieldOfView = currentFov
+			-- Master Patch 5: +4 FOV for 6 frames as the cast releases
+			camera.FieldOfView = currentFov + (os.clock() < FishingFeel.kickUntil and 4 or 0)
 		end
 		local heat = state and state.heat or 0
 		local color, alpha = C.bad, 1
@@ -2011,6 +2049,398 @@ do
 	player.CharacterAdded:Connect(hideOwnSnatch)
 	if player.Character then
 		task.spawn(hideOwnSnatch, player.Character)
+	end
+end
+
+do
+	-- Fish reveal (Master Patch 6) ----------------------------------------------------------------------
+	-- The server has already rolled the fish; this only shows it. After the Land-Flip and Land-Hold, Phase 0
+	-- drains the world to 20% colour and hides the HUD, Phase 1 shows a dark silhouette, Phase 2 climbs the
+	-- tiers 0.3 s at a time (on a near-miss it climbs one too high and drains back), Phase 3 slides in the
+	-- name card, Phase 4 celebrates by tier and Phase 5 brings you back. Click or tap after the silhouette
+	-- to skip to the card. You can't be hurt until it ends (the server holds the same window).
+	local FishModels = require(Shared:WaitForChild("FishModels"))
+	local Audio = require(Shared:WaitForChild("Audio"))
+	local RV = Config.Reveal
+	local rv = {} -- the reveal's UI and state share one table: this script is near Luau's 200-local limit
+	rv.TIER_SOUNDS = { "TierCommon", "TierUncommon", "TierRare", "TierEpic", "TierLegendary", "TierMythic", "TierCelestial" }
+	rv.RAINBOW = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 90)),
+		ColorSequenceKeypoint.new(0.25, Color3.fromRGB(255, 220, 90)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(90, 255, 140)),
+		ColorSequenceKeypoint.new(0.75, Color3.fromRGB(90, 160, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(230, 110, 255)),
+	})
+
+	rv.revealGui = new("ScreenGui", { Name = "TideboundFishReveal", ResetOnSpawn = false, IgnoreGuiInset = true, DisplayOrder = 20, Enabled = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = player:WaitForChild("PlayerGui") })
+	rv.grade = Lighting:FindFirstChild("TideboundRevealGrade") or new("ColorCorrectionEffect", { Name = "TideboundRevealGrade", Parent = Lighting })
+	rv.soft = Lighting:FindFirstChild("TideboundRevealBlur") or new("BlurEffect", { Name = "TideboundRevealBlur", Size = 0, Parent = Lighting })
+	rv.grade.Saturation = 0
+
+	-- aurora ribbons across the top of the screen (Celestial climb, Mythic+ celebration)
+	rv.aurora = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, Parent = rv.revealGui })
+	rv.ribbons = {}
+	for i, spec in ipairs({ { 0.04, -5 }, { 0.14, 3 }, { 0.24, -2 } }) do
+		local ribbon = new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, spec[1]), Size = UDim2.new(1.3, 0, 0.09, 0), Rotation = spec[2], BackgroundColor3 = WHITE, BackgroundTransparency = 0.5 + i * 0.08, BorderSizePixel = 0, Parent = rv.aurora })
+		rv.ribbons[i] = new("UIGradient", { Color = rv.RAINBOW, Parent = ribbon })
+	end
+
+	rv.tierLabel = label({ Font = DISPLAY, TextSize = 46, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 0.2), Size = UDim2.new(0.9, 0, 0, 54), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 6, Parent = rv.revealGui })
+	rv.tierScale = new("UIScale", { Parent = rv.tierLabel })
+
+	rv.stage = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromScale(0.5, 0.5), BackgroundTransparency = 1, Parent = rv.revealGui }, {
+		new("UIAspectRatioConstraint", { AspectRatio = 1 }),
+		new("UISizeConstraint", { MaxSize = Vector2.new(360, 360) }),
+	})
+	rv.circle = function(size, transparency, z)
+		return new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(size, size), BackgroundColor3 = WHITE, BackgroundTransparency = transparency, BorderSizePixel = 0, ZIndex = z, Parent = rv.stage }, { new("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	end
+	-- soft spotlight, with a faint tier outline from Uncommon up
+	rv.circle(1, 0.93, 1)
+	rv.circle(0.78, 0.9, 1)
+	rv.outline = new("UIStroke", { Thickness = 3, Transparency = 1, Color = WHITE, Parent = rv.circle(0.56, 0.86, 1) })
+	rv.aura = rv.circle(0.8, 1, 2)
+	rv.auraScale = new("UIScale", { Parent = rv.aura })
+	rv.beams = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Visible = false, ZIndex = 2, Parent = rv.stage })
+	for i = 1, 8 do
+		new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 10, 2, 0), Rotation = i * 22.5, BackgroundColor3 = WHITE, BorderSizePixel = 0, Parent = rv.beams }, {
+			new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) }) }),
+		})
+	end
+	rv.wave = rv.circle(0, 1, 3)
+	rv.waveStroke = new("UIStroke", { Thickness = 6, Transparency = 1, Color = WHITE, Parent = rv.wave })
+	rv.view = new("ViewportFrame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Ambient = Color3.fromRGB(170, 170, 180), LightColor = WHITE, LightDirection = Vector3.new(-0.4, -1, -0.6), ZIndex = 4, Parent = rv.stage })
+	rv.viewCamera = new("Camera", { FieldOfView = 40, Parent = rv.view })
+	rv.view.CurrentCamera = rv.viewCamera
+	rv.sparkles = {}
+	for i = 1, 6 do
+		rv.sparkles[i] = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(12, 12), Rotation = 45, BackgroundColor3 = WHITE, BorderSizePixel = 0, Visible = false, ZIndex = 5, Parent = rv.stage }, { corner(2) })
+	end
+
+	-- name card: tier-coloured border, the tier's trophy, 1 to 7 stars
+	rv.card = neonPanel({ AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(-0.6, 0.74), Size = UDim2.new(0.92, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, ZIndex = 6 }, 8, true)
+	new("UISizeConstraint", { MaxSize = Vector2.new(460, math.huge), Parent = rv.card })
+	padding(12).Parent = rv.card
+	rv.card.Parent = rv.revealGui
+	rv.cardStroke = rv.card:FindFirstChildOfClass("UIStroke")
+	rv.cardIcon = new("Frame", { Size = UDim2.fromOffset(64, 64), BackgroundTransparency = 1, ZIndex = 7, Parent = rv.card })
+	rv.cardText = new("Frame", { Position = UDim2.new(0, 76, 0, 0), Size = UDim2.new(1, -76, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 7, Parent = rv.card }, { list(2) })
+	rv.cardLine = function(order, props)
+		props.Size = UDim2.new(1, 0, 0, 0)
+		props.AutomaticSize = Enum.AutomaticSize.Y
+		props.LayoutOrder = order
+		props.ZIndex = 7
+		props.Parent = rv.cardText
+		return label(props, props.Font ~= DISPLAY and { textStroke(1) } or nil)
+	end
+	rv.cardTitle = rv.cardLine(1, { Font = DISPLAY, TextSize = 19, RichText = true })
+	rv.cardStars = rv.cardLine(2, { TextSize = 18 })
+	rv.cardMutation = rv.cardLine(3, { TextSize = 15 })
+	rv.cardWeight = rv.cardLine(4, { TextSize = 15, TextColor3 = C.muted })
+	rv.cardNew = rv.cardLine(5, { Font = DISPLAY, TextSize = 16, TextColor3 = C.gold, Text = "New Bestiary entry!" })
+
+	rv.skipHint = label({ Text = "Click to skip", TextSize = 14, TextColor3 = C.muted, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.new(0, 200, 0, 18), TextXAlignment = Enum.TextXAlignment.Center, Visible = false, Parent = rv.revealGui }, { textStroke(1) })
+	rv.flashFrame = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1, ZIndex = 9, Parent = rv.revealGui })
+
+	rv.shown = nil -- the fish in the viewport
+	rv.shownTier = 0
+	rv.skippable, rv.skipping = false, false
+	UserInputService.InputBegan:Connect(function(input)
+		local kind = input.UserInputType
+		if rv.skippable and (kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch or input.KeyCode == Enum.KeyCode.ButtonA) then
+			rv.skipping = true
+		end
+	end)
+
+	rv.hold = function(seconds)
+		local untilTime = os.clock() + seconds
+		while os.clock() < untilTime and not (rv.skippable and rv.skipping) do
+			RunService.RenderStepped:Wait()
+		end
+	end
+
+	rv.shockwave = function(color)
+		rv.wave.Size = UDim2.fromScale(0.2, 0.2)
+		rv.waveStroke.Color = color
+		rv.waveStroke.Transparency = 0
+		TweenService:Create(rv.wave, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.fromScale(2.4, 2.4) }):Play()
+		TweenService:Create(rv.waveStroke, TweenInfo.new(0.6), { Transparency = 1 }):Play()
+	end
+
+	-- one tier of the climb: colour, name, sound and that tier's effects (each tier keeps the ones below)
+	rv.showTier = function(index, quiet)
+		local tier = Config.Tiers[index]
+		rv.shownTier = index
+		rv.tierLabel.Text = tier.id:upper()
+		rv.tierLabel.TextColor3 = tier.color
+		rv.tierLabel.TextTransparency = 0
+		rv.tierScale.Scale = 1.25
+		TweenService:Create(rv.tierScale, TweenInfo.new(0.18, Enum.EasingStyle.Back), { Scale = 1 }):Play()
+		if rv.shown then
+			FishModels.paint(rv.shown, tier.color, index >= 5 and Enum.Material.Neon or nil)
+		end
+		if not quiet then
+			Audio.play(rv.TIER_SOUNDS[index])
+		end
+		rv.outline.Color = tier.color
+		rv.outline.Transparency = index >= 2 and 0.5 or 1
+		for _, sparkle in ipairs(rv.sparkles) do
+			sparkle.Visible = index >= 3
+			sparkle.BackgroundColor3 = tier.color:Lerp(WHITE, 0.5)
+		end
+		rv.aura.BackgroundColor3 = tier.color
+		rv.aura.BackgroundTransparency = index >= 4 and 0.72 or 1
+		if index == 5 and not quiet then
+			rv.shockwave(tier.color)
+		end
+		rv.beams.Visible = index >= 6
+		for _, beam in ipairs(rv.beams:GetChildren()) do
+			if beam:IsA("Frame") then
+				beam.BackgroundColor3 = tier.color
+			end
+		end
+		rv.aurora.Visible = index >= 7
+	end
+
+	rv.confetti = function()
+		for _ = 1, 40 do
+			local bit = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, math.random(-40, 40), 0.42, math.random(-20, 20)), Size = UDim2.fromOffset(8, 14), Rotation = math.random(0, 360), BackgroundColor3 = Color3.fromHSV(math.random(), 0.7, 1), BorderSizePixel = 0, ZIndex = 8, Parent = rv.revealGui })
+			local up = TweenService:Create(bit, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(0.5 + (math.random() - 0.5) * 0.7, 0, 0.12 + math.random() * 0.2, 0) })
+			up.Completed:Connect(function()
+				TweenService:Create(bit, TweenInfo.new(1 + math.random() * 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.new(bit.Position.X.Scale + (math.random() - 0.5) * 0.2, 0, 1.1, 0), Rotation = bit.Rotation + math.random(-400, 400) }):Play()
+			end)
+			up:Play()
+			task.delay(2.2, bit.Destroy, bit)
+		end
+	end
+
+	-- NPCs within 60 studs stop and turn to look (Mythic and up). Only on your screen.
+	rv.npcsLook = function(root, turn)
+		local world = workspace:FindFirstChild("TideboundWorld")
+		local turned = {}
+		if not world then
+			return turned
+		end
+		for _, model in ipairs(world:GetDescendants()) do
+			if model:IsA("Model") and model.Name:sub(1, 4) == "Npc_" and model.PrimaryPart then
+				local pivot = model:GetPivot()
+				if (pivot.Position - root.Position).Magnitude <= RV.npcLookRadius then
+					table.insert(turned, { model = model, from = pivot, to = CFrame.lookAt(pivot.Position, Vector3.new(root.Position.X, pivot.Position.Y, root.Position.Z)) })
+				end
+			end
+		end
+		turn(turned, false)
+		return turned
+	end
+	rv.turnNpcs = function(turned, back)
+		task.spawn(function()
+			local start = os.clock()
+			while os.clock() - start < 0.4 do
+				local s = (os.clock() - start) / 0.4
+				for _, entry in ipairs(turned) do
+					if entry.model.Parent then
+						entry.model:PivotTo(back and entry.to:Lerp(entry.from, s) or entry.from:Lerp(entry.to, s))
+					end
+				end
+				RunService.RenderStepped:Wait()
+			end
+			for _, entry in ipairs(turned) do
+				if entry.model.Parent then
+					entry.model:PivotTo(back and entry.from or entry.to)
+				end
+			end
+		end)
+	end
+
+	-- the camera's 45-degree side view of you holding the fish
+	rv.sideView = function(root, distance, height)
+		local look, right = root.CFrame.LookVector, root.CFrame.RightVector
+		local focus = root.Position + Vector3.new(0, 1.3, 0) + look * 1.4
+		return CFrame.lookAt(focus + (look + right).Unit * distance + Vector3.new(0, height, 0), focus)
+	end
+
+	hudExtra.reveal = function(result)
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local camera = workspace.CurrentCamera
+		local tierIndex = math.clamp(tonumber(result.tier) or 1, 1, #Config.Tiers)
+		local tier = Config.Tiers[tierIndex]
+		FishingFeel.frozen = true
+		if humanoid then
+			humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+		end
+		if menu.Visible then
+			closeMenu()
+		end
+
+		-- Land-Flip (1.0 s at half speed): TideboundRod flips the fish into your hands
+		task.wait(1.0)
+		-- Land-Hold: the camera swings to a 45-degree side view and zooms to FOV 55
+		situation = "hatch"
+		local saved = camera.CFrame
+		if root then
+			camera.CameraType = Enum.CameraType.Scriptable
+			TweenService:Create(camera, TweenInfo.new(RV.landSeconds - 1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = rv.sideView(root, 9, 1.5) }):Play()
+		end
+		task.wait(RV.landSeconds - 1.0)
+
+		-- Phase 0: the world drains to 20% colour behind a soft blur, the HUD hides
+		Audio.play("RevealHum")
+		gui.Enabled = false
+		rv.grade.Enabled = true
+		TweenService:Create(rv.grade, TweenInfo.new(0.25), { Saturation = -0.8 }):Play()
+		TweenService:Create(rv.soft, TweenInfo.new(0.25), { Size = 10 }):Play()
+		if rv.shown then
+			rv.shown:Destroy()
+		end
+		local model, length = FishModels.build(result.fish, tierIndex)
+		rv.shown, rv.shownTier = model, 0
+		model.Parent = rv.view
+		-- a three-quarter view from just above and ahead, far enough back that a Marlin's bill fits
+		rv.viewCamera.CFrame = CFrame.lookAt(Vector3.new(length * 1.9, length * 0.8, -length * 0.45), Vector3.zero)
+		rv.tierLabel.Text = ""
+		rv.outline.Transparency = 1
+		rv.aura.BackgroundTransparency = 1
+		rv.beams.Visible, rv.aurora.Visible = false, false
+		for _, sparkle in ipairs(rv.sparkles) do
+			sparkle.Visible = false
+		end
+		for _, child in ipairs(rv.cardIcon:GetChildren()) do
+			child:Destroy()
+		end
+		rv.card.Position = UDim2.fromScale(-0.6, 0.74)
+		rv.skipping, rv.skippable = false, false
+		rv.revealGui.Enabled = true
+
+		-- everything that moves while the reveal is up
+		local started = os.clock()
+		local loop = RunService.RenderStepped:Connect(function()
+			local t = os.clock() - started
+			if rv.shown and rv.shown.Parent then
+				rv.shown:PivotTo(CFrame.new(0, math.sin(t * 2) * length * 0.03, 0) * CFrame.Angles(0, math.sin(t * 0.8) * 0.5, math.sin(t * 1.3) * 0.06))
+				if rv.shownTier >= #Config.Tiers then
+					FishModels.paint(rv.shown, Color3.fromHSV((t * 0.35) % 1, 0.35, 1):Lerp(Config.Tiers[#Config.Tiers].color, 0.3), Enum.Material.Neon)
+				end
+			end
+			for i, sparkle in ipairs(rv.sparkles) do
+				local a = t * 1.6 + i / #rv.sparkles * math.pi * 2
+				sparkle.Position = UDim2.fromScale(0.5 + math.cos(a) * 0.42, 0.5 + math.sin(a) * 0.3)
+				sparkle.Rotation = 45 + t * 90
+			end
+			rv.auraScale.Scale = 1 + math.sin(t * 4) * 0.05
+			rv.beams.Rotation = t * 12
+			for i, ribbon in ipairs(rv.ribbons) do
+				ribbon.Offset = Vector2.new(math.sin(t * 0.6 + i) * 0.3, 0)
+			end
+		end)
+
+		-- Phase 1: a dark silhouette turns slowly under the spotlight; its size hints at the catch
+		Audio.play("Heartbeat")
+		rv.hold(RV.silhouette)
+		rv.skippable = true
+		rv.skipHint.Visible = true
+
+		-- Phase 2: the tier climb, 0.3 s per tier, with the near-miss on top
+		local top = result.nearMiss and math.min(tierIndex + 1, #Config.Tiers) or tierIndex
+		for index = 1, top do
+			if rv.skipping then
+				break
+			end
+			rv.showTier(index)
+			rv.hold(RV.step)
+		end
+		if not rv.skipping and top > tierIndex then
+			-- the near-miss: it holds one tier too high, then drains back down
+			rv.hold(RV.nearMissHold - RV.step)
+			Audio.play("NearMissDrain")
+			local from, to = Config.Tiers[top].color, tier.color
+			local drainStart = os.clock()
+			while os.clock() - drainStart < RV.nearMissDrain and not rv.skipping do
+				local s = (os.clock() - drainStart) / RV.nearMissDrain
+				FishModels.paint(rv.shown, from:Lerp(to, s))
+				rv.tierLabel.TextTransparency = s
+				RunService.RenderStepped:Wait()
+			end
+		end
+		if rv.shownTier ~= tierIndex or rv.tierLabel.TextTransparency > 0 then
+			-- a skip lands on the final tier with its sound; a near-miss already played the drain
+			rv.showTier(tierIndex, rv.shownTier >= tierIndex)
+		end
+		rv.skippable = false
+		rv.skipHint.Visible = false
+
+		-- Phase 3: the name card slides in from the left
+		Audio.play("CardSlide")
+		rv.cardStroke.Color = tier.color
+		trophy(rv.cardIcon, tier.color, WHITE)
+		rv.cardTitle.Text = ("%s · %s · <font color=\"#%s\">%s</font>"):format(result.biome or Config.Biomes[1].name, result.fish, tier.color:ToHex(), tier.id)
+		rv.cardStars.Text = string.rep("★", tierIndex)
+		rv.cardStars.TextColor3 = tier.color
+		if result.mutation and result.mutation ~= "None" then
+			rv.cardMutation.Text = ("Mutation: %s (x%.2f)"):format(result.mutation, result.mult or 1)
+			for _, m in ipairs(Config.Mutations) do
+				if m.id == result.mutation then
+					rv.cardMutation.TextColor3 = m.color
+				end
+			end
+		else
+			rv.cardMutation.Text = "No mutation"
+			rv.cardMutation.TextColor3 = C.muted
+		end
+		local weight = tonumber(result.weight) or 0
+		local rank = tonumber(result.top) or 100
+		rv.cardWeight.Text = rank <= 50 and ("Weight: %.1f kg (Top %d%%)"):format(weight, rank) or ("Weight: %.1f kg"):format(weight)
+		rv.cardNew.Visible = result.isNew == true
+		TweenService:Create(rv.card, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Position = UDim2.fromScale(0.5, 0.74) }):Play()
+		task.wait(RV.card)
+
+		-- Phase 4: the celebration grows with the tier
+		local turned = nil
+		if tierIndex >= 4 then
+			rv.confetti()
+			rv.flashFrame.BackgroundTransparency = 0.5 -- never past 50% white
+			TweenService:Create(rv.flashFrame, TweenInfo.new(0.4), { BackgroundTransparency = 1 }):Play()
+		end
+		if tierIndex >= 5 then
+			Audio.play("Celebrate")
+			rv.shockwave(tier.color)
+			if root then
+				TweenService:Create(camera, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = rv.sideView(root, 15, 4) }):Play()
+			end
+		end
+		if tierIndex >= 6 then
+			rv.aurora.Visible = true
+			if root then
+				turned = rv.npcsLook(root, rv.turnNpcs)
+			end
+		end
+		task.wait(RV.celebrate)
+
+		-- Phase 5: colour floods back, the camera returns and you can move again
+		task.spawn(act, "RevealDone")
+		TweenService:Create(rv.grade, TweenInfo.new(RV.back), { Saturation = 0 }):Play()
+		TweenService:Create(rv.soft, TweenInfo.new(RV.back), { Size = 0 }):Play()
+		TweenService:Create(rv.card, TweenInfo.new(RV.back * 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.fromScale(1.6, 0.74) }):Play()
+		if root then
+			TweenService:Create(camera, TweenInfo.new(RV.back, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { CFrame = saved }):Play()
+		end
+		task.wait(RV.back)
+		loop:Disconnect()
+		rv.revealGui.Enabled = false
+		gui.Enabled = true
+		camera.CameraType = Enum.CameraType.Custom
+		situation = nil
+		FishingFeel.frozen = false
+		if humanoid then
+			humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+		end
+		if turned then
+			rv.turnNpcs(turned, true)
+		end
+		if result.note then
+			toast(result.note, result.noteKind or "good")
+		end
 	end
 end
 

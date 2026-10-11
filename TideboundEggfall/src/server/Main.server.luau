@@ -9,6 +9,9 @@
 --   Patch 3: the Reef Warden's 3 phases (3rd egg, heat 75, heat 100), a 0.6 s tell before every strike,
 --            25 damage, and each hit knocks your newest egg back to its shrine. Elites, anemone beds and
 --            Glass Calm weather are in Threats.
+--   Patches 5-7: casts are shown to everyone (attributes on the character, played by TideboundRod), each
+--            catch rolls a mutation and weight and plays a reveal you can't be hurt in, a Celestial catch is
+--            announced server-wide, and your rod rides on your back (Rods).
 -- Home Nests, hub boards and the base economy are in BaseService. Everything that grants currency or rolls
 -- odds happens here; the client only displays and asks.
 
@@ -28,6 +31,7 @@ local BaseService = require(script.Parent:WaitForChild("BaseService"))
 local Crew = require(script.Parent:WaitForChild("Crew"))
 local Companions = require(script.Parent:WaitForChild("Companions"))
 local Threats = require(script.Parent:WaitForChild("Threats"))
+local Rods = require(script.Parent:WaitForChild("Rods"))
 
 local world = WorldBuilder.build()
 local shoals = world:WaitForChild("SunkenShoals")
@@ -58,6 +62,7 @@ local GREED = Config.Greed
 local MODES = Config.Modes
 local DURA = Config.Durability
 local HC = Config.HeatCarry
+local REVEAL = Config.Reveal
 local rng = Random.new()
 local runs = {} -- [Player] = run state: heat and the cargo at risk; lost on wipe, never saved
 local incomeCarry = {} -- [Player] = fractional Pearls of aquarium income
@@ -104,6 +109,7 @@ local function newRun()
 		burstUntil = 0,
 		stunUntil = 0,
 		vialsUsed = 0,
+		revealUntil = 0, -- Master Patch 6: no threat can hurt you while your fish reveal plays
 	}
 end
 
@@ -117,6 +123,40 @@ end
 
 local function cue(player, name, payload)
 	CueEvent:FireClient(player, name, payload)
+end
+
+-- Master Patch 5: everyone sees your cast. The phase rides on your character and TideboundRod plays it:
+-- "cast" (windup, release, wait, then the bite at FishAt + FishBite), "land" or "break".
+local fishTokens = {} -- [Player] = number, so a stale timer never clears a newer cast
+local pendingAnnounce = {} -- [Player] = the Celestial announcement waiting for the reveal to end
+
+local function setFishPhase(player, phase, clearAfter, attributes)
+	fishTokens[player] = (fishTokens[player] or 0) + 1
+	local token = fishTokens[player]
+	local character = player.Character
+	if character then
+		character:SetAttribute("FishPhase", phase)
+		character:SetAttribute("FishAt", now())
+		for key, value in pairs(attributes or {}) do
+			character:SetAttribute(key, value)
+		end
+	end
+	Rods.hold(player, phase ~= "")
+	if clearAfter then
+		task.delay(clearAfter, function()
+			if fishTokens[player] == token and player.Parent then
+				setFishPhase(player, "")
+			end
+		end)
+	end
+end
+
+local function announce(player)
+	local text = pendingAnnounce[player]
+	pendingAnnounce[player] = nil
+	if text then
+		notifyAll(text, "rare")
+	end
 end
 
 local function rootOf(player)
@@ -488,6 +528,7 @@ local function wipe(player, reason)
 	local carryHeat = run.heat >= HC.wipeAt
 	local wasStarted, mode = run.started, run.mode
 	runs[player] = newRun()
+	setFishPhase(player, "")
 	local lines = { reason }
 	if data then
 		if wasStarted then
@@ -531,7 +572,7 @@ end
 -- knocks out a companion.
 local function damage(player, amount, fromPosition, label, guardian)
 	local run = runs[player]
-	if not run or not rootOf(player) or inNest(player) or now() < run.invulnerableUntil then
+	if not run or not rootOf(player) or inNest(player) or now() < math.max(run.invulnerableUntil, run.revealUntil) then
 		return
 	end
 	run.health = math.max(0, run.health - amount)
@@ -563,7 +604,7 @@ end
 
 local function stun(player, seconds, fromPosition)
 	local run = runs[player]
-	if not run or inNest(player) or now() < run.stunUntil then
+	if not run or inNest(player) or now() < run.stunUntil or now() < run.revealUntil then
 		return
 	end
 	run.stunUntil = now() + seconds
@@ -616,6 +657,9 @@ local function onCast(player, prompt)
 		notify(player, "You're already reeling.", "info")
 		return
 	end
+	if now() < run.revealUntil then
+		return
+	end
 	local pier = prompt:GetAttribute("Pier") == true
 	if not pier and not run.started then
 		startRun(player, run, data)
@@ -646,6 +690,12 @@ local function onCast(player, prompt)
 		started = os.clock(),
 		minTime = biteWait + Config.Fishing.minReelSeconds,
 	}
+	-- the bobber lands somewhere on the fishing spot's ring
+	local spotPart = prompt.Parent
+	local root = rootOf(player)
+	local center = (spotPart and spotPart:IsA("BasePart") and spotPart.Position) or (root and root.Position) or Vector3.zero
+	local spot = center + Vector3.new(rng:NextNumber(-2.5, 2.5), 0, rng:NextNumber(-2.5, 2.5))
+	setFishPhase(player, "cast", nil, { FishBite = biteWait, FishSpot = spot, FishTier = 0, FishName = "", FishShowAt = 0 })
 	FishingEvent:FireClient(player, {
 		id = run.session.id,
 		biteWait = biteWait,
@@ -655,6 +705,8 @@ local function onCast(player, prompt)
 		bait = bait and bait.name or nil,
 		broken = broken,
 		pier = pier,
+		spot = spot,
+		rod = data.rod, -- the look: a broken rod keeps its look
 	})
 	push(player)
 end
@@ -814,6 +866,7 @@ local function snatchAllowed(victim, victimRun)
 		and victimRun.contested
 		and victimRun.carriedEggs > 0
 		and now() >= victimRun.immuneUntil
+		and now() >= victimRun.revealUntil
 		and not inNest(victim)
 		and not nearBeacon(root.Position, Config.Contested.beaconSafeRadius)
 end
@@ -918,10 +971,12 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 	run.session = nil
 	local elapsed = os.clock() - session.started
 	if elapsed < session.minTime or elapsed > 90 then
+		setFishPhase(player, "break", 1)
 		return { error = "The line snapped." }
 	end
 	local pierPct = session.pier and Config.Harbor.pier.payoutPct or 1
 	if success ~= true then
+		setFishPhase(player, "break", 1)
 		local lines = { ("The %s got away and snapped your line (-%d durability)."):format(session.fish, DURA.perSnap) }
 		wear(player, data, DURA.perSnap)
 		if type(peak) == "number" and peak >= R.luckyScaleThreshold then
@@ -936,11 +991,18 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 		notify(player, table.concat(lines, " "), "info")
 		return { ok = true, caught = false }
 	end
+	-- Master Patch 6: the tier was rolled at the cast; the mutation and weight are rolled now
 	local tier = Config.Tiers[session.tier]
-	local pearls = tier.fishPearls * (perfect == true and Config.Fishing.perfectBonus or 1)
+	local mutation = Gacha.rollMutation(rng)
+	local named = mutation.id ~= "None" and (mutation.id .. " ") or ""
+	local isNew = not data.bestiary[session.fish]
+	-- Canon: 25-120 Pearls per fish. Perfect catches, mutations and the solo or Crew bonus all stay inside it.
+	local cap = Config.Tiers[#Config.Tiers].fishPearls
+	local pearls = math.min(cap, tier.fishPearls * (perfect == true and Config.Fishing.perfectBonus or 1) * mutation.mult)
 	data.stats.fishCaught += 1
 	data.bestiary[session.fish] = true
 	questProgress(player, data, "fish", 1)
+	local lines
 	if session.pier then
 		pearls = math.floor(pearls * pierPct)
 		data.pearls += pearls
@@ -949,21 +1011,60 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 			data.baitInv.Brineworm = (data.baitInv.Brineworm or 0) + 1
 			baitText = " Found a Brineworm!"
 		end
-		notify(player, ("%s %s: +%d Pearls banked (pier, no Heat).%s"):format(perfect == true and "Perfect catch!" or "Caught", session.fish, pearls, baitText), "good")
+		lines = { ("%s %s%s: +%d Pearls banked (pier, no Heat).%s"):format(perfect == true and "Perfect catch!" or "Caught", named, session.fish, pearls, baitText) }
 	else
-		-- Canon: 25-120 Pearls per fish, with the solo or Crew bonus inside that cap
-		pearls = math.min(Config.Tiers[#Config.Tiers].fishPearls, math.floor(pearls * run.modeMult))
+		pearls = math.min(cap, math.floor(pearls * run.modeMult))
 		run.carriedPearls += pearls
 		run.carriedFish += 1
 		addHeat(player, Config.Heat.perFish)
-		local lines = { ("%s %s (%s): +%d Pearls of cargo. Bank it at the Tide Cache to keep it safe."):format(perfect == true and "Perfect catch!" or "Caught", session.fish, tier.id, pearls) }
+		lines = { ("%s %s%s (%s): +%d Pearls of cargo. Bank it at the Tide Cache to keep it safe."):format(perfect == true and "Perfect catch!" or "Caught", named, session.fish, tier.id, pearls) }
 		local bonus = Threats.onCatch(player)
 		if bonus then
 			table.insert(lines, bonus)
 		end
-		notify(player, table.concat(lines, " "), session.tier >= 4 and "rare" or "good")
 	end
-	return { ok = true, caught = true, fish = session.fish, tier = session.tier, pearls = pearls }
+	-- weight is for show: a squared roll keeps big fish rare, and "Top X%" is that roll's percentile
+	local range = REVEAL.weights[session.tier]
+	local u = rng:NextNumber()
+	local weight = math.floor((range[1] + (range[2] - range[1]) * u * u) * 10 + 0.5) / 10
+	local nearMiss = session.tier < #Config.Tiers and rng:NextNumber() < REVEAL.nearMissChance
+	local reveal = Config.revealSeconds(session.tier, nearMiss)
+	local total = REVEAL.landSeconds + reveal
+	run.revealUntil = now() + total
+	-- other players see the fish's colour when your climb reaches it
+	local climb = REVEAL.landSeconds + REVEAL.silhouette + session.tier * REVEAL.step + (nearMiss and REVEAL.nearMissHold + REVEAL.nearMissDrain or 0)
+	setFishPhase(player, "land", total, { FishTier = session.tier, FishName = session.fish, FishShowAt = now() + climb })
+	if session.tier == #Config.Tiers then
+		pendingAnnounce[player] = ("%s landed a CELESTIAL %s%s in the %s!"):format(player.DisplayName, named, session.fish, session.pier and "Harbor Lagoon" or Config.Biomes[1].name)
+		task.delay(total, announce, player)
+	end
+	return {
+		ok = true,
+		caught = true,
+		fish = session.fish,
+		tier = session.tier,
+		pearls = pearls,
+		mutation = mutation.id,
+		mult = mutation.mult,
+		weight = weight,
+		top = math.max(1, math.ceil((1 - u) * 100)),
+		isNew = isNew,
+		nearMiss = nearMiss,
+		reveal = reveal,
+		biome = session.pier and "Harbor Lagoon" or Config.Biomes[1].name,
+		note = table.concat(lines, " "),
+		noteKind = session.tier >= 4 and "rare" or "good",
+	}
+end
+
+-- The reveal ended (or was skipped): you can be hurt again and the fish leaves your hands.
+function handlers.RevealDone(player, _data, run)
+	if run.revealUntil > now() then
+		run.revealUntil = now()
+		setFishPhase(player, "")
+		announce(player)
+	end
+	return { ok = true }
 end
 
 function handlers.GreedChoice(player, data, run, choice)
@@ -1209,6 +1310,7 @@ function handlers.BuyRod(player, data, run, rodId)
 	data.pearls -= rod.cost
 	data.ownedRods[rodId] = true
 	data.rod = rodId
+	Rods.attach(player, rodId)
 	notify(player, ("You bought the %s."):format(rod.name), "good")
 	BaseService.refresh(player)
 	return { ok = true }
@@ -1221,7 +1323,11 @@ function handlers.EquipRod(player, data, run, rodId)
 	if run.started and not inNest(player) then
 		return { error = "Swap rods between dives." }
 	end
+	if run.session then
+		return { error = "Finish your cast first." }
+	end
 	data.rod = rodId
+	Rods.attach(player, rodId)
 	return { ok = true }
 end
 
@@ -1313,6 +1419,10 @@ task.spawn(function()
 		for player, run in pairs(runs) do
 			local data = PlayerData.get(player)
 			local safe = inNest(player)
+			if run.session and os.clock() - run.session.started > 90 then
+				run.session = nil
+				setFishPhase(player, "")
+			end
 			if data and not run.started and not safe and rootOf(player) then
 				startRun(player, run, data)
 			elseif data and run.started and safe and not atRisk(run) and not run.choice and run.bankedPearls == 0 then
@@ -1592,6 +1702,14 @@ local function onPlayerAdded(player)
 			if current then
 				Companions.refresh(player, current, true)
 			end
+			-- Master Patch 7: your rod rides on your back
+			Rods.hold(player, false)
+			character:WaitForChild("UpperTorso", 5)
+			character:WaitForChild("RightHand", 5)
+			current = PlayerData.get(player)
+			if current and character.Parent then
+				Rods.attach(player, current.rod)
+			end
 		end)
 	end
 	player.CharacterAdded:Connect(onCharacter)
@@ -1611,6 +1729,9 @@ end
 Players.PlayerRemoving:Connect(function(player)
 	BaseService.release(player)
 	Companions.release(player)
+	Rods.release(player)
+	fishTokens[player] = nil
+	pendingAnnounce[player] = nil
 	PlayerData.release(player)
 	runs[player] = nil
 	incomeCarry[player] = nil

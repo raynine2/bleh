@@ -1,6 +1,6 @@
 # Tidebound: Eggfall
 
-Cast. Steal. Hatch. Escape. Core-loop vertical slice built from Design Doc Part A, the Part A Delta, the Master Patch (Patches 1-4) and the Canon Sheet.
+Cast. Steal. Hatch. Escape. Core-loop vertical slice built from Design Doc Part A, the Part A Delta, the Master Patch (Patches 1-8) and the Canon Sheet.
 
 ## What's in this slice
 
@@ -10,6 +10,9 @@ Cast. Steal. Hatch. Escape. Core-loop vertical slice built from Design Doc Part 
 - **Contested Waters (opt-in PvP)**: OFF by default, set per dive, back to OFF after it. When ON, a rival behind you can hold 1 s to snatch one carried egg; never within 40 studs of a beacon; the victim gets 5 s immunity and a speed burst. Egg nests can hold a bonus egg (x1.20). Crewmates never snatch from each other.
 - **Companions**: pick 2 hatched creatures in the DIVE tab. They follow you, and each awake one carries an egg so it doesn't slow you. A Reef Warden hit knocks one out for 10 min (or use a Revive Vial).
 - **Fishing minigame**: hold click or touch to push the reel bar and keep the fish inside it. Rod Control widens the bar, Resilience slows progress loss, Lure Speed shortens the bite, Luck and bait raise Rare+ odds. Perfect catches pay +20%. A fish that escapes after passing 90% drops a Lucky Scale (+25 Pearls).
+- **Rod animation (Master Patch 5)**: every cast plays the 10 steps of the rod table on every player's screen: windup, release (with the rod's trail, cast effect and a +4 FOV kick), landing, idle sway, the bite tell, the hook set, the struggle (the rod bends 0.6 to 0.9 with the fish's pull and the screen shakes harder for rarer fish), the snap and the landing flip into your hands. Until the animator's ids are pasted into `Animations.luau`, code poses the arms and bends the rod; the line is a spring that whips, sags and snaps taut.
+- **Fish reveal (Master Patch 6)**: every catch plays a 2.8 to 4.6 s reveal: the world drains to 20% colour, the camera swings to a 45-degree side view, a silhouette climbs the tiers 0.3 s at a time, then a name card shows the biome, fish, tier, stars, mutation and weight. Epic+ adds confetti, Legendary+ a shockwave and camera pull-back, Mythic+ aurora and NPCs turning to look, and a Celestial is announced to the whole server. On 40% of catches below Celestial the climb overshoots one tier and drains back (fish only, never eggs, set by `Config.Reveal.nearMissChance`). Fish roll the egg mutation table (shown on the BAIT tab too), which multiplies Pearls inside the 120 cap. Click or tap after the silhouette to skip to the card. Nothing can hurt you while it plays.
+- **Rods you can see (Master Patch 7)**: each of the 6 rods has its own model, glow, line colour, trail, cast effect and bobber. Your rod rides on your back everywhere and moves to your hand when you cast; your Rod Workshop rack shows every rod you own. Sound cues are listed in `Audio.luau` with empty ids, ready for the sound designer.
 - **Rod durability (Master Patch 2)**: 100 per rod, -1 per cast, -10 when a fish snaps the line. A broken rod fishes like a Drift Rod until Old Harl repairs it for Pearls (RODS tab).
 - **Heat 0-100**: +2 per fish, +8 per steal, -1 per 3s while lying low. 25 Warden patrols, 50 riptide (a 6 s pull toward open water every 20 s), 75 Warden locks on, 100 every beacon closes for 30s (10 s grace if you're within 10 studs of one).
 - **Risk (Master Patch 2)**: 100 health, healed between dives. The Reef Warden hits for 25, knocks your newest egg back to its shrine and knocks out a companion. Fish are cargo until you bank them at the Tide Cache; a wipe loses 100% of unbanked cargo. Wiping at heat 75+ starts your next dive at heat 15 until you rest 3 min at your Home Nest. Each carried egg costs 2 WalkSpeed; Shift (or SPRINT on touch) adds 6. Mending Vials heal 25 (Nim, Pearls only, 3 vials per dive).
@@ -42,6 +45,12 @@ Robux sells nothing in this slice; eggs, odds, pity, upgrades and power are all 
 | `src/server/Threats.luau` | `ServerScriptService.Tidebound.Threats` (elites, anemone beds, Glass Calm) |
 | `src/shared/Animations.luau` | `ReplicatedStorage.Tidebound.Animations` (animation handoff list) |
 | `src/shared/CreatureModels.luau` | `ReplicatedStorage.Tidebound.CreatureModels` (placeholder voxel creatures) |
+| `src/shared/RodModels.luau` | `ReplicatedStorage.Tidebound.RodModels` (the 6 rods and their bobbers) |
+| `src/shared/FishModels.luau` | `ReplicatedStorage.Tidebound.FishModels` (placeholder fish for the flip and the reveal) |
+| `src/shared/FishingFeel.luau` | `ReplicatedStorage.Tidebound.FishingFeel` (links the reel minigame to the rod animation) |
+| `src/shared/Audio.luau` | `ReplicatedStorage.Tidebound.Audio` (sound cue list) |
+| `src/server/Rods.luau` | `ServerScriptService.Tidebound.Rods` (puts your rod on your back or in your hand) |
+| `src/client/TideboundRod.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundRod` (rod poses, bend, line, bobber and effects) |
 | `src/client/TideboundCreatures.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundCreatures` (tank, pen and companion motion) |
 | `src/client/TideboundClient.client.luau` | `StarterPlayer.StarterPlayerScripts.TideboundClient` |
 
@@ -49,4 +58,4 @@ Sync with `rojo serve` (from this folder or the repo root) and the Rojo Studio p
 
 ## Not built yet
 
-Biomes 2-5 and their guardians (so the Prestige Altar stays locked, and PUSH DEEPER keeps you in the Shoals), run modifiers, co-op heists, cosmetics and the Trading Post window, the season track, Shard Eggs, incubator timers (and so Heat Lamps and hatch rush), Feeding Trough, Rod Rack, Bait Locker, Visitor slots, prestige, real animations and audio.
+Biomes 2-5 and their guardians (so the Prestige Altar stays locked, and PUSH DEEPER keeps you in the Shoals), run modifiers, co-op heists, cosmetics and the Trading Post window, the season track, Shard Eggs, incubator timers (and so Heat Lamps and hatch rush), Feeding Trough, Rod Rack, Bait Locker, Visitor slots, prestige, real animations and audio (the hooks are in `Animations.luau` and `Audio.luau`), and the three "prior" Patch 8 fixes (the scale patch, the 600 x 600 plot and the hex lock), which have no spec yet.
