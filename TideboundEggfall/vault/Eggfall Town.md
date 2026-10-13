@@ -3,19 +3,18 @@ tags: [world]
 ---
 # Eggfall Town
 
-The safe spawn (`TownBuilder.luau`). Since **Patch 23** it's the bright summer town of the *Catch a Brainrot* reference: green studded grass, orange brick roads, coloured tile roofs, cube trees, white picket fences, bushes, flower beds, glowing mushrooms, striped tents. No snow.
+The safe spawn (`TownBuilder.luau`, VERSION 8): the snowy winter town from the reference shots (Patch 14). Studded blue-white snow with paving inlays, snowy log cabins, brick houses, gallows lamps, wooden fences, vending machines, glowing ice crystals, igloos, striped stalls and gentle snowfall. The [[Loading Screen]] circles the moonlit plaza.
 
-## The spawn plaza
-A round brick plaza round the **Eggfall Egg** monument, with four brick roads out to the edges. **TIDEBOUND** and **WELCOME** are spelled out on the roads in giant brick letters.
-
-| Corner | Building | What's there |
-|---|---|---|
-| North-west | **Tide Lab** (white and blue, a green containment tube) | Egg shrine ([[Tide Eggs]]), the [[Tide Chest]], the Dash Capsule machine ([[Dash Capsules]]), [[Sister Coralie]] |
-| South-west | **Tide Center** (red and white, round cross sign) | The incubator, [[Nurse Pip]] |
-| South-east | **Tackle Shop** (brick, striped awning) | [[Old Harl]] behind the counter ([[Rods]]) |
-| North-east | Nest Beacon (a Tide Gate) by a lily pond | Bank your haul ([[Extraction and Greed]]) |
-
-Also on the plaza: the Tide Slide to the [[Harbor Ring]], [[Pinch]], [[Gate Warden Sel]], and the spawn point on the south road.
+## The spawn plaza (Patch 15)
+- The **Eggfall Egg** monument in the middle (a giant cracked Tide Egg on a dais).
+- The **Tide Egg shrine** in front of a big glass EGG SHOP, with [[Sister Coralie]] ([[Tide Eggs]]).
+- The **incubator** in front of a red HATCHERY.
+- The **tackle stall** with [[Old Harl]] behind the counter ([[Rods]]).
+- The **Nest Beacon**, a Tide Gate ([[Extraction and Greed]]).
+- Vending machines: BAIT, EGG and DASH CAPSULES ([[Dash Capsules]]).
+- The Tide Slide to the [[Harbor Ring]], [[Pinch]], [[Gate Warden Sel]], and the spawn point.
 
 ## Districts round it
-Harbor Street and the docks (east, with the Tidegate to the [[Sunken Shoals]]), Market Row (north), Torii Hill (west), Hatchery Farms (south-west), South Beach (south), Lighthouse Point (north-east). Villagers walk the streets (`TideboundLife`).
+Harbor Street and the docks (east, with the Tidegate to the [[Sunken Shoals]]), Market Row (north), Torii Hill (west), Hatchery Farms (south-west), South Beach (south), Lighthouse Point (north-east). Villagers, fishers, vendors, chickens and gulls bring it to life (`TideboundLife`). `WalkwayFix` patches street piers and rope bridges so you can't fall through them.
+
+> The bright summer remake (Tide Lab, Tide Center, brick roads) from Patch 23 is on another branch, not in the game ([[Branches]]).

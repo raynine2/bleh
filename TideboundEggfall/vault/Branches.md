@@ -3,13 +3,15 @@ tags: [code]
 ---
 # Branches
 
-State of the GitHub branches (repo `raynine2/bleh`):
+State of the GitHub branches (repo `raynine2/bleh`), 13 Oct 2026:
 
 | Branch | What's on it |
 |---|---|
-| `claude/sharp-lamport-tblg7c` | The main line through Patch 23: summer town, NPCs, [[Dialogue Box]], [[Tide Chest]], rod abilities, dashes, capsules. **This vault describes it.** |
-| `feat/gdd-audio-ui-vfx` | Your friend's work: GUI revamp (REF 4 menus, painted icons, currency pills, pass cards), quests, season pass, shop, leaderboards, LiveOps server, music and ambience, biome lighting, weather, VFX library. Branched off **before** Patch 23. |
-| `studio-ui` | Patch 23 plus some `.ref` images; no script changes. |
-| `recovered-*` | Old recovery snapshots. |
+| `game-current` | **The live game**, saved from Studio (newmainBEFORECLOUD.rbxl). This vault describes it. Should become `main`. |
+| `claude/sharp-lamport-tblg7c` | Patch 23 on top of an older base: the summer town (Tide Lab, Tide Center, brick roads), the cartoony NPC restyle and Nurse Pip, the NPC dialogue box, the Tide Chest gacha. **Not in the game.** |
+| `claude/tidebound-delta-3z36wi` | One commit: an `IsleFeatures` script plus mob and island changes. **Not in the game.** |
+| `feat/gdd-audio-ui-vfx` | Your friend's UI, audio and LiveOps work. The game has newer versions of all of it. |
+| `main` | Very old (Patch 10). |
+| `studio-ui`, `recovered-*` | Old snapshots. |
 
-**These two main branches have not been combined yet.** Syncing either one with Rojo replaces the other's version of shared scripts like `TideboundClient` ([[Rojo Workflow]]). The fix is a combined branch with both.
+To add Patch 23 or the island features to the game, merge them on top of `game-current` one at a time, keeping both sides ([[Rojo Workflow]]).

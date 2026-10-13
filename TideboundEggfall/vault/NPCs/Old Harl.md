@@ -4,10 +4,10 @@ tags: [npc]
 # Old Harl
 
 - **Role:** Tackle Shop
-- **Where:** Behind the Tackle Shop counter (south-east corner of the plaza). ([[Eggfall Town]])
-- **Looks:** Bearded fisherman in a yellow coat and bucket hat.
+- **Where:** Behind the tackle stall's counter on the plaza. ([[Eggfall Town]])
+- **Looks:** Blocky villager in blue with a brown hat.
 - **Opens:** the RODS tab ([[Menu Tabs]])
 
 > Every rod's stats are on the rack. No secrets, no Robux.
 
-Part of [[NPCs]]. Talks through the [[Dialogue Box]].
+Part of [[NPCs]].

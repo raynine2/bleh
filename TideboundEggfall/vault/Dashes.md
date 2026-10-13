@@ -3,7 +3,7 @@ tags: [skills, dash]
 ---
 # Dashes
 
-**Q** (B on a gamepad, DASH on touch) rolls one of your equipped dash moves (Patch 19), never the same one twice in a row when you have more than one. Get more from [[Dash Capsules]] and the [[Tide Chest]]; equip up to 3 in the DASHES tab ([[Menu Tabs]]).
+**Q** (B on a gamepad, DASH on touch) rolls one of your equipped dash moves (Patch 19), never the same one twice in a row when you have more than one. Get more from [[Dash Capsules]]; equip up to 3 in the DASHES tab ([[Menu Tabs]]).
 
 | # | Dash | Rarity | Stamina | Air | Needs | What it looks like |
 |---|---|---|---|---|---|---|

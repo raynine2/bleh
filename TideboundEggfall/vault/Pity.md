@@ -15,6 +15,5 @@ Guaranteed pulls (`Config.Pity`). A counter goes up with every pull and resets w
 Each gacha keeps its **own** counters, saved in `data.pity`:
 - `TideEgg` for [[Tide Eggs]]
 - `DashCapsule` for [[Dash Capsules]]
-- `TideChest` for the [[Tide Chest]]
 
 Pity never resets on a wipe ([[Sister Coralie]] says so). See [[Rarity Tiers]].

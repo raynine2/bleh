@@ -20,4 +20,5 @@ Eleven rods (`Config.Rods`). Each has fishing stats ([[Fishing]]) and its own ab
 | [[Boundless Rod]] | Rod Trial 5 | 2.3 | 2.8 | 2.4 | 2.3 | [[Boundless Rod#Ability: Boundless Void\|Boundless Void]] |
 
 - **Durability:** 100 per rod, -1 per cast, -10 when a fish snaps the line. A broken rod fishes like a Drift Rod until Old Harl repairs it.
+- **Rod roles:** each shop rod also has one fishing job, like summoning Surges sooner ([[Fishing Overhaul]]).
 - You wear your rod on your back everywhere; it moves to your hand when you cast (`Rods.luau`, `RodModels.luau`).

@@ -10,6 +10,7 @@ tags: [code]
 | ReplicatedStorage.Tidebound | `src/shared` |
 | ServerScriptService.Tidebound | `src/server` |
 | StarterPlayer.StarterPlayerScripts | `src/client` |
+| ReplicatedFirst | `src/first` (the [[Loading Screen]]) |
 
 New scripts made in Studio inside those folders are kept (`$ignoreUnknownInstances`), but **edits** to scripts from `src/` are replaced.
 

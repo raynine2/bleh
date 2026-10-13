@@ -3,9 +3,9 @@ tags: [ui]
 ---
 # Menu Tabs
 
-The menu in `TideboundClient` (REF 4 style: black panel, red neon outline). Tab groups:
+The main menu in `TideboundClient` (REF 4 style: black panel, red neon outline). Tab groups:
 - **eggs:** ODDS, PITY, RODS, BAIT, CREATURES, BESTIARY
 - **home:** BASE, QUESTS, BOARDS, DIVE
-- **dash:** DASHES, CAPSULES, TRIALS, CHEST
+- **dash:** DASHES, CAPSULES, TRIALS
 
-Stations and [[NPCs]] open their tab: e.g. the Tackle Shop opens RODS, the chest opens CHEST ([[Tide Chest]]). Your friend's UI branch rebuilds these menus: see [[Branches]].
+`TideboundMenus` adds the [[LiveOps]] windows (QUESTS, PASS, SHOP, BOARDS, ODDS, SETTINGS) with a launcher column, built from `UiKit` with hand-painted icons (`UiIcons`). Stations and [[NPCs]] open their tab.

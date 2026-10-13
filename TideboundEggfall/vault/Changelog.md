@@ -3,9 +3,20 @@ tags: [game]
 ---
 # Changelog
 
-Newest first. Full notes are in `TideboundEggfall/README.md`.
+Newest first.
 
-- **Patch 23:** Summer town revamp (Catch a Brainrot style), new plaza layout with Tide Lab / Tide Center / Tackle Shop, Harbor Ring and Home Nest restyle, cartoony NPCs, Nurse Pip, the [[Dialogue Box]], the [[Tide Chest]].
+## In the game (Studio, 12 and 13 Oct 2026)
+These came from the backup names in `ServerStorage.TideboundBackups` and the scripts' own notes:
+- **Loading screen** remade twice: the camera circles the moonlit plaza ([[Loading Screen]]).
+- **Rod stances** and **rod combo FX**: FISH | FIGHT swap ([[Stances]]), rod-coloured bursts and screen shake ([[Visual Effects]]).
+- **Power bar** and **osu!-style SHAKE** for fishing, plus the "easy shake" and miss fixes ([[Fishing]]).
+- **Fisch video** cast and UI, **fishing overhaul** (Surges, roaming fish, rod roles), **fish fights** and **fishing FX** ([[Fishing Overhaul]]).
+- **Swimming and fish riding** ([[Swimming and Riding]]), the **underwater look** ([[Underwater]]).
+- **HUD restyle**, **lobby remake**, **ocean and bridge fixes** (`WalkwayFix`), **voxel companions** and voxel fish creatures.
+- From your friend's branch: [[LiveOps]], [[Audio]] director, [[Biomes]], [[Weather and Wind]], [[Visual Effects]], [[Menu Tabs|new menus]].
+
+## Patches
+- **Patch 23 (not in the game, see [[Branches]]):** Summer town revamp (Catch a Brainrot style), new plaza layout with Tide Lab / Tide Center / Tackle Shop, Harbor Ring and Home Nest restyle, cartoony NPCs, Nurse Pip, the NPC dialogue box, the Tide Chest.
 - **Patch 22:** Boundless Void and Sun God Bounce remade as real 3D effects ([[Rod Abilities]]).
 - **Patch 21:** [[Rod Abilities]] for every rod, five trial rods and [[Rod Trials]].
 - **Patch 20:** [[Dash Capsules]]: dashes get rarities, equip slots.

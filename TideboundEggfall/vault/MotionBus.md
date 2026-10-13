@@ -9,4 +9,6 @@ tags: [code]
 - `kick`: a field-of-view punch
 - `stamina`: shared [[Stamina and Sprint]]
 - `cutscene`: true while a cutscene owns the camera
-- `dialogue`, `openPanel`: the [[Dialogue Box]] (Patch 23)
+- Swimming and riding poses come from `WaterMoves` ([[Swimming and Riding]]).
+
+`ClientBus` is its sibling for audio, VFX and UI: music requests, ducking, gacha stages, rate-limited flashes, whether a menu is open ([[Audio]], [[Visual Effects]]).

@@ -5,9 +5,9 @@ tags: [npc]
 
 - **Role:** Tidegate
 - **Where:** East side of the plaza. ([[Eggfall Town]])
-- **Looks:** Red uniform, cap and gold badge.
+- **Looks:** Blocky villager in red with a dark hat.
 - **Opens:** the DIVE tab ([[Menu Tabs]])
 
 > Dive Solo or Dive With Crew and I'll send you straight out to Landing Reef.
 
-Part of [[NPCs]]. Talks through the [[Dialogue Box]].
+Part of [[NPCs]].

@@ -44,7 +44,10 @@ The session start hook installs `rojo` and `lune` in cloud sessions.
 ## Code notes
 
 - Rojo mapping: `src/shared` → ReplicatedStorage.Tidebound, `src/server` → ServerScriptService.Tidebound,
-  `src/client` → StarterPlayerScripts. All three keep unknown Studio instances (`$ignoreUnknownInstances`).
+  `src/client` → StarterPlayerScripts, `src/first` → ReplicatedFirst. All four keep unknown Studio instances
+  (`$ignoreUnknownInstances`).
+- `game-current` is the live game, saved from Studio. The Superbullet plugin's scripts and
+  `ServerStorage.TideboundBackups` live only in Studio on purpose; don't add them to `src/`.
 - `TideboundClient`'s main chunk is right at Luau's 200-local limit. Put new code inside `do ... end` blocks
   with its state in one table, or the whole UI breaks.
 - Builders (`TownBuilder`, `ExpansionBuilder`, `ShoalsBuilder`, ...) only rebuild when their `VERSION` changes.
