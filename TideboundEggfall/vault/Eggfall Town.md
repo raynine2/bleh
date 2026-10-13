@@ -14,6 +14,8 @@ The safe spawn (`TownBuilder.luau`, VERSION 8): the snowy winter town from the r
 - Vending machines: BAIT, EGG and DASH CAPSULES ([[Dash Capsules]]).
 - The Tide Slide to the [[Harbor Ring]], [[Pinch]], [[Gate Warden Sel]], and the spawn point.
 
+Since 14 Oct 2026 the lobby sits in a green valley: grass mounds between the garden's trees and ridges all round except the east ([[Highlands]]).
+
 ## Districts round it
 Harbor Street and the docks (east, with the Tidegate to the [[Sunken Shoals]]), Market Row (north), Torii Hill (west), Hatchery Farms (south-west), South Beach (south), Lighthouse Point (north-east). Villagers, fishers, vendors, chickens and gulls bring it to life (`TideboundLife`). `WalkwayFix` patches street piers and rope bridges so you can't fall through them.
 
