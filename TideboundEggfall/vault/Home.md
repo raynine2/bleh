@@ -32,7 +32,7 @@ Vault for the Roblox game **Tidebound: Eggfall**. Start here. Every note links t
 - [[Swimming and Riding]]
 
 ## World
-- [[World Map]] · [[Highlands]] · [[Eggfall Town]] · [[Harbor Ring]] · [[Home Nest]] · [[Sunken Shoals]] · [[Kelp Cathedral]] · [[Horizon]]
+- [[World Map]] · [[Eggfall Town]] · [[Harbor Ring]] · [[Home Nest]] · [[Sunken Shoals]] · [[Kelp Cathedral]] · [[Horizon]]
 - [[NPCs]] · [[Biomes]] · [[Weather and Wind]] · [[Underwater]]
 
 ## Systems

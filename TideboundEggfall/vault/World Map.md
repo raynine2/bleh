@@ -11,6 +11,5 @@ The whole map plan is one table, `IslesLayout.luau` (Patch 10), that builders, s
 - [[Sunken Shoals]]: 22 islands in three rings east of town
 - [[Kelp Cathedral]]: biome 2, under the sea
 - [[Horizon]]: scenery that hides the edge of the world
-- [[Highlands]]: the hills, ridges and sea cliffs round town and on every island
 
 Shown on the [[Minimap]]. Built by the [[Builders]].

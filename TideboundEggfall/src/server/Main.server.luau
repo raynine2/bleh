@@ -102,21 +102,6 @@ task.spawn(function()
 		warn("[Tidebound] The horizon failed to build:", err)
 	end
 end)
--- 14 Oct 2026: hills, ridges and sea cliffs round town and on the islands (Highlands). Add-only decoration that
--- builds round whatever is already there; nothing waits on it or breaks if it fails. Bake it into the place from
--- the command bar to skip it at start (see Highlands.luau).
-task.spawn(function()
-	local module = script.Parent:FindFirstChild("Highlands")
-	if not module then
-		return
-	end
-	local ok, err = pcall(function()
-		require(module).build(world)
-	end)
-	if not ok then
-		warn("[Tidebound] The highlands failed to build:", err)
-	end
-end)
 local kelp = descent:WaitForChild("KelpCathedral")
 
 local R = Config.Risk

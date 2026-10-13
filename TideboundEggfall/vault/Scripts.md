@@ -3,7 +3,7 @@ tags: [code]
 ---
 # Scripts
 
-All 77 scripts in the game (`TideboundEggfall/src` on `game-current`), with the first line of each script's own description. See [[Rojo Workflow]] before editing.
+All 76 scripts in the game (`TideboundEggfall/src` on `game-current`), with the first line of each script's own description. See [[Rojo Workflow]] before editing.
 
 ## Client (`src/client` → StarterPlayerScripts)
 
@@ -51,7 +51,6 @@ All 77 scripts in the game (`TideboundEggfall/src` on `game-current`), with the 
 | `DescentBuilder` | 866 | the Big Update map. Builds Kelp Cathedral into Workspace.TideboundWorld.Descent, and | [[Kelp Cathedral]] |
 | `ExpansionBuilder` | 519 | Delta Sections 7 and 8. Builds the Harbor Ring hub and the 8 Home Nest plots as a | [[Harbor Ring]], [[Home Nest]], [[NPCs]] |
 | `FishingPlusService` | 494 | Fishing Overhaul server (12 Oct 2026). Surges, roaming rare fish, stacked conditions, | [[Fishing Overhaul]] |
-| `Highlands` | 560 | Hills, ridges and sea cliffs round town and on the islands (14 Oct 2026). Add-only. | [[Highlands]] |
 | `HorizonBuilder` | 609 | the horizon (Patch 17). Before this the sea simply stopped a few hundred studs past the | [[Horizon]] |
 | `LiveOps` | 867 | retention systems on the server (GDD Sections 6, 10, 12). Daily quests, weekly goals, | [[LiveOps]] |
 | `Main` | 2593 | server: dives, fishing sessions, egg stealing, heat, the Reef Warden, extraction, gacha. | [[Core Loop]], [[Gacha]] |

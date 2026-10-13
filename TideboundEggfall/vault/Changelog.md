@@ -5,9 +5,6 @@ tags: [game]
 
 Newest first.
 
-## 14 Oct 2026
-- **[[Highlands]]:** hills, ridges and sea cliffs round the lobby and a hill on every island, made of terrain and dressed with the game's own 3D models. Add-only.
-
 ## In the game (Studio, 12 and 13 Oct 2026)
 These came from the backup names in `ServerStorage.TideboundBackups` and the scripts' own notes:
 - **Loading screen** remade twice: the camera circles the moonlit plaza ([[Loading Screen]]).
