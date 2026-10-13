@@ -46,6 +46,9 @@ local ShoalsBuilder = require(script.Parent:WaitForChild("ShoalsBuilder"))
 local Mobs = require(script.Parent:WaitForChild("Mobs"))
 local DashMoves = require(Shared:WaitForChild("DashMoves"))
 local RodSkills = require(Shared:WaitForChild("RodSkills"))
+local LiveOps = require(script.Parent:WaitForChild("LiveOps")) -- GDD Sections 6/10/12: quests, season, shop, boards
+local WindService = require(script.Parent:WaitForChild("WindService")) -- GDD Sections 8/10: GlobalWind and weather
+local FishingPlusService = require(script.Parent:WaitForChild("FishingPlusService")) -- Fishing Overhaul: Surges, roaming fish, run summary
 local CollectionService = game:GetService("CollectionService")
 
 -- the remotes come first, so clients never wait on the world build (or on a builder that fails)
@@ -75,6 +78,15 @@ TownBuilder.build(world)
 local shoals = ShoalsBuilder.build(world)
 local delta = ExpansionBuilder.build(world)
 local descent = DescentBuilder.build(world)
+-- solid piers under streets over water, rope bridges above the sea, no z-fighting or railing across junctions
+do
+	local ok, result = pcall(function()
+		return require(script.Parent:WaitForChild("WalkwayFix")).apply(world)
+	end)
+	if not ok then
+		warn("[Tidebound] WalkwayFix failed:", result)
+	end
+end
 -- Patch 17: the far sea and skyline. Decoration only, so it builds alongside, and nothing waits on it or
 -- breaks if it fails.
 task.spawn(function()
@@ -256,26 +268,14 @@ local function nearBeacon(position, radius)
 	return false
 end
 
--- Daily quests (Quill's board): progress resets at 00:00 UTC.
+-- Daily quests (Quill's board): LiveOps owns them now (3 a day from a pool, reset at 00:00 UTC), alongside the
+-- weekly goals, the live event and season XP. Every game event below is counted there.
 local function questsFor(data)
-	local today = math.floor(os.time() / 86400)
-	if data.quests.day ~= today then
-		data.quests = { day = today, progress = {}, claimed = {} }
-	end
-	return data.quests
+	return LiveOps.dailyView(data)
 end
 
-local function questProgress(player, data, id, amount)
-	local quests = questsFor(data)
-	for _, quest in ipairs(Config.Quests) do
-		if quest.id == id and not quests.claimed[id] then
-			local before = quests.progress[id] or 0
-			quests.progress[id] = math.min(quest.goal, before + (amount or 1))
-			if before < quest.goal and quests.progress[id] >= quest.goal then
-				notify(player, ("Quest complete: %s. Claim it at Quill's board or the QUESTS tab."):format(quest.text), "good")
-			end
-		end
-	end
+local function questProgress(player, _data, id, amount)
+	LiveOps.track(player, id, amount)
 end
 
 -- Rod durability (missing entry = full) -------------------------------------------------------
@@ -386,7 +386,6 @@ local function buildState(player)
 		dashes = data.dashes,
 		equippedDashes = data.equippedDashes,
 		dashPity = data.pity.DashCapsule,
-		chestPity = data.pity.TideChest, -- Patch 23
 		mobKills = data.mobKills, -- Patch 21: Rod Trials progress
 		history = data.history,
 		collection = data.collection,
@@ -461,6 +460,8 @@ local function push(player)
 end
 
 BaseService.init({ delta = delta, notify = notify, push = push })
+LiveOps.init({ notify = notify, push = push, remotes = remotes })
+WindService.start()
 Crew.init({
 	notify = notify,
 	push = push,
@@ -566,6 +567,7 @@ end
 
 local function startRun(player, run, data)
 	run.started = true
+	FishingPlusService.startRun(run)
 	run.mode, run.modeMult, run.crewSize = modeFor(player, run)
 	run.contested = data.settings.contested == true
 	local rod = Config.RodsById[data.rod] or Config.Rods[1]
@@ -781,6 +783,7 @@ local function onKill(player, kind)
 	end
 	data.mobKills[kind] = (data.mobKills[kind] or 0) + 1
 	data.mobKills.any = (data.mobKills.any or 0) + 1
+	questProgress(player, data, "mob", 1) -- GDD Section 12: quests, goals and season XP
 	checkTrials(player, data)
 	push(player)
 end
@@ -915,8 +918,7 @@ local function onCast(player, prompt)
 		return
 	end
 	if run.session and os.clock() - run.session.started < 60 then
-		notify(player, "You're already reeling.", "info")
-		return
+		return -- a second cast while one is going (the client stops these; no toast)
 	end
 	if now() < run.revealUntil then
 		return
@@ -936,15 +938,35 @@ local function onCast(player, prompt)
 	local biomeIndex = prompt:GetAttribute("Biome") or 1
 	local biome = Config.Biomes[biomeIndex] or Config.Biomes[1]
 	local luck = rod.luck * (bait and bait.luck or 1) * (biome.luck or 1)
+	-- Fishing Overhaul: Surges, night, roaming rare fish and rod jobs lean the roll (FishingPlusService)
+	local plus = nil
+	if not pier then
+		local castPart = prompt.Parent
+		local castAt = (castPart and castPart:IsA("BasePart") and castPart.Position) or Vector3.zero
+		local ok, res = pcall(FishingPlusService.onCast, player, data, biomeIndex, castAt, rod, bait and bait.luck or 1, biome.luck or 1)
+		if ok then
+			plus = res
+			luck *= plus.luck
+		else
+			warn("[Tidebound] FishingPlus onCast:", res)
+		end
+	end
 	local tierIndex = Gacha.rollFishTier(luck, rng)
 	if pier then
 		tierIndex = math.min(tierIndex, Config.Harbor.pier.maxTier)
 	end
 	local names = biome.fish[tierIndex]
 	local fish = names[rng:NextInteger(1, #names)]
+	if plus and plus.tier and plus.fish then
+		-- you cast on a roaming fish you could see: that exact fish bites
+		tierIndex, fish = plus.tier, plus.fish
+	end
 	local biteWait = rng:NextNumber(Config.Fishing.biteMin, Config.Fishing.biteMax) / rod.lureSpeed
 	if not pier then
 		biteWait *= Threats.biteMult()
+	end
+	if plus then
+		biteWait *= plus.bite
 	end
 	run.session = {
 		id = HttpService:GenerateGUID(false),
@@ -952,8 +974,11 @@ local function onCast(player, prompt)
 		fish = fish,
 		pier = pier,
 		biome = biomeIndex,
+		surge = plus and plus.info.surge or nil,
+		roamer = plus and plus.info.roamer or nil,
 		started = os.clock(),
-		minTime = biteWait + Config.Fishing.minReelSeconds,
+		-- Fisch video (12 Oct 2026): clicking SHAKE can bring the bite in early, down to 35% of the wait
+		minTime = biteWait * 0.35 + Config.Fishing.minReelSeconds,
 	}
 	-- the bobber lands somewhere on the fishing spot's ring
 	local spotPart = prompt.Parent
@@ -972,6 +997,7 @@ local function onCast(player, prompt)
 		pier = pier,
 		spot = spot,
 		rod = data.rod, -- the look: a broken rod keeps its look
+		plus = plus and plus.info or nil, -- Fishing Overhaul: the luck sum and rod job for the screen
 	})
 	push(player)
 end
@@ -1021,6 +1047,7 @@ local function onBankCatch(player)
 	run.bankedPearls += pearls
 	run.carriedPearls, run.carriedFish = 0, 0
 	cue(player, "Bank")
+	questProgress(player, data, "bank", 1)
 	notify(player, ("Banked %d fish as %d Pearls. No wipe can touch them now."):format(fish, pearls), "good")
 	push(player)
 end
@@ -1090,6 +1117,15 @@ local function extract(player)
 		mult = mult,
 		biome = (Config.Biomes[run.depth] or Config.Biomes[1]).name,
 	})
+	-- Fishing Overhaul: once the tally ends, the big green run summary with Pearls per minute
+	local okSum, summary = pcall(FishingPlusService.summary, run, fishPearls + payout + run.bankedPearls, run.carriedEggs, embers, (Config.Biomes[run.depth] or Config.Biomes[1]).name)
+	if okSum then
+		task.delay(CUT.extractTeleport + 5.5, function()
+			if player.Parent then
+				cue(player, "RunSummary", summary)
+			end
+		end)
+	end
 	local session = run.session
 	local fresh = newRun()
 	fresh.session = session
@@ -1120,6 +1156,7 @@ local function pushDeeper(player, run)
 		notify(player, ("You pushed deeper: cargo x%.1f, heat +%d, and the %s gets angrier. Extract at a different beacon."):format(cargo, GREED.heat, guardianFor(run).cfg.name), "warn")
 	end
 	cue(player, "Push")
+	questProgress(player, nil, "push", 1)
 	addHeat(player, GREED.heat)
 	push(player)
 end
@@ -1307,6 +1344,9 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 	data.stats.fishCaught += 1
 	data.bestiary[session.fish] = true
 	questProgress(player, data, "fish", 1)
+	if session.tier >= 3 then
+		questProgress(player, data, "rareFish", 1)
+	end
 	local lines
 	if session.pier then
 		pearls = math.floor(pearls * pierPct)
@@ -1328,16 +1368,42 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 			table.insert(lines, bonus)
 		end
 	end
+	questProgress(player, data, "pearls", pearls)
+	local okPlus, errPlus = pcall(FishingPlusService.onCatch, player, data, run, session, pearls, perfect == true)
+	if not okPlus then
+		warn("[Tidebound] FishingPlus onCatch:", errPlus)
+	end
 	-- weight is for show: a squared roll keeps big fish rare, and "Top X%" is that roll's percentile
 	local range = REVEAL.weights[session.tier]
 	local u = rng:NextNumber()
 	local weight = math.floor((range[1] + (range[2] - range[1]) * u * u) * 10 + 0.5) / 10
-	local nearMiss = session.tier < #Config.Tiers and rng:NextNumber() < REVEAL.nearMissChance
-	local reveal = Config.revealSeconds(session.tier, nearMiss)
-	local total = REVEAL.landSeconds + reveal
+	-- Fisch video (12 Oct 2026): your heaviest of each fish, and how much of this biome's bestiary you've found
+	data.fishWeights = data.fishWeights or {}
+	local best = data.fishWeights[session.fish]
+	local heaviest = not isNew and best ~= nil and weight > best
+	if best == nil or weight > best then
+		data.fishWeights[session.fish] = weight
+	end
+	local biomeDef = Config.Biomes[session.biome] or Config.Biomes[1]
+	local found, of, seen = 0, 0, {}
+	for _, names in pairs(biomeDef.fish) do
+		for _, n in ipairs(names) do
+			if not seen[n] then
+				seen[n] = true
+				of += 1
+				if data.bestiary[n] then
+					found += 1
+				end
+			end
+		end
+	end
+	-- the quick Fisch-style catch: the fish flips out (1 s), you hold it over your head and it takes its colour
+	-- straight away, and you're free again after about 3.4 s (the long cinematic reveal is retired)
+	local nearMiss = false
+	local total = 3.4
+	local reveal = total
 	run.revealUntil = now() + total
-	-- other players see the fish's colour when your climb reaches it
-	local climb = REVEAL.landSeconds + REVEAL.silhouette + session.tier * REVEAL.step + (nearMiss and REVEAL.nearMissHold + REVEAL.nearMissDrain or 0)
+	local climb = 1.0
 	setFishPhase(player, "land", total, { FishTier = session.tier, FishName = session.fish, FishShowAt = now() + climb })
 	if session.tier == #Config.Tiers then
 		pendingAnnounce[player] = ("%s landed a CELESTIAL %s%s in the %s!"):format(player.DisplayName, named, session.fish, session.pier and "Harbor Lagoon" or Config.Biomes[session.biome].name)
@@ -1359,10 +1425,82 @@ function handlers.FinishCast(player, data, run, id, success, perfect, peak)
 		biome = session.pier and "Harbor Lagoon" or Config.Biomes[session.biome].name,
 		note = table.concat(lines, " "),
 		noteKind = session.tier >= 4 and "rare" or "good",
+		found = found,
+		of = of,
+		heaviest = heaviest,
+		extra = lines[2],
 	}
 end
 
 -- The reveal ended (or was skipped): you can be hurt again and the fish leaves your hands.
+-- Stances (13 Oct 2026, HJHJH): X swaps the fishing stance (a click casts at a spot) and the fighting stance (a
+-- click swings the rod, which stays in your hand). Everyone sees it through the Stance and StanceAt attributes.
+function handlers.Stance(player, _data, run, stance)
+	local fight = stance == "fight"
+	if fight and run.session then
+		return { error = "Reel in first." }
+	end
+	Rods.stance(player, fight)
+	local character = player.Character
+	if character then
+		character:SetAttribute("Stance", fight and "fight" or "fish")
+		character:SetAttribute("StanceAt", workspace:GetServerTimeNow())
+	end
+	return { stance = fight and "fight" or "fish" }
+end
+
+-- 13 Oct 2026 (HJHJH): "when there is water u should be able to just fish everywhere in the main world, in the
+-- second depth just in the ponds". The client sends the water point it aimed at; the server checks it's close and
+-- really sea water (Terrain water only: fountains, glowing strips and decor "water" parts never count), then casts as
+-- if at a spot there. Up top that's the open sea outside the Nest and the Harbor (HJHJH: no fishing on the main
+-- land or in the lobby; the spots and piers there still work); below Y -150 only the Kelp Cathedral's pools count.
+local WATER_REACH = 36
+local function waterAt(point)
+	local terrain = workspace.Terrain
+	local region = Region3.new(point - Vector3.new(1, 3, 1), point + Vector3.new(1, 1, 1)):ExpandToGrid(4)
+	local ok, materials = pcall(terrain.ReadVoxels, terrain, region, 4)
+	if ok then
+		local size = materials.Size
+		for x = 1, size.X do
+			for y = 1, size.Y do
+				for z = 1, size.Z do
+					if materials[x][y][z] == Enum.Material.Water then
+						return "terrain"
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+function handlers.CastWater(player, _data, _run, point)
+	if typeof(point) ~= "Vector3" or point.X ~= point.X or point.Y ~= point.Y or point.Z ~= point.Z then
+		return { error = "No water there." }
+	end
+	local root = rootOf(player)
+	if not root or (point - root.Position).Magnitude > WATER_REACH then
+		return { error = "Too far to cast." }
+	end
+	local deep = point.Y < -150
+	if not waterAt(point) or (not deep and (Config.safeZone(point) ~= nil or Config.safeZone(root.Position) ~= nil)) then
+		return { error = "No water there." }
+	end
+	local attrs = { Biome = deep and 2 or 1 }
+	onCast(player, {
+		GetAttribute = function(_, key)
+			return attrs[key]
+		end,
+		Parent = {
+			Position = point,
+			IsA = function(_, className)
+				return className == "BasePart"
+			end,
+		},
+	})
+	return { ok = true }
+end
+
 function handlers.RevealDone(player, _data, run)
 	if run.revealUntil > now() then
 		run.revealUntil = now()
@@ -1513,8 +1651,8 @@ function handlers.BuyEgg(player, data)
 	return { ok = true }
 end
 
-local function hatchOne(player, data, mode, counters)
-	local tierIndex, pityKey = Gacha.rollTier(counters or data.pity.TideEgg, rng) -- Patch 23: chests pass their own pity
+local function hatchOne(player, data, mode)
+	local tierIndex, pityKey = Gacha.rollTier(data.pity.TideEgg, rng)
 	local tier = Config.Tiers[tierIndex]
 	local creature = tier.creatures[rng:NextInteger(1, #tier.creatures)]
 	local mutation = Gacha.rollMutation(rng)
@@ -1570,6 +1708,8 @@ function handlers.Hatch(player, data, run, count)
 			best = result
 		end
 	end
+	LiveOps.onPull(player, data) -- mirror the pity counters to the MemoryStore cache (Section 10)
+	questProgress(player, data, "hatch", count)
 	local sold, soldCount = BaseService.enforceStorage(data)
 	if soldCount > 0 then
 		notify(player, ("Storage full: sold %d lowest-value creature(s) for %d Pearls. A Nest Vault holds more."):format(soldCount, sold), "warn")
@@ -1594,8 +1734,6 @@ local function syncDashes(player, data)
 	player:SetAttribute("Dashes", table.concat(ids, ","))
 end
 
-local grantDash
-
 function handlers.BuyCapsule(player, data)
 	local cost = Config.Capsules.pearlCost
 	if data.pearls < cost then
@@ -1614,12 +1752,7 @@ function handlers.OpenCapsule(player, data, run)
 		return { error = "Open capsules in town, not on a dive." }
 	end
 	data.capsules -= 1
-	return { ok = true, result = grantDash(player, data, data.pity.DashCapsule, "capsule") }
-end
-
--- Rolls a dash on `counters` and gives it to you; returns the result the hatch scene plays.
-grantDash = function(player, data, counters, kind)
-	local tierIndex, pityKey = Gacha.rollTier(counters, rng)
+	local tierIndex, pityKey = Gacha.rollTier(data.pity.DashCapsule, rng)
 	-- a rarity with no dash yet falls back to the nearest one below
 	local pool = nil
 	for t = tierIndex, 1, -1 do
@@ -1642,32 +1775,7 @@ grantDash = function(player, data, counters, kind)
 	if tierIndex >= 5 then
 		notifyAll(("%s pulled the %s dash %s!"):format(player.DisplayName, Config.Tiers[tierIndex].id, move.name), "rare")
 	end
-	return { kind = kind, prize = "dash", tier = tierIndex, dash = move.id, creature = move.name, isNew = isNew, shards = shards, pity = pityKey, equipped = table.find(data.equippedDashes, move.key) ~= nil }
-end
-
--- Patch 23: Tide Chests (the chest gacha in front of the Tide Lab). Pay and open at once: a rarity on the chest's
--- own pity, then a creature of it (into your aquarium, like a hatch) or, Config.Chest.dashChance of the time, a dash.
-function handlers.OpenChest(player, data, run)
-	local cost = Config.Chest.pearlCost
-	if run.started then
-		return { error = "Open chests in town, not on a dive." }
-	end
-	if data.pearls < cost then
-		return { error = ("A Tide Chest costs %d Pearls."):format(cost) }
-	end
-	data.pearls -= cost
-	if rng:NextNumber() < Config.Chest.dashChance then
-		return { ok = true, result = grantDash(player, data, data.pity.TideChest, "chest") }
-	end
-	local result = hatchOne(player, data, "Solo", data.pity.TideChest)
-	result.kind = "chest"
-	result.prize = "creature"
-	local sold, soldCount = BaseService.enforceStorage(data)
-	if soldCount > 0 then
-		notify(player, ("Storage full: sold %d lowest-value creature(s) for %d Pearls. A Nest Vault holds more."):format(soldCount, sold), "warn")
-	end
-	BaseService.changed(player)
-	return { ok = true, result = result }
+	return { ok = true, result = { kind = "capsule", tier = tierIndex, dash = move.id, creature = move.name, isNew = isNew, shards = shards, pity = pityKey, equipped = table.find(data.equippedDashes, move.key) ~= nil } }
 end
 
 -- Equips a dash you own (into a free slot), or unequips it (you always keep at least one).
@@ -1765,22 +1873,7 @@ function handlers.Trials(player, data)
 end
 
 function handlers.ClaimQuest(player, data, run, questId)
-	local quests = questsFor(data)
-	for _, quest in ipairs(Config.Quests) do
-		if quest.id == questId then
-			if quests.claimed[questId] then
-				return { error = "Already claimed today." }
-			end
-			if (quests.progress[questId] or 0) < quest.goal then
-				return { error = "Not finished yet." }
-			end
-			quests.claimed[questId] = true
-			data.pearls += quest.reward
-			notify(player, ("Quest reward: +%d Pearls."):format(quest.reward), "good")
-			return { ok = true }
-		end
-	end
-	return { error = "Unknown quest." }
+	return LiveOps.claimDaily(player, data, questId)
 end
 
 function handlers.Travel(player, data, run, destination)
@@ -1929,6 +2022,12 @@ local function newGuardian(id, model, pathFolder, cfg, depth, hoverY, noGoCenter
 		pauseUntil = 0,
 		active = false,
 	}
+end
+
+-- GDD Section 9: each guardian has a vocal signature the clients play (TideboundAudio reads the tag and attribute)
+for _, pair in ipairs({ { shoals:WaitForChild("ReefWarden"), "TideGuardian" }, { kelp:WaitForChild("KelpLeviathan"), "KelpWraith" } }) do
+	pair[1]:SetAttribute("Vocal", pair[2])
+	CollectionService:AddTag(pair[1], "TideboundGuardian")
 end
 
 local guardians = {
@@ -2249,6 +2348,8 @@ end)
 
 -- Player lifecycle ---------------------------------------------------------------
 
+FishingPlusService.init({ notify = notify, cue = cue })
+
 local function onPlayerAdded(player)
 	local data = PlayerData.load(player)
 	runs[player] = newRun()
@@ -2268,6 +2369,7 @@ local function onPlayerAdded(player)
 	syncDashes(player, data)
 	-- Patch 21: a trial whose goals were lowered since you last played unlocks now
 	checkTrials(player, data)
+	LiveOps.onPlayerAdded(player, data)
 	-- after the client has loaded, so the toast is seen
 	task.delay(4, function()
 		if player.Parent then
@@ -2370,6 +2472,96 @@ local function onPlayerAdded(player)
 	end
 end
 
+-- /giveall: owner-only cheat (Studio and live servers). Gives every currency, rod, bait, vial, dash, cosmetic,
+-- creature, fish log entry, Home Nest zone and max upgrade, and finishes every Rod Trial's mob count.
+-- Owner = the game's creator (rank 255 if a group owns it). Anyone in Studio counts as owner.
+local function isOwner(player)
+	if RunService:IsStudio() then
+		return true
+	end
+	if game.CreatorType == Enum.CreatorType.Group then
+		local ok, rank = pcall(player.GetRankInGroup, player, game.CreatorId)
+		return ok and rank == 255
+	end
+	return player.UserId == game.CreatorId
+end
+
+local function giveAll(player)
+	local data = PlayerData.get(player)
+	if not data or not isOwner(player) then
+		return
+	end
+	local LiveOpsData = require(Shared:WaitForChild("LiveOpsData"))
+	data.pearls += 1000000
+	data.shards += 10000
+	data.embers += 10000
+	data.tideglass += 10000
+	data.eggs += 100
+	data.capsules += 100
+	for _, rod in ipairs(Config.Rods) do
+		data.ownedRods[rod.id] = true
+	end
+	for _, bait in ipairs(Config.Baits) do
+		data.baitInv[bait.id] = (data.baitInv[bait.id] or 0) + 100
+	end
+	for _, vial in ipairs(Config.Vials) do
+		data.vials[vial.id] = (data.vials[vial.id] or 0) + 50
+	end
+	for _, move in ipairs(DashMoves.list) do
+		data.dashes[move.key] = math.max(data.dashes[move.key] or 0, 1)
+	end
+	for id in pairs(LiveOpsData.cosmetics) do
+		data.cosmetics.owned[id] = true
+	end
+	for _, tier in ipairs(Config.Tiers) do
+		for _, creature in ipairs(tier.creatures) do
+			data.collection[creature] = (data.collection[creature] or 0) + 1
+		end
+	end
+	for _, biome in ipairs(Config.Biomes) do
+		for _, row in ipairs(biome.fish or {}) do
+			for _, fish in ipairs(row) do
+				data.bestiary[fish] = true
+			end
+		end
+	end
+	for _, zone in ipairs(Config.Base.zones) do
+		data.zones[zone.id] = true
+	end
+	for _, upgrade in ipairs(Config.Base.upgrades) do
+		data.levels[upgrade.id] = #upgrade.values
+	end
+	for kind, kills in pairs(data.mobKills) do
+		data.mobKills[kind] = math.max(kills, 500)
+	end
+	push(player)
+	notify(player, "Owner: you got everything (currencies, rods, baits, vials, dashes, cosmetics, creatures, fish log, zones, max upgrades).", "good")
+end
+
+do
+	local TextChatService = game:GetService("TextChatService")
+	if TextChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+		local command = Instance.new("TextChatCommand")
+		command.Name = "GiveAllCommand"
+		command.PrimaryAlias = "/giveall"
+		command.Triggered:Connect(function(source)
+			local player = Players:GetPlayerByUserId(source.UserId)
+			if player then
+				giveAll(player)
+			end
+		end)
+		command.Parent = TextChatService
+	else
+		Players.PlayerAdded:Connect(function(player)
+			player.Chatted:Connect(function(message)
+				if message:lower() == "/giveall" then
+					giveAll(player)
+				end
+			end)
+		end)
+	end
+end
+
 Players.PlayerAdded:Connect(onPlayerAdded)
 for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(onPlayerAdded, player)
@@ -2381,6 +2573,7 @@ Players.PlayerRemoving:Connect(function(player)
 	Rods.release(player)
 	fishTokens[player] = nil
 	pendingAnnounce[player] = nil
+	LiveOps.onPlayerRemoving(player)
 	PlayerData.release(player)
 	runs[player] = nil
 	incomeCarry[player] = nil

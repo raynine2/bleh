@@ -220,7 +220,7 @@ local function lockText(zoneId)
 end
 
 local function placeCreature(folder, creature, cframe, scale, tag, attributes)
-	local model = CreatureModels.build(creature.t, creature.m, cframe, scale)
+	local model = CreatureModels.build(creature.t, creature.m, cframe, scale, creature.c)
 	model.Name = creature.c
 	for key, value in pairs(attributes or {}) do
 		model:SetAttribute(key, value)

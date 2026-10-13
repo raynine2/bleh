@@ -10,12 +10,11 @@ local CollectionService = game:GetService("CollectionService")
 local WorldBuilder = require(script.Parent:WaitForChild("WorldBuilder"))
 local PlotLayout = require(script.Parent:WaitForChild("PlotLayout"))
 local PropKit = require(script.Parent:WaitForChild("PropKit"))
-local TownBuilder = require(script.Parent:WaitForChild("TownBuilder"))
 local Config = require(game:GetService("ReplicatedStorage"):WaitForChild("Tidebound"):WaitForChild("Config"))
 
 local ExpansionBuilder = {}
 
-local VERSION = 8 -- Patch 23: summer Harbor Ring and Home Nests, restyled NPCs
+local VERSION = 7
 
 local K = WorldBuilder.kit
 local P = K.color
@@ -63,173 +62,51 @@ local function noticeBoard(parent, at, target, title, color)
 	return board, cf
 end
 
--- Patch 23: the NPCs are cartoony blocky avatars in the Catch a Brainrot reference's style: a rounded head with
--- big shiny eyes, a smile and rosy cheeks, hair, sleeves, shoes, and an outfit for their job. `look` is
---   shirt, pants, skin, hair (colour), hairStyle ("short", "spiky", "long", "bun", "bald"), hat (colour),
---   hatStyle ("cap", "bucket", "captain", "beanie", "nurse"), coat (lab coat colour), apron (colour),
---   glasses (true), beard (colour), badge (colour)
-local function npcFace(model, head, look)
-	local dark = Color3.fromRGB(26, 22, 30)
-	for _, side in ipairs({ -1, 1 }) do
-		decor({ Name = "Eye", Size = Vector3.new(0.36, 0.5, 0.12), CFrame = head * CFrame.new(side * 0.42, 0.1, -1.01), Color = dark, Parent = model })
-		decor({ Name = "EyeShine", Size = Vector3.new(0.14, 0.16, 0.06), CFrame = head * CFrame.new(side * 0.42 - 0.07, 0.24, -1.07), Color = Color3.new(1, 1, 1), Material = Enum.Material.Neon, Parent = model })
-		decor({ Name = "Cheek", Size = Vector3.new(0.34, 0.18, 0.06), CFrame = head * CFrame.new(side * 0.7, -0.28, -1.01), Color = Color3.fromRGB(255, 150, 160), Parent = model })
-		decor({ Name = "SmileCorner", Size = Vector3.new(0.14, 0.14, 0.06), CFrame = head * CFrame.new(side * 0.3, -0.36, -1.01), Color = dark, Parent = model })
-	end
-	decor({ Name = "Smile", Size = Vector3.new(0.48, 0.14, 0.06), CFrame = head * CFrame.new(0, -0.46, -1.01), Color = dark, Parent = model })
-	if look.glasses then
-		for _, side in ipairs({ -1, 1 }) do
-			decor({ Name = "GlassesRim", Size = Vector3.new(0.62, 0.62, 0.08), CFrame = head * CFrame.new(side * 0.42, 0.1, -1.09), Color = dark, Parent = model })
-			decor({ Name = "GlassesLens", Size = Vector3.new(0.48, 0.48, 0.08), CFrame = head * CFrame.new(side * 0.42, 0.1, -1.12), Color = Color3.fromRGB(190, 230, 255), Transparency = 0.55, Parent = model })
-		end
-		decor({ Name = "GlassesBridge", Size = Vector3.new(0.24, 0.1, 0.08), CFrame = head * CFrame.new(0, 0.2, -1.09), Color = dark, Parent = model })
-	end
-	if look.beard then
-		decor({ Name = "Beard", Size = Vector3.new(1.7, 0.9, 0.5), CFrame = head * CFrame.new(0, -0.62, -0.88), Color = look.beard, Parent = model })
-		decor({ Name = "Moustache", Size = Vector3.new(0.9, 0.22, 0.2), CFrame = head * CFrame.new(0, -0.26, -1.1), Color = look.beard, Parent = model })
-	end
-end
-
-local function npcHair(model, head, look)
-	local color, style = look.hair, look.hairStyle or "short"
-	if not color or style == "bald" then
-		return
-	end
-	if style == "spiky" then
-		-- the lab scientist's wild white hair: a tuft cap with spikes sticking out every way
-		decor({ Name = "Hair", Size = Vector3.new(2.1, 0.7, 2.1), CFrame = head * CFrame.new(0, 0.95, 0.05), Color = color, Parent = model })
-		for i = 0, 7 do
-			local a = i / 8 * math.pi * 2
-			decor({ Name = "HairSpike", Size = Vector3.new(0.6, 0.6, 1.1), CFrame = head * CFrame.new(math.cos(a) * 1, 0.8, math.sin(a) * 1 + 0.2) * CFrame.Angles(math.rad(25), -a + math.pi / 2, 0), Color = color, Parent = model })
-		end
-		decor({ Name = "HairTuft", Size = Vector3.new(0.7, 0.8, 0.7), CFrame = head * CFrame.new(0.2, 1.4, 0) * CFrame.Angles(0, 0.6, math.rad(20)), Color = color, Parent = model })
-		return
-	end
-	decor({ Name = "Hair", Size = Vector3.new(2.06, 0.6, 2.06), CFrame = head * CFrame.new(0, 0.85, 0), Color = color, Parent = model })
-	decor({ Name = "HairBack", Size = Vector3.new(2.06, 1.3, 0.5), CFrame = head * CFrame.new(0, 0.3, 0.8), Color = color, Parent = model })
-	decor({ Name = "Fringe", Size = Vector3.new(1.9, 0.36, 0.3), CFrame = head * CFrame.new(0, 0.66, -0.92), Color = color, Parent = model })
-	if style == "long" then
-		decor({ Name = "HairLong", Size = Vector3.new(2.1, 2, 0.5), CFrame = head * CFrame.new(0, -0.8, 0.85), Color = color, Parent = model })
-		for _, side in ipairs({ -1, 1 }) do
-			decor({ Name = "HairSide", Size = Vector3.new(0.4, 1.6, 1.4), CFrame = head * CFrame.new(side * 1, -0.2, 0.2), Color = color, Parent = model })
-		end
-	elseif style == "bun" then
-		decor({ Name = "HairBun", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 1, 1), CFrame = head * CFrame.new(0, 1.3, 0.6), Color = color, Parent = model })
-	end
-end
-
-local function npcHat(model, head, look)
-	local color, style = look.hat, look.hatStyle or "cap"
-	if not color then
-		return
-	end
-	if style == "cap" then
-		decor({ Name = "Hat", Size = Vector3.new(2.14, 0.7, 2.14), CFrame = head * CFrame.new(0, 1, 0), Color = color, Parent = model })
-		decor({ Name = "HatBrim", Size = Vector3.new(1.8, 0.2, 1.1), CFrame = head * CFrame.new(0, 0.72, -1.3), Color = color:Lerp(Color3.new(0, 0, 0), 0.2), Parent = model })
-	elseif style == "bucket" then
-		decor({ Name = "Hat", Size = Vector3.new(2.1, 0.9, 2.1), CFrame = head * CFrame.new(0, 1.1, 0), Color = color, Parent = model })
-		decor({ Name = "HatBrim", Size = Vector3.new(2.9, 0.2, 2.9), CFrame = head * CFrame.new(0, 0.7, 0), Color = color:Lerp(Color3.new(0, 0, 0), 0.15), Parent = model })
-	elseif style == "captain" then
-		decor({ Name = "Hat", Size = Vector3.new(2.3, 0.8, 2.3), CFrame = head * CFrame.new(0, 1.15, 0), Color = Color3.fromRGB(250, 250, 250), Parent = model })
-		decor({ Name = "HatBand", Size = Vector3.new(2.2, 0.3, 2.2), CFrame = head * CFrame.new(0, 0.82, 0), Color = color, Parent = model })
-		decor({ Name = "HatBrim", Size = Vector3.new(1.8, 0.16, 0.9), CFrame = head * CFrame.new(0, 0.7, -1.3), Color = color, Parent = model })
-		decor({ Name = "HatBadge", Size = Vector3.new(0.5, 0.4, 0.1), CFrame = head * CFrame.new(0, 1.1, -1.17), Color = Color3.fromRGB(255, 206, 70), Material = Enum.Material.Neon, Parent = model })
-	elseif style == "beanie" then
-		decor({ Name = "Hat", Size = Vector3.new(2.14, 0.9, 2.14), CFrame = head * CFrame.new(0, 1, 0), Color = color, Parent = model })
-		decor({ Name = "HatPom", Shape = Enum.PartType.Ball, Size = Vector3.new(0.7, 0.7, 0.7), CFrame = head * CFrame.new(0, 1.6, 0), Color = Color3.fromRGB(250, 250, 250), Parent = model })
-	elseif style == "nurse" then
-		decor({ Name = "Hat", Size = Vector3.new(1.6, 0.6, 1), CFrame = head * CFrame.new(0, 1.1, -0.3), Color = Color3.fromRGB(250, 250, 250), Parent = model })
-		for _, size in ipairs({ Vector3.new(0.5, 0.16, 0.06), Vector3.new(0.16, 0.5, 0.06) }) do
-			decor({ Name = "HatCross", Size = size, CFrame = head * CFrame.new(0, 1.1, -0.82), Color = color, Parent = model })
-		end
-	end
-end
-
--- Blocky NPC. `kind` = "person", "crab" or "bird"; people take a `look` (see above).
-local function npc(parent, id, cframe, kind, look)
-	look = look or {}
+-- Blocky villager in the REF 1 voxel style. `kind` = "person", "crab" or "bird".
+local function npc(parent, id, cframe, kind, shirt, hat)
 	local info = Config.Npcs[id]
 	local model = Instance.new("Model")
 	model.Name = "Npc_" .. id
 	model.Parent = parent
 	local body
 	if kind == "crab" then
-		body = part({ Name = "Body", Size = Vector3.new(3.4, 1.6, 2.6), CFrame = cframe * CFrame.new(0, 1.4, 0), Color = Color3.fromRGB(236, 90, 60), CanCollide = false, Parent = model })
-		decor({ Name = "Shell", Size = Vector3.new(2.6, 0.6, 2), CFrame = cframe * CFrame.new(0, 2.4, 0.1), Color = Color3.fromRGB(250, 120, 80), Parent = model })
+		body = part({ Name = "Body", Size = Vector3.new(3.4, 1.6, 2.6), CFrame = cframe * CFrame.new(0, 1.4, 0), Color = Color3.fromRGB(226, 84, 60), CanCollide = false, Parent = model })
 		for _, side in ipairs({ -1, 1 }) do
-			decor({ Name = "Claw", Size = Vector3.new(1.4, 1.2, 1.6), CFrame = cframe * CFrame.new(side * 2.5, 2, -1.2) * CFrame.Angles(0, 0, side * 0.4), Color = Color3.fromRGB(250, 120, 80), Parent = model })
-			decor({ Name = "ClawTip", Size = Vector3.new(0.5, 0.5, 0.8), CFrame = cframe * CFrame.new(side * 2.7, 2.8, -1.6), Color = Color3.fromRGB(250, 120, 80), Parent = model })
-			decor({ Name = "EyeStalk", Size = Vector3.new(0.3, 1, 0.3), CFrame = cframe * CFrame.new(side * 0.6, 2.8, -0.9), Color = Color3.fromRGB(236, 90, 60), Parent = model })
-			-- big cartoon eyes: white with a pupil and a shine
-			decor({ Name = "EyeWhite", Shape = Enum.PartType.Ball, Size = Vector3.new(0.9, 0.9, 0.9), CFrame = cframe * CFrame.new(side * 0.6, 3.5, -0.9), Color = Color3.new(1, 1, 1), Parent = model })
-			decor({ Name = "Pupil", Shape = Enum.PartType.Ball, Size = Vector3.new(0.45, 0.45, 0.45), CFrame = cframe * CFrame.new(side * 0.6, 3.5, -1.25), Color = Color3.fromRGB(20, 20, 26), Parent = model })
+			decor({ Name = "Claw", Size = Vector3.new(1.2, 1, 1.4), CFrame = cframe * CFrame.new(side * 2.4, 2, -1.2) * CFrame.Angles(0, 0, side * 0.4), Color = Color3.fromRGB(240, 110, 80), Parent = model })
+			decor({ Name = "EyeStalk", Size = Vector3.new(0.3, 1, 0.3), CFrame = cframe * CFrame.new(side * 0.6, 2.6, -0.9), Color = Color3.fromRGB(226, 84, 60), Parent = model })
+			decor({ Name = "Eye", Size = Vector3.new(0.5, 0.5, 0.5), CFrame = cframe * CFrame.new(side * 0.6, 3.2, -0.9), Color = Color3.fromRGB(20, 20, 26), Parent = model })
 			for leg = -1, 1 do
-				decor({ Name = "Leg", Size = Vector3.new(1.2, 0.3, 0.3), CFrame = cframe * CFrame.new(side * 2, 0.7, leg * 0.8) * CFrame.Angles(0, 0, side * -0.6), Color = Color3.fromRGB(210, 76, 50), Parent = model })
+				decor({ Name = "Leg", Size = Vector3.new(1.2, 0.3, 0.3), CFrame = cframe * CFrame.new(side * 2, 0.7, leg * 0.8) * CFrame.Angles(0, 0, side * -0.6), Color = Color3.fromRGB(200, 70, 50), Parent = model })
 			end
 		end
-		decor({ Name = "Smile", Size = Vector3.new(0.9, 0.16, 0.1), CFrame = cframe * CFrame.new(0, 1.3, -1.32), Color = Color3.fromRGB(60, 20, 20), Parent = model })
 	elseif kind == "bird" then
 		body = part({ Name = "Body", Size = Vector3.new(2.2, 2.6, 3), CFrame = cframe * CFrame.new(0, 2.8, 0), Color = Color3.fromRGB(246, 246, 250), CanCollide = false, Parent = model })
-		decor({ Name = "Head", Size = Vector3.new(1.9, 1.9, 1.9), CFrame = cframe * CFrame.new(0, 4.7, -0.8), Color = Color3.fromRGB(246, 246, 250), Parent = model })
-		decor({ Name = "Beak", Size = Vector3.new(0.7, 0.5, 1.3), CFrame = cframe * CFrame.new(0, 4.5, -2.2), Color = Color3.fromRGB(255, 170, 50), Parent = model })
-		decor({ Name = "Cap", Size = Vector3.new(2, 0.5, 2), CFrame = cframe * CFrame.new(0, 5.8, -0.8), Color = Color3.fromRGB(60, 120, 220), Parent = model })
-		decor({ Name = "CapBrim", Size = Vector3.new(1.6, 0.16, 0.9), CFrame = cframe * CFrame.new(0, 5.6, -2.1), Color = Color3.fromRGB(40, 90, 190), Parent = model })
+		decor({ Name = "Head", Size = Vector3.new(1.8, 1.8, 1.8), CFrame = cframe * CFrame.new(0, 4.6, -0.8), Color = Color3.fromRGB(246, 246, 250), Parent = model })
+		decor({ Name = "Beak", Size = Vector3.new(0.6, 0.5, 1.2), CFrame = cframe * CFrame.new(0, 4.4, -2.1), Color = Color3.fromRGB(255, 170, 50), Parent = model })
 		for _, side in ipairs({ -1, 1 }) do
 			decor({ Name = "Wing", Size = Vector3.new(0.4, 1.8, 2.6), CFrame = cframe * CFrame.new(side * 1.3, 2.9, 0.2), Color = Color3.fromRGB(150, 160, 176), Parent = model })
-			decor({ Name = "EyeWhite", Size = Vector3.new(0.5, 0.6, 0.1), CFrame = cframe * CFrame.new(side * 0.5, 5, -1.77), Color = Color3.new(1, 1, 1), Parent = model })
-			decor({ Name = "Eye", Size = Vector3.new(0.28, 0.38, 0.1), CFrame = cframe * CFrame.new(side * 0.5, 4.96, -1.82), Color = Color3.fromRGB(20, 20, 26), Parent = model })
+			decor({ Name = "Eye", Size = Vector3.new(0.3, 0.4, 0.3), CFrame = cframe * CFrame.new(side * 0.6, 4.9, -1.6), Color = Color3.fromRGB(20, 20, 26), Parent = model })
 			decor({ Name = "Leg", Size = Vector3.new(0.3, 1.6, 0.3), CFrame = cframe * CFrame.new(side * 0.5, 0.8, 0), Color = Color3.fromRGB(255, 170, 50), Parent = model })
 		end
 	else
-		local skin = look.skin or SKIN
-		local shirt = look.shirt or Color3.fromRGB(80, 140, 220)
-		local pants = look.pants or Color3.fromRGB(60, 56, 70)
-		body = part({ Name = "Body", Size = Vector3.new(2.4, 2.4, 1.3), CFrame = cframe * CFrame.new(0, 3.4, 0), Color = shirt, CanCollide = false, Parent = model })
+		body = part({ Name = "Body", Size = Vector3.new(2.4, 2.6, 1.3), CFrame = cframe * CFrame.new(0, 3.5, 0), Color = shirt, CanCollide = false, Parent = model })
+		decor({ Name = "Head", Size = Vector3.new(1.6, 1.6, 1.6), CFrame = cframe * CFrame.new(0, 5.6, 0), Color = SKIN, Parent = model })
 		for _, side in ipairs({ -1, 1 }) do
-			decor({ Name = "Leg", Size = Vector3.new(1.15, 2.2, 1.2), CFrame = cframe * CFrame.new(side * 0.6, 1.1, 0), Color = pants, Parent = model })
-			decor({ Name = "Shoe", Size = Vector3.new(1.2, 0.5, 1.5), CFrame = cframe * CFrame.new(side * 0.6, 0.25, -0.12), Color = Color3.fromRGB(40, 36, 44), Parent = model })
-			decor({ Name = "Sleeve", Size = Vector3.new(0.95, 1.3, 1.05), CFrame = cframe * CFrame.new(side * 1.7, 4, 0), Color = shirt, Parent = model })
-			decor({ Name = "Arm", Size = Vector3.new(0.85, 1.2, 0.95), CFrame = cframe * CFrame.new(side * 1.7, 2.8, 0), Color = skin, Parent = model })
+			decor({ Name = "Leg", Size = Vector3.new(1.1, 2.2, 1.2), CFrame = cframe * CFrame.new(side * 0.6, 1.1, 0), Color = Color3.fromRGB(60, 56, 70), Parent = model })
+			decor({ Name = "Arm", Size = Vector3.new(0.8, 2.4, 1), CFrame = cframe * CFrame.new(side * 1.65, 3.5, 0), Color = SKIN, Parent = model })
+			decor({ Name = "Eye", Size = Vector3.new(0.25, 0.35, 0.1), CFrame = cframe * CFrame.new(side * 0.4, 5.7, -0.82), Color = Color3.fromRGB(20, 20, 26), Parent = model })
 		end
-		if look.coat then
-			-- an open lab coat: long panels down to the knees, white sleeves
-			for _, side in ipairs({ -1, 1 }) do
-				decor({ Name = "Coat", Size = Vector3.new(0.9, 3.8, 1.42), CFrame = cframe * CFrame.new(side * 0.78, 2.9, 0), Color = look.coat, Parent = model })
-				decor({ Name = "CoatSleeve", Size = Vector3.new(1, 1.9, 1.1), CFrame = cframe * CFrame.new(side * 1.7, 3.7, 0), Color = look.coat, Parent = model })
-			end
-			decor({ Name = "CoatBack", Size = Vector3.new(2.5, 3.8, 0.2), CFrame = cframe * CFrame.new(0, 2.9, 0.72), Color = look.coat, Parent = model })
-			decor({ Name = "Pocket", Size = Vector3.new(0.6, 0.5, 0.1), CFrame = cframe * CFrame.new(0.78, 3.9, -0.75), Color = look.coat:Lerp(Color3.new(0, 0, 0), 0.1), Parent = model })
+		if hat then
+			decor({ Name = "Hat", Size = Vector3.new(2, 0.5, 2), CFrame = cframe * CFrame.new(0, 6.6, 0), Color = hat, Parent = model })
+			decor({ Name = "HatTop", Size = Vector3.new(1.4, 0.8, 1.4), CFrame = cframe * CFrame.new(0, 7.2, 0), Color = hat, Parent = model })
 		end
-		if look.apron then
-			decor({ Name = "Apron", Size = Vector3.new(2, 2.8, 0.15), CFrame = cframe * CFrame.new(0, 2.8, -0.72), Color = look.apron, Parent = model })
-		end
-		if look.badge then
-			decor({ Name = "Badge", Size = Vector3.new(0.5, 0.5, 0.1), CFrame = cframe * CFrame.new(-0.6, 4, -0.72), Color = look.badge, Material = Enum.Material.Neon, Parent = model })
-		end
-		local head = cframe * CFrame.new(0, 5.65, 0)
-		decor({ Name = "Head", Size = Vector3.new(2, 2, 2), CFrame = head, Color = skin, Parent = model })
-		npcFace(model, head, look)
-		npcHair(model, head, look)
-		npcHat(model, head, look)
 	end
 	model.PrimaryPart = body
 	model:SetAttribute("Kind", kind)
 	CollectionService:AddTag(model, "TideboundNpc") -- TideboundLife gives them idle motion and turns them to you
-	billboard(body, info.name, info.role, kind == "person" and 5.4 or 3.8)
+	billboard(body, info.name, info.role, kind == "person" and 4.6 or 3.6)
 	prompt(body, "Talk", info.name, { Npc = id }, 0, 10)
 	return model
-end
-
--- Patch 23: an orange studded brick path from a to b with darker kerbs (the summer town's roads).
-local PC = PropKit.color
-local function brickPath(parent, a, b, width)
-	local fa, fb = Vector3.new(a.X, TOP, a.Z), Vector3.new(b.X, TOP, b.Z)
-	local length = (fb - fa).Magnitude
-	local frame = CFrame.lookAt((fa + fb) / 2, fb)
-	PropKit.studs(decor({ Name = "BrickPath", Size = Vector3.new(width, 0.25, length), CFrame = frame * CFrame.new(0, 0.12, 0), Color = PC.PAVER, Parent = parent })).CanQuery = true
-	for _, side in ipairs({ -1, 1 }) do
-		PropKit.studs(decor({ Name = "BrickKerb", Size = Vector3.new(1, 0.4, length), CFrame = frame * CFrame.new(side * (width / 2 + 0.5), 0.2, 0), Color = PC.PAVER_DARK, Parent = parent })).CanQuery = true
-	end
 end
 
 -- Tide Slide pad: a glowing beacon-coloured disk that sends you between the Nest and the Harbor Ring.
@@ -255,15 +132,11 @@ local function buildNestAdditions(root)
 
 	tideSlide(folder, Vector3.new(-14, TOP, -26), "Harbor", "To the Harbor Ring")
 	npc(folder, "Pinch", facing(Vector3.new(-7, TOP, -21), plaza), "crab")
-	-- Patch 23: Old Harl stands behind the new Tackle Shop's counter (TownBuilder.hub has where the shop is)
-	local hub = TownBuilder.hub
-	local shop = facing(Vector3.new(hub.tackle.X, TOP, hub.tackle.Z), plaza)
-	npc(folder, "OldHarl", shop * CFrame.new(0, 0, -hub.tackleSize.Y / 2 - 0.9), "person", { shirt = Color3.fromRGB(250, 200, 60), pants = Color3.fromRGB(50, 70, 120), hat = Color3.fromRGB(120, 130, 70), hatStyle = "bucket", beard = Color3.fromRGB(240, 240, 240), hair = Color3.fromRGB(230, 230, 230) })
-	-- the Tide Lab's scientist, by the egg shrine in the lab's yard
-	npc(folder, "SisterCoralie", facing(Vector3.new(-21, TOP, 21), plaza), "person", { shirt = Color3.fromRGB(60, 190, 200), pants = Color3.fromRGB(60, 60, 80), coat = Color3.fromRGB(250, 250, 252), hair = Color3.fromRGB(245, 245, 250), hairStyle = "spiky", glasses = true })
-	-- the Tide Center's nurse, by the incubator
-	npc(folder, "NursePip", facing(Vector3.new(-22, TOP, -25), plaza), "person", { shirt = Color3.fromRGB(255, 150, 180), pants = Color3.fromRGB(250, 250, 250), apron = Color3.fromRGB(250, 250, 250), hat = Color3.fromRGB(226, 56, 70), hatStyle = "nurse", hair = Color3.fromRGB(255, 120, 160), hairStyle = "bun", skin = Color3.fromRGB(255, 220, 190) })
-	npc(folder, "GateWardenSel", facing(Vector3.new(42, TOP, -10), Vector3.new(30, TOP, 0)), "person", { shirt = Color3.fromRGB(200, 44, 40), pants = Color3.fromRGB(40, 36, 46), hat = Color3.fromRGB(150, 30, 30), hatStyle = "cap", badge = Color3.fromRGB(255, 206, 70), hair = Color3.fromRGB(60, 40, 30), skin = Color3.fromRGB(196, 150, 110) })
+	-- behind the Tackle Shop counter (the stall at (18, -32) faces the plaza)
+	local stall = facing(Vector3.new(18, TOP, -32), plaza)
+	npc(folder, "OldHarl", stall * CFrame.new(-4.4, 0.6, 1.2), "person", Color3.fromRGB(70, 96, 140), Color3.fromRGB(90, 70, 50))
+	npc(folder, "SisterCoralie", facing(Vector3.new(-31, TOP, 4), plaza), "person", Color3.fromRGB(236, 236, 244), Color3.fromRGB(255, 90, 110))
+	npc(folder, "GateWardenSel", facing(Vector3.new(42, TOP, -10), Vector3.new(30, TOP, 0)), "person", Color3.fromRGB(176, 34, 30), Color3.fromRGB(44, 34, 34))
 end
 
 -- Harbor Ring hub ----------------------------------------------------------------------------
@@ -276,14 +149,14 @@ local function buildHarbor(root)
 	local lagoonR = Config.Harbor.lagoonRadius
 	local groundR = Config.Harbor.groundRadius
 
-	-- grassy ground as a 24-sided ring so the lagoon in the middle is real water you can swim in
+	-- snowy ground as a 24-sided ring so the lagoon in the middle is real water you can swim in
 	local segments = 24
 	local length = groundR - lagoonR
 	for i = 0, segments - 1 do
 		local angle = i * 360 / segments
 		local mid = onRing(angle, lagoonR + length / 2)
 		local ground = part({ Name = "HarborGround", Size = Vector3.new(groundR * 2 * math.pi / segments + 2, 8, length), CFrame = facing(mid - Vector3.new(0, 4, 0), HUB - Vector3.new(0, 4, 0)), Color = P.SNOW_GROUND, Material = Enum.Material.Plastic, Parent = harbor })
-		ground.TopSurface = Enum.SurfaceType.Studs -- Patch 13: studded ground, like the references
+		ground.TopSurface = Enum.SurfaceType.Studs -- Patch 13: studded snow, like the references
 	end
 	workspace.Terrain:FillCylinder(CFrame.new(HARBOR.X, TOP - 4.5, HARBOR.Z), 9, lagoonR + 2, Enum.Material.Water)
 	disk(harbor, "LagoonFloor", Vector3.new(HARBOR.X, 0.25, HARBOR.Z), lagoonR + 3, 0.5, Color3.fromRGB(196, 220, 170), Enum.Material.Sand)
@@ -319,15 +192,6 @@ local function buildHarbor(root)
 	prompt(spot, "Cast", "Lagoon Pier (no Heat)", { Action = "Cast", Pier = true }, 0, 18)
 	billboard(decor({ Name = "PierSign", Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(pierStart + Vector3.new(0, 7, 0)), Transparency = 1, Parent = harbor }), "LAGOON PIER", "Safe fishing, half Pearls, no Heat", 0)
 
-	-- Patch 23: an orange brick promenade round the lagoon with a darker outer kerb, and HARBOR carved into it
-	-- in front of the arrival
-	for i = 0, 35 do
-		local cf = facing(onRing(i * 10, lagoonR + 9), HUB)
-		PropKit.studs(decor({ Name = "Promenade", Size = Vector3.new(8.6, 0.25, 12), CFrame = cf * CFrame.new(0, 0.12, 0), Color = PC.PAVER, Parent = harbor })).CanQuery = true
-		PropKit.studs(decor({ Name = "PromenadeKerb", Size = Vector3.new(9.8, 0.4, 1), CFrame = cf * CFrame.new(0, 0.2, 6.5), Color = PC.PAVER_DARK, Parent = harbor })).CanQuery = true
-	end
-	PropKit.carvedText(harbor, "HARBOR", HUB + Vector3.new(-12.6, 0, 48.6), Vector3.new(1, 0, 0), TOP, 0.7)
-
 	-- arrival: the Tide Slide back to the Nest, on the side facing the Nest (north)
 	tideSlide(harbor, onRing(90, 54), "Nest", "To the Nest plaza")
 
@@ -343,7 +207,7 @@ local function buildHarbor(root)
 	local seasonBoard, seasonCf = noticeBoard(harbor, onRing(0, stationR), HUB, "SEASON TRACK", NEON_RED)
 	seasonBoard.Name = "SeasonBoard"
 	surfaceText(seasonBoard, "Free track opens with Season 1", Color3.fromRGB(255, 230, 200))
-	npc(harbor, "CaptainBrask", seasonCf * CFrame.new(7, 0, -2), "person", { shirt = Color3.fromRGB(40, 60, 120), pants = Color3.fromRGB(250, 250, 250), hat = Color3.fromRGB(30, 40, 80), hatStyle = "captain", beard = Color3.fromRGB(120, 76, 46), hair = Color3.fromRGB(120, 76, 46), badge = Color3.fromRGB(255, 206, 70) })
+	npc(harbor, "CaptainBrask", seasonCf * CFrame.new(7, 0, -2), "person", Color3.fromRGB(40, 60, 110), Color3.fromRGB(30, 30, 40))
 
 	-- Leaderboard Hall (Archivist Ophel): REF 5 timber house with a big REF 4 red neon board in front
 	local hallAt = onRing(-45, stationR + 8)
@@ -371,7 +235,7 @@ local function buildHarbor(root)
 		boardLabel.TextYAlignment = Enum.TextYAlignment.Top
 	end
 	prompt(hallBoard, "Boards", "Leaderboard Hall", { Panel = "BOARDS" }, 0, 14)
-	npc(harbor, "ArchivistOphel", boardCf * CFrame.new(9, 0, -1), "person", { shirt = Color3.fromRGB(110, 80, 180), pants = Color3.fromRGB(50, 40, 80), hair = Color3.fromRGB(150, 110, 230), hairStyle = "long", glasses = true, skin = Color3.fromRGB(150, 104, 72) })
+	npc(harbor, "ArchivistOphel", boardCf * CFrame.new(9, 0, -1), "person", Color3.fromRGB(70, 60, 120), Color3.fromRGB(40, 30, 70))
 
 	-- Bait Shop (Nim): the REF 3 striped awning stall
 	local baitCf, baitStall = PropKit.stripedStall(harbor, onRing(-90, stationR), HUB, Color3.fromRGB(70, 180, 90), PropKit.color.WHITE)
@@ -380,13 +244,13 @@ local function buildHarbor(root)
 	local baitSign = decor({ Name = "BaitSign", Size = Vector3.new(10, 2.2, 0.4), CFrame = baitCf * CFrame.new(0, 10.4, -2.6), Color = SIGN_DARK, Parent = harbor })
 	surfaceText(baitSign, "BAIT SHOP!", Color3.fromRGB(140, 255, 140))
 	prompt(baitCounter, "Bait", "Bait Shop", { Panel = "BAIT" }, 0, 12)
-	npc(harbor, "Nim", baitCf * CFrame.new(-4, 0.6, 1.2), "person", { shirt = Color3.fromRGB(120, 200, 90), pants = Color3.fromRGB(70, 90, 130), apron = Color3.fromRGB(150, 100, 60), hat = Color3.fromRGB(60, 160, 80), hatStyle = "cap", hair = Color3.fromRGB(250, 170, 60) })
+	npc(harbor, "Nim", baitCf * CFrame.new(-4, 0.6, 1.2), "person", Color3.fromRGB(120, 200, 90), Color3.fromRGB(230, 200, 70))
 
 	-- Trading Post (Tradesman Kobb)
 	local tradeCf = PropKit.glassShop(harbor, onRing(-135, stationR + 6), HUB, 14, 10, 10, "TRADING POST", Color3.fromRGB(240, 196, 50))
 	K.crate(harbor, tradeCf * CFrame.new(-6, 1.3, -7))
 	K.crate(harbor, tradeCf * CFrame.new(-6, 3.9, -7) * CFrame.Angles(0, 0.5, 0))
-	npc(harbor, "TradesmanKobb", tradeCf * CFrame.new(3, 0, -8), "person", { shirt = Color3.fromRGB(176, 110, 64), pants = Color3.fromRGB(70, 56, 46), hat = Color3.fromRGB(240, 140, 50), hatStyle = "beanie", beard = Color3.fromRGB(60, 40, 30), skin = Color3.fromRGB(196, 150, 110) })
+	npc(harbor, "TradesmanKobb", tradeCf * CFrame.new(3, 0, -8), "person", Color3.fromRGB(150, 104, 68), Color3.fromRGB(96, 64, 46))
 
 	-- Social Plaza: emote stage with a neon edge, a photo frame and the heist party board
 	local stageCf = facing(onRing(180, stationR), HUB)
@@ -409,31 +273,45 @@ local function buildHarbor(root)
 	billboard(decor({ Name = "PhotoSign", Size = Vector3.new(1, 1, 1), CFrame = photo * CFrame.new(0, 9, 0), Transparency = 1, Parent = harbor }), "PHOTO SPOT", "Show off your companion", 1)
 	noticeBoard(harbor, (stageCf * CFrame.new(-17, 0, 0)).Position, HUB, "HEIST PARTIES", Color3.fromRGB(255, 200, 80))
 
-	-- lamps on the promenade; brick paths out to the Home Nests; cube trees, bushes, glowing mushrooms and
-	-- flowers between the stations (Patch 23: the summer town, no more snow)
+	-- lamps, trees and snow between the stations, like the Nest plaza
 	for i = 0, 11 do
-		K.lampPost(harbor, onRing(15 + i * 30, lagoonR + 13), HUB)
+		K.lampPost(harbor, onRing(15 + i * 30, lagoonR + 8), HUB)
 	end
 	for i = 0, 7 do
 		local angle = 22.5 + i * 45
 		for _, side in ipairs({ -1, 1 }) do
-			K.voxelTree(harbor, onRing(angle + side * 11, 110 + rng:NextNumber(-6, 6)), rng, rng:NextNumber(1, 1.3))
-			PropKit.snowMound(harbor, onRing(angle + side * 7, 128 + rng:NextNumber(-4, 4)), rng, rng:NextNumber(0.8, 1.2))
-			PropKit.iceCrystal(harbor, onRing(angle + side * 14, 94 + rng:NextNumber(-3, 3)), rng, rng:NextNumber(0.8, 1.1))
+			local at = onRing(angle + side * 11, 110 + rng:NextNumber(-6, 6))
+			if rng:NextNumber() < 0.6 then
+				K.voxelTree(harbor, at, rng, rng:NextNumber(1, 1.3))
+			else
+				K.pineTree(harbor, at, rng:NextNumber(0.9, 1.2))
+			end
 		end
-		brickPath(harbor, onRing(angle, lagoonR + 15), onRing(angle, Config.Harbor.plotInner + 2), 7)
+		K.plankSteps(harbor, onRing(angle, lagoonR + 6), onRing(angle, Config.Harbor.plotInner + 2), 6)
 	end
-	for _ = 1, 40 do
-		K.flowerTuft(harbor, onRing(rng:NextNumber(0, 360), rng:NextNumber(lagoonR + 18, groundR - 8)), rng)
+	for _ = 1, 30 do
+		K.flowerTuft(harbor, onRing(rng:NextNumber(0, 360), rng:NextNumber(lagoonR + 12, groundR - 8)), rng)
 	end
+	local snow = decor({ Name = "SnowEmitter", Size = Vector3.new(300, 1, 300), CFrame = CFrame.new(HARBOR.X, 70, HARBOR.Z), Transparency = 1, Parent = harbor })
+	K.particles(snow, {
+		Color = ColorSequence.new(Color3.new(1, 1, 1)),
+		Rate = 60,
+		Lifetime = NumberRange.new(14, 18),
+		Speed = NumberRange.new(3, 5),
+		Size = NumberSequence.new(0.25),
+		Transparency = NumberSequence.new(0.1),
+		EmissionDirection = Enum.NormalId.Bottom,
+		SpreadAngle = Vector2.new(10, 10),
+		Drag = 0.3,
+		WindAffectsDrag = true,
+	})
 end
 
 -- Home Nest plots ----------------------------------------------------------------------------------
 
--- Open-front pavilion. Patch 23: the summer town's look: cream walls with white corners, a coloured tile roof
--- (each Home Nest has its own colour), a tiled floor, glowing windows, and a neon name sign over the opening.
-local WALL = Color3.fromRGB(250, 240, 222)
-local function room(plot, origin, id, spec, roofColor)
+-- Open-front pavilion in the REF 1 grey-house style: blue-grey walls, white snow roof, stone floor,
+-- with a REF 3 neon name sign over the opening.
+local function room(plot, origin, id, spec)
 	local cf = PlotLayout.roomCFrame(origin, spec)
 	local w, h, d = spec.size.X, spec.size.Y, spec.size.Z
 	local lift = spec.dais or 0
@@ -447,24 +325,18 @@ local function room(plot, origin, id, spec, roofColor)
 		end
 	end
 	local base = cf * CFrame.new(0, lift, 0)
-	part({ Name = "Floor", Size = Vector3.new(w + 1, 0.6, d + 1), CFrame = base * CFrame.new(0, 0.3, 0), Color = Color3.fromRGB(236, 228, 214), Parent = model })
-	for x = -w / 2 + 2, w / 2 - 2, 4 do
-		for z = -d / 2 + 2, d / 2 - 2, 4 do
-			decor({ Name = "FloorTile", Size = Vector3.new(3.9, 0.1, 3.9), CFrame = base * CFrame.new(x, 0.62, z), Color = ((math.floor(x / 4) + math.floor(z / 4)) % 2 == 0) and Color3.fromRGB(250, 246, 240) or roofColor:Lerp(Color3.new(1, 1, 1), 0.55), Parent = model })
-		end
-	end
-	part({ Name = "BackWall", Size = Vector3.new(w, h, 1), CFrame = base * CFrame.new(0, h / 2, d / 2), Color = WALL, Parent = model })
+	part({ Name = "Floor", Size = Vector3.new(w + 1, 0.6, d + 1), CFrame = base * CFrame.new(0, 0.3, 0), Color = P.STONE, Parent = model })
+	part({ Name = "BackWall", Size = Vector3.new(w, h, 1), CFrame = base * CFrame.new(0, h / 2, d / 2), Color = P.HOUSE_WALL, Parent = model })
 	for _, side in ipairs({ -1, 1 }) do
-		part({ Name = "SideWall", Size = Vector3.new(1, h, d), CFrame = base * CFrame.new(side * w / 2, h / 2, 0), Color = WALL, Parent = model })
-		part({ Name = "FrontPillar", Size = Vector3.new(2.4, h, 1.4), CFrame = base * CFrame.new(side * (w / 2 - 0.7), h / 2, -d / 2), Color = Color3.fromRGB(255, 255, 255), Parent = model })
-		decor({ Name = "Window", Size = Vector3.new(0.3, 2.6, 2.6), CFrame = base * CFrame.new(side * (w / 2 + 0.55), h * 0.55, 0), Color = PC.WINDOW, Material = Enum.Material.Neon, Parent = model })
-		decor({ Name = "WindowFrame", Size = Vector3.new(0.2, 3.2, 3.2), CFrame = base * CFrame.new(side * (w / 2 + 0.5), h * 0.55, 0), Color = Color3.fromRGB(255, 255, 255), Parent = model })
+		part({ Name = "SideWall", Size = Vector3.new(1, h, d), CFrame = base * CFrame.new(side * w / 2, h / 2, 0), Color = P.HOUSE_WALL, Parent = model })
+		part({ Name = "FrontPillar", Size = Vector3.new(2.4, h, 1.4), CFrame = base * CFrame.new(side * (w / 2 - 0.7), h / 2, -d / 2), Color = P.HOUSE_WALL, Parent = model })
+		decor({ Name = "Window", Size = Vector3.new(0.3, 2.6, 2.6), CFrame = base * CFrame.new(side * (w / 2 + 0.55), h * 0.55, 0), Color = Color3.fromRGB(46, 56, 72), Parent = model })
 	end
-	part({ Name = "Header", Size = Vector3.new(w, 2, 1.4), CFrame = base * CFrame.new(0, h - 1, -d / 2), Color = WALL, Parent = model })
+	part({ Name = "Header", Size = Vector3.new(w, 2, 1.4), CFrame = base * CFrame.new(0, h - 1, -d / 2), Color = P.HOUSE_WALL, Parent = model })
 	local angle = math.rad(28)
 	local half = d / 2 + 1.5
 	for _, dir in ipairs({ -1, 1 }) do
-		decor({ Name = "Roof", Size = Vector3.new(w + 2.4, 1.2, half / math.cos(angle)), CFrame = base * CFrame.new(0, h + math.tan(angle) * half / 2, dir * half / 2) * CFrame.Angles(dir * angle, 0, 0), Color = roofColor, Parent = model })
+		decor({ Name = "Roof", Size = Vector3.new(w + 2.4, 1.2, half / math.cos(angle)), CFrame = base * CFrame.new(0, h + math.tan(angle) * half / 2, dir * half / 2) * CFrame.Angles(dir * angle, 0, 0), Color = P.SNOW_CAP, Parent = model })
 	end
 	local sign = neonSign(model, base * CFrame.new(0, h - 1, -d / 2 - 0.95), math.min(w - 4, 16), 1.6, spec.title)
 	sign.Name = "RoomSign"
@@ -509,11 +381,11 @@ local function buildPlot(root, index, origin)
 	decor({ Name = "GateLintel", Size = Vector3.new(19, 1.4, 2), CFrame = at(PlotLayout.gate + Vector3.new(0, 9.4, 0)), Color = P.PLANK, Parent = plot })
 	local ownerBoard = decor({ Name = "OwnerSign", Size = Vector3.new(14, 2.4, 0.5), CFrame = at(PlotLayout.gate + Vector3.new(0, 11.4, -0.4)), Color = SIGN_DARK, Parent = plot })
 	surfaceText(ownerBoard, ("HOME NEST %d · OPEN"):format(index), NEON_CYAN).Name = "OwnerText"
-	brickPath(plot, (at(PlotLayout.gate)).Position, (at(Vector3.new(0, 0, 32))).Position, 6)
+	K.plankSteps(plot, (at(PlotLayout.gate)).Position, (at(Vector3.new(0, 0, 32))).Position, 6)
 
 	-- five rooms
 	for id, spec in pairs(PlotLayout.rooms) do
-		local model, base = room(plot, origin, id, spec, PC.ROOFS[(index - 1) % #PC.ROOFS + 1])
+		local model, base = room(plot, origin, id, spec)
 		local w, h, d = spec.size.X, spec.size.Y, spec.size.Z
 		if id == "aquarium" then
 			local tank = part({ Name = "Tank", Size = Vector3.new(w - 4, h - 3, d - 6), CFrame = base * CFrame.new(0, (h - 3) / 2 + 0.8, 1.5), Color = Color3.fromRGB(110, 200, 255), Material = Enum.Material.Glass, Transparency = 0.6, CanCollide = true, Parent = model })
@@ -546,14 +418,13 @@ local function buildPlot(root, index, origin)
 		end
 	end
 
-	-- Creature Pen: grass lawn with a white picket fence and a feeding trough
+	-- Creature Pen: grass lawn with a plank fence and a feeding trough
 	local pen = PlotLayout.pen
 	disk(plot, "PenLawn", at(pen.pos + Vector3.new(0, 0.15, 0)).Position, pen.radius, 0.3, P.GRASS)
 	for i = 0, 23 do
 		local a = i * math.pi * 2 / 24
 		if i ~= 18 then -- gap facing the gate
-			local a2 = (i + 1) * math.pi * 2 / 24
-			PropKit.picketFence(plot, at(pen.pos + Vector3.new(math.cos(a) * pen.radius, 0, math.sin(a) * pen.radius)).Position, at(pen.pos + Vector3.new(math.cos(a2) * pen.radius, 0, math.sin(a2) * pen.radius)).Position, origin.Position.Y)
+			decor({ Name = "FencePost", Size = Vector3.new(0.6, 2.6, 0.6), CFrame = at(pen.pos + Vector3.new(math.cos(a) * pen.radius, 1.3, math.sin(a) * pen.radius)), Color = P.PLANK_EDGE, Parent = plot })
 		end
 	end
 	local trough = part({ Name = "Trough", Size = Vector3.new(5, 1.4, 2), CFrame = at(PlotLayout.trough + Vector3.new(0, 0.7, 0)), Color = P.PLANK, Parent = plot })
@@ -574,7 +445,7 @@ local function buildPlot(root, index, origin)
 	local vault = PlotLayout.vault
 	local vaultCf = at(vault.pos)
 	part({ Name = "VaultBody", Size = vault.size, CFrame = vaultCf * CFrame.new(0, vault.size.Y / 2 - 1, 0), Color = P.COBBLE, Material = Enum.Material.Cobblestone, Parent = plot })
-	decor({ Name = "VaultCap", Size = vault.size + Vector3.new(1, -vault.size.Y + 0.8, 1), CFrame = vaultCf * CFrame.new(0, vault.size.Y - 0.6, 0), Color = PC.PAVER_DARK, Parent = plot })
+	decor({ Name = "VaultCap", Size = vault.size + Vector3.new(1, -vault.size.Y + 0.8, 1), CFrame = vaultCf * CFrame.new(0, vault.size.Y - 0.6, 0), Color = P.SNOW_CAP, Parent = plot })
 	for _, x in ipairs({ -3.5, 3.5 }) do
 		local ring = vaultCf * CFrame.new(x, 3.6, -vault.size.Z / 2 - 0.1) * CFrame.Angles(0, math.rad(90), 0)
 		decor({ Name = "Porthole", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 3, 3), CFrame = ring, Color = P.GOLD, Parent = plot })
@@ -607,11 +478,6 @@ local function buildPlot(root, index, origin)
 	end
 	for _ = 1, 8 do
 		K.flowerTuft(plot, at(Vector3.new(rng:NextNumber(-44, 44), 0, rng:NextNumber(-44, -20))).Position, rng)
-	end
-	-- Patch 23: bushes either side of the gate and a picket fence along the front
-	for _, side in ipairs({ -1, 1 }) do
-		PropKit.snowMound(plot, at(PlotLayout.gate + Vector3.new(side * 17, 0, 3)).Position, rng, 1)
-		PropKit.picketFence(plot, at(PlotLayout.gate + Vector3.new(side * 10, 0, 0)).Position, at(PlotLayout.gate + Vector3.new(side * 26, 0, 0)).Position, origin.Position.Y)
 	end
 
 	local display = Instance.new("Folder")

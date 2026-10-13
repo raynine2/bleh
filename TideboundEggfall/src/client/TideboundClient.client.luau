@@ -26,6 +26,7 @@ local Animations = require(Shared:WaitForChild("Animations"))
 local FishingFeel = require(Shared:WaitForChild("FishingFeel")) -- Master Patch 5: TideboundRod reads it
 local Fx = require(Shared:WaitForChild("Fx"))
 local HatchScene = require(Shared:WaitForChild("HatchScene")) -- Patch 11: the hatch cutscene and the shrine's odds card
+local ClientBus = require(Shared:WaitForChild("ClientBus")) -- GDD Section 9: Menu music and UI-bus ducking follow the menu
 HatchScene.mountBoards()
 
 local DISPLAY = Enum.Font.FredokaOne
@@ -51,6 +52,9 @@ local TILE = {
 	gold = { top = Color3.fromRGB(255, 196, 30), bottom = Color3.fromRGB(214, 132, 8), outline = Color3.fromRGB(255, 226, 90), trophy = Color3.fromRGB(255, 222, 80) },
 	blue = { top = Color3.fromRGB(40, 140, 255), bottom = Color3.fromRGB(18, 76, 214), outline = Color3.fromRGB(90, 210, 255), trophy = Color3.fromRGB(110, 190, 255) },
 	grey = { top = Color3.fromRGB(92, 92, 96), bottom = Color3.fromRGB(58, 58, 62), outline = Color3.fromRGB(134, 134, 140), trophy = Color3.fromRGB(70, 70, 74) },
+	-- HUD restyle (12 Oct 2026): the side launcher's green and purple tiles (UiKit), for the HUD boxes
+	green = { top = Color3.fromRGB(70, 210, 110), bottom = Color3.fromRGB(26, 150, 70), outline = Color3.fromRGB(130, 255, 170), trophy = Color3.fromRGB(130, 255, 170) },
+	purple = { top = Color3.fromRGB(170, 90, 255), bottom = Color3.fromRGB(110, 40, 200), outline = Color3.fromRGB(200, 150, 255), trophy = Color3.fromRGB(200, 150, 255) },
 }
 
 local state = nil
@@ -242,6 +246,26 @@ local function neonPanel(props, radius, plain)
 	return frame
 end
 
+-- HUD restyle (12 Oct 2026): the side buttons' look for a HUD box: the tile's top-to-bottom gradient, its light
+-- outline, rounded corners and a soft bevel highlight across the top. Returns the outline. `plain` skips the bevel
+-- (for boxes whose children a UIListLayout lays out).
+local function tileSkin(frame, style, radius, plain)
+	local s = TILE[style or "blue"]
+	frame.BackgroundColor3 = WHITE
+	frame.BackgroundTransparency = 0
+	corner(radius or 10).Parent = frame
+	gloss(s.top, s.bottom).Parent = frame
+	local outline = stroke(s.outline, 2.5)
+	outline.Parent = frame
+	if not plain then
+		new("Frame", { Name = "Bevel", BackgroundColor3 = WHITE, BackgroundTransparency = 0.8, Position = UDim2.new(0, 3, 0, 3), Size = UDim2.new(1, -6, 0.45, 0), BorderSizePixel = 0, ZIndex = 0, Parent = frame }, {
+			corner(math.max(2, (radius or 10) - 3)),
+			new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new(0, 1) }),
+		})
+	end
+	return outline
+end
+
 local function fmt(n)
 	local s = tostring(math.floor(n))
 	local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
@@ -266,9 +290,10 @@ local toastOrder = 0
 
 local function toast(message, kind)
 	toastOrder += 1
-	local color = ({ good = C.good, bad = C.bad, warn = C.warn, rare = C.gold })[kind] or C.blue
-	local t = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.panel, BackgroundTransparency = 0.05, LayoutOrder = toastOrder, Parent = toastList }, { corner(6), stroke(color, 2) })
-	local text = label({ Text = message, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 15, Parent = t }, { padding(9), textStroke(1.5) })
+	local style = ({ good = "green", bad = "red", warn = "gold", rare = "purple" })[kind] or "blue"
+	local t = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = toastOrder, Parent = toastList })
+	tileSkin(t, style, 10, true)
+	local text = label({ Text = message, Font = DISPLAY, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 15, Parent = t }, { padding(9) })
 	local toasts = {}
 	for _, child in ipairs(toastList:GetChildren()) do
 		if child:IsA("Frame") then
@@ -310,47 +335,69 @@ local playAnim -- forward declaration (defined with the minigame)
 local situation = nil -- "fishing" while reeling, for the camera (Delta Section 10 Table C)
 
 local hud = new("Frame", { BackgroundTransparency = 1, Position = UDim2.new(0, 14, 0, 14), Size = UDim2.new(0, 176, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = gui }, { list(8) })
+new("UIScale", { Scale = 0.8, Parent = hud }) -- 12 Oct: the top-left bars a bit smaller (user ask)
 
-local function pill(order, style, letter)
-	local frame = neonPanel({ Size = UDim2.new(1, 0, 0, 34), LayoutOrder = order, Parent = hud }, 6)
-	local icon = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(0, 4, 0.5, -13), BackgroundColor3 = WHITE, Parent = frame }, { corner(5), gloss(TILE[style].top, TILE[style].bottom), stroke(TILE[style].outline, 1.5) })
-	label({ Text = letter, Font = DISPLAY, TextSize = 16, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = icon })
+local function pill(order, style, letter, iconName)
+	local frame = new("Frame", { Size = UDim2.new(1, 0, 0, 34), LayoutOrder = order, Parent = hud })
+	tileSkin(frame, style, 10)
+	if iconName then
+		-- GUI revamp: a painted currency icon that pokes out of the pill's left edge
+		require(Shared:WaitForChild("UiIcons")).make(iconName, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 16, 0.5, 0), Size = UDim2.new(0, 34, 0, 34), ZIndex = 3, Parent = frame })
+	else
+		local icon = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(0, 4, 0.5, -13), BackgroundColor3 = WHITE, Parent = frame }, { corner(5), gloss(TILE[style].top, TILE[style].bottom), stroke(TILE[style].outline, 1.5) })
+		label({ Text = letter, Font = DISPLAY, TextSize = 16, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, Parent = icon })
+	end
 	return label({ Font = DISPLAY, TextSize = 18, Position = UDim2.new(0, 38, 0, 0), Size = UDim2.new(1, -44, 1, 0), Parent = frame })
 end
 
 local pills = {
-	pearls = pill(1, "blue", "P"),
-	shards = pill(2, "gold", "S"),
-	embers = pill(3, "red", "E"),
-	tideglass = pill(4, "grey", "T"),
+	pearls = pill(1, "blue", "P", "pearl"),
+	shards = pill(2, "gold", "S", "egg"),
+	embers = pill(3, "red", "E", "eggshards"),
+	tideglass = pill(4, "purple", "T", "gem"),
 }
-local infoCard = neonPanel({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = hud }, 6, true)
+local infoCard = new("Frame", { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = hud })
+tileSkin(infoCard, "blue", 10, true)
 padding(8).Parent = infoCard
 list(2).Parent = infoCard
-local infoRod = label({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 13, LayoutOrder = 1, Parent = infoCard }, { textStroke(1) })
-local infoIncome = label({ Size = UDim2.new(1, 0, 0, 16), TextSize = 13, LayoutOrder = 2, Parent = infoCard }, { textStroke(1) })
+local infoRod = label({ Font = DISPLAY, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, TextSize = 14, LayoutOrder = 1, Parent = infoCard })
+local infoIncome = label({ Font = DISPLAY, Size = UDim2.new(1, 0, 0, 17), TextSize = 14, LayoutOrder = 2, Parent = infoCard })
 
 -- Side menu: REF 4 tiles as buttons
 local sideMenu = new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.5, 80), Size = UDim2.new(0, 74, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = gui }, { list(10) })
-local function sideButton(order, style, text, tab, emoji)
+-- GUI revamp (11 Oct): painted icons (UiIcons) instead of emoji; each icon pokes out above its tile and bobs gently
+-- (Rotation and Position only, never Size, so no text re-fits).
+local sideIcons = { list = {}, UiIcons = require(Shared:WaitForChild("UiIcons")) }
+local function sideButton(order, style, text, tab, icon)
 	local holder = new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.new(0, 72, 0, 72), LayoutOrder = order, AutoButtonColor = false, Parent = sideMenu })
 	local t = tile(holder, style)
 	t.frame.Size = UDim2.fromScale(1, 1)
-	if emoji then
-		t.icon:Destroy()
-		label({ Text = emoji, TextSize = 32, Size = UDim2.new(1, 0, 0, 44), Position = UDim2.new(0, 0, 0, 4), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 2, Parent = t.frame })
-	end
-	label({ Text = text, Font = DISPLAY, TextSize = 14, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 2, Parent = t.frame })
+	t.icon:Destroy()
+	local image = sideIcons.UiIcons.make(icon, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.36), Size = UDim2.fromScale(0.86, 0.86), ZIndex = 3, Parent = t.frame })
+	table.insert(sideIcons.list, { icon = image, seed = order * 1.7 })
+	label({ Text = text, Font = DISPLAY, TextSize = 14, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -20), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4, Parent = t.frame })
+	holder.MouseEnter:Connect(function()
+		TweenService:Create(image, TweenInfo.new(0.2, Enum.EasingStyle.Back), { Position = UDim2.fromScale(0.5, 0.3) }):Play()
+	end)
+	holder.MouseLeave:Connect(function()
+		TweenService:Create(image, TweenInfo.new(0.2), { Position = UDim2.fromScale(0.5, 0.36) }):Play()
+	end)
 	holder.Activated:Connect(function()
 		openMenu(tab)
 	end)
 	return holder
 end
-local eggsButton = sideButton(1, "gold", "EGGS", "ODDS", "🥚")
-sideButton(2, "blue", "SHOP", "RODS", "🎣")
-sideButton(3, "red", "BOOK", "CREATURES")
-sideButton(4, "blue", "HOME", "BASE", "🏠")
-sideButton(5, "gold", "DASH", "DASHES", "⚡") -- Patch 20
+RunService.RenderStepped:Connect(function()
+	local t = os.clock()
+	for _, entry in ipairs(sideIcons.list) do
+		entry.icon.Rotation = math.sin(t * 1.6 + entry.seed) * 4
+	end
+end)
+local eggsButton = sideButton(1, "gold", "EGGS", "ODDS", "egg")
+sideButton(2, "blue", "TACKLE", "RODS", "rod")
+sideButton(3, "red", "BOOK", "CREATURES", "book")
+sideButton(4, "blue", "HOME", "BASE", "house")
+sideButton(5, "gold", "DASH", "DASHES", "bolt") -- Patch 20
 local eggBadge = new("Frame", { Size = UDim2.new(0, 26, 0, 26), Position = UDim2.new(1, -16, 0, -8), BackgroundColor3 = C.neon, ZIndex = 4, Parent = eggsButton }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(WHITE, 2) })
 local eggBadgeText = label({ Font = DISPLAY, TextSize = 14, Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 4, Parent = eggBadge })
 
@@ -359,10 +406,11 @@ local eggBadgeText = label({ Font = DISPLAY, TextSize = 14, Size = UDim2.fromSca
 -- The long explanations went: crossing a heat threshold already pops a toast.
 local heatFrame = new("Frame", { Name = "HeatHud", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 8), Size = UDim2.new(0, 340, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Visible = false, Parent = gui })
 new("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Center, Parent = heatFrame })
-local heatPill = new("Frame", { Name = "Pill", Size = UDim2.new(1, 0, 0, 34), BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.25, LayoutOrder = 1, Parent = heatFrame }, { corner(17), new("UIStroke", { Color = WHITE, Thickness = 1.5, Transparency = 0.75 }) })
+local heatPill = new("Frame", { Name = "Pill", Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 1, Parent = heatFrame })
+tileSkin(heatPill, "blue", 10)
 label({ Text = "🔥", TextSize = 18, Size = UDim2.new(0, 26, 1, 0), Position = UDim2.new(0, 8, 0, 0), TextXAlignment = Enum.TextXAlignment.Center, Parent = heatPill })
 label({ Font = DISPLAY, Text = "HEAT", TextSize = 15, Size = UDim2.new(0, 44, 1, 0), Position = UDim2.new(0, 36, 0, 0), Parent = heatPill }, { textStroke(1) })
-local heatTrack = new("Frame", { Position = UDim2.new(0, 84, 0.5, -6), Size = UDim2.new(1, -134, 0, 12), BackgroundColor3 = Color3.fromRGB(44, 48, 64), Parent = heatPill }, { corner(6) })
+local heatTrack = new("Frame", { Position = UDim2.new(0, 84, 0.5, -6), Size = UDim2.new(1, -134, 0, 12), BackgroundColor3 = Color3.fromRGB(12, 40, 110), Parent = heatPill }, { corner(6), stroke(Color3.fromRGB(8, 28, 80), 1.5) })
 local heatFill = new("Frame", { Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(90, 190, 255), Parent = heatTrack }, { corner(6), new("UIGradient", { Rotation = 90, Color = ColorSequence.new(WHITE, Color3.fromRGB(190, 190, 200)) }) })
 for _, mark in ipairs({ 25, 50, 75 }) do
 	new("Frame", { Size = UDim2.new(0, 2, 1, 0), Position = UDim2.new(mark / 100, -1, 0, 0), BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.3, BorderSizePixel = 0, ZIndex = 2, Parent = heatTrack })
@@ -375,12 +423,13 @@ local chips = {}
 local function chip(id, order, text, color, visible)
 	local c = chips[id]
 	if not c then
-		c = new("Frame", { Name = id, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.25, LayoutOrder = order, Parent = chipRow }, {
-			corner(12),
+		c = new("Frame", { Name = id, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = WHITE, LayoutOrder = order, Parent = chipRow }, {
+			corner(10),
+			gloss(TILE.blue.top, TILE.blue.bottom),
 			new("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }),
 		})
 		c:SetAttribute("Stroke", true)
-		new("UIStroke", { Color = WHITE, Thickness = 1.2, Transparency = 0.6, Parent = c })
+		new("UIStroke", { Color = WHITE, Thickness = 2, Parent = c })
 		label({ Name = "Text", Font = DISPLAY, TextSize = 14, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, Parent = c }, { textStroke(1) })
 		chips[id] = c
 	end
@@ -480,7 +529,7 @@ local function refreshHUD()
 	chip("debt", 12, ("Carried heat %d"):format(state.heatDebt), C.warn, state.heatDebt > 0)
 	chip("immune", 13, "Snatch immune", C.good, state.immuneUntil > now)
 	chip("mode", 14, ("%s x%.2f"):format(state.mode, state.modeMult), C.muted, state.started)
-	local lockPulse = state.locked and (0.25 + 0.2 * math.sin(os.clock() * 8)) or 0.25
+	local lockPulse = state.locked and (0.2 + 0.2 * math.sin(os.clock() * 8)) or 0
 	heatPill.BackgroundTransparency = lockPulse
 
 	-- Glass Calm banner from its 20 s warning until it ends
@@ -521,21 +570,32 @@ end
 
 -- Fishing minigame (Fisch-style: hold to push the bar, keep the fish inside it) ---
 
-local fishFrame = neonPanel({ AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -100), Size = UDim2.new(0.9, 0, 0, 128), Visible = false }, 8)
-fishFrame.Parent = gui
-new("UISizeConstraint", { MaxSize = Vector2.new(520, 128), Parent = fishFrame })
-local fishTitle = label({ Font = DISPLAY, Position = UDim2.new(0, 14, 0, 8), Size = UDim2.new(1, -28, 0, 24), TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, Parent = fishFrame })
-local reelTrack = new("Frame", { Position = UDim2.new(0, 14, 0, 40), Size = UDim2.new(1, -28, 0, 36), BackgroundColor3 = WHITE, ClipsDescendants = true, Parent = fishFrame }, { corner(6), stroke(TILE.blue.outline, 2), gloss(TILE.blue.top, TILE.blue.bottom) })
-local reelBar = new("Frame", { Size = UDim2.new(0.22, 0, 1, 0), BackgroundColor3 = WHITE, BackgroundTransparency = 0.4, Parent = reelTrack }, { corner(6), stroke(WHITE, 2) })
--- Patch 10: the sweet spot in the middle of the bar reels faster; a treasure pearl sometimes floats by
-local sweetSpot = new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 3), Size = UDim2.new(Config.Fishing.sweetSpot, 0, 1, -6), BackgroundColor3 = Color3.fromRGB(255, 236, 140), BackgroundTransparency = 0.55, ZIndex = 2, Parent = reelBar }, { corner(4) })
-local treasure = label({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 26, 0, 26), Text = "✦", TextSize = 24, TextColor3 = Color3.fromRGB(255, 214, 70), TextXAlignment = Enum.TextXAlignment.Center, Visible = false, ZIndex = 4, Parent = reelTrack }, { textStroke(2) })
-local comboLabel = label({ Font = DISPLAY, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 8), Size = UDim2.new(0, 120, 0, 24), TextSize = 18, TextColor3 = Color3.fromRGB(255, 220, 90), TextXAlignment = Enum.TextXAlignment.Right, Text = "", Parent = nil })
-local fishIcon = label({ AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 30, 0, 30), Text = "🐟", TextSize = 24, TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 3, Parent = reelTrack })
-local progressTrack = new("Frame", { Position = UDim2.new(0, 14, 0, 86), Size = UDim2.new(1, -28, 0, 10), BackgroundColor3 = Color3.fromRGB(40, 40, 44), Parent = fishFrame }, { corner(4) })
-local progressFill = new("Frame", { Size = UDim2.new(0.3, 0, 1, 0), BackgroundColor3 = WHITE, Parent = progressTrack }, { corner(4), gloss(TILE.gold.top, TILE.gold.bottom) })
-local fishHint = label({ Position = UDim2.new(0, 14, 0, 102), Size = UDim2.new(1, -28, 0, 18), TextSize = 13, TextColor3 = C.muted, TextXAlignment = Enum.TextXAlignment.Center, Parent = fishFrame }, { textStroke(1) })
-comboLabel.Parent = fishFrame
+-- Reel bar look (HJHJH's reference picture, 2026-10-12): a long dark track with small grey arrow caps
+-- at both ends, a white catch zone with an arrow inside, a thin slate fish line with a faint blue fish
+-- above it, and a thin progress bar underneath. No title or hint text.
+local REEL_TRACK = Color3.fromRGB(46, 42, 38)
+local REEL_PROGRESS_BG = Color3.fromRGB(44, 39, 36)
+local fishFrame = new("Frame", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -104), Size = UDim2.new(0, 540, 0, 64), BackgroundTransparency = 1, Visible = false, Parent = gui })
+local fishTitle = label({ Visible = false, Parent = gui })
+local reelTrack = new("Frame", { Name = "ReelTrack", Position = UDim2.new(0, 20, 0, 12), Size = UDim2.new(1, -40, 0, 20), BackgroundColor3 = REEL_TRACK, BorderSizePixel = 0, Parent = fishFrame }, { corner(2) })
+for i, cap in ipairs({ "▶", "◀" }) do
+	label({ Name = "ArrowCap", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(i == 1 and 0 or 1, i == 1 and -13 or 13, 0.5, 0), Size = UDim2.new(0, 16, 0, 16), Text = cap, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(82, 76, 68), TextTransparency = 0, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, Parent = reelTrack })
+end
+-- the white catch zone sits 2 px proud of the track on both edges
+local reelBar = new("Frame", { Name = "CatchZone", Position = UDim2.new(0, 0, 0, -2), Size = UDim2.new(0.18, 0, 1, 4), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 2, Parent = reelTrack }, { corner(2), stroke(Color3.fromRGB(225, 222, 218), 1, 0.3) })
+local reelArrow = label({ Name = "Arrow", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.new(0, 22, 0, 22), Text = "→", Font = Enum.Font.GothamBold, TextSize = 22, TextColor3 = Color3.fromRGB(134, 132, 133), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 3, Parent = reelBar })
+local sweetSpot = new("Frame", { Visible = false, Parent = reelBar })
+local treasure = label({ AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.new(0, 20, 0, 20), Text = "✦", TextSize = 22, TextColor3 = Color3.fromRGB(255, 214, 70), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 5, Visible = false, Parent = reelTrack })
+local comboLabel = label({ Visible = false, Parent = gui })
+-- the fish: a thin slate line through the bar with a faint blue fish shape hovering above it
+local fishIcon = new("Frame", { Name = "FishLine", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 4, 1, 8), BackgroundColor3 = Color3.fromRGB(62, 66, 82), BorderSizePixel = 0, ZIndex = 4, Parent = reelTrack }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }), stroke(Color3.fromRGB(150, 160, 185), 1, 0.55) })
+local fishGhost = new("Frame", { Name = "FishGhost", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 2, 0, 1), Size = UDim2.new(0, 13, 0, 26), Rotation = 18, BackgroundColor3 = Color3.fromRGB(125, 152, 210), BackgroundTransparency = 0.2, BorderSizePixel = 0, ZIndex = 3, Parent = fishIcon }, {
+	new("UICorner", { CornerRadius = UDim.new(1, 0) }),
+	new("UIGradient", { Rotation = 90, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.15), NumberSequenceKeypoint.new(0.7, 0.45), NumberSequenceKeypoint.new(1, 0.9) }) }),
+})
+local progressTrack = new("Frame", { Name = "ReelProgress", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 54), Size = UDim2.new(0, 274, 0, 5), BackgroundColor3 = REEL_PROGRESS_BG, BorderSizePixel = 0, Visible = false, Parent = fishFrame }, { corner(1), stroke(Color3.fromRGB(215, 208, 202), 1, 0.25) })
+local progressFill = new("Frame", { Size = UDim2.new(0.5, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(205, 201, 197), BackgroundTransparency = 0.1, BorderSizePixel = 0, Parent = progressTrack }, { corner(1) })
+local fishHint = label({ Visible = false, Parent = gui })
 
 -- Patch 10: only touches the game didn't take (the thumbstick and buttons) count as holding the reel
 local touches = {}
@@ -556,6 +616,9 @@ end
 
 -- Little bubbles that rise through the reel track while you fight a fish.
 local function trackBubble(x, color)
+	do
+		return -- the reference reel bar is clean, so no bubbles on the track
+	end
 	local b = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(x, 0, 1, 0), Size = UDim2.new(0, 6, 0, 6), BackgroundColor3 = color or WHITE, BackgroundTransparency = 0.3, ZIndex = 2, Parent = reelTrack }, { new("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 	TweenService:Create(b, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = UDim2.new(x + (math.random() - 0.5) * 0.04, 0, 0, 0), BackgroundTransparency = 1, Size = UDim2.new(0, 10, 0, 10) }):Play()
 	task.delay(0.85, function()
@@ -589,6 +652,9 @@ playAnim = function(name)
 	end
 end
 
+-- Fisch video (12 Oct 2026): the power cast's rating, SHAKE buttons, the reel bar's extra lines and the quick catch
+hudExtra.fisch = require(Shared:WaitForChild("FischUI"))
+
 local fishing = false
 local function runMinigame(cast)
 	-- a cast can arrive as the last reveal is closing; let that finish first
@@ -600,6 +666,7 @@ local function runMinigame(cast)
 		return
 	end
 	fishing = true
+	FishingFeel.busy = true -- TideboundFischCast won't start another cast until this one is over
 	local castStarted = os.clock()
 	local f = Config.Fishing
 	fishFrame.Visible = true
@@ -607,14 +674,59 @@ local function runMinigame(cast)
 	fishTitle.TextColor3 = C.text
 	fishTitle.Text = (cast.pier and "Pier cast" or "Casting") .. (cast.bait and (" with " .. cast.bait) or "") .. "..."
 	fishHint.Text = cast.broken and "Wait for the bite. Your rod is broken, so it fishes like a Drift Rod until Old Harl repairs it." or "Wait for the bite."
+	-- Fisch video: a power cast's rating (TideboundFischCast) speeds up the reel, and its windup already played
+	local rating = os.clock() - (FishingFeel.castAt or 0) < 3 and FishingFeel.castRating or nil
+	local fromCharge = FishingFeel.phase == "charge"
 	-- Master Patch 5: windup, release and landing take 0.9 s, then the rod idles until the bite
 	FishingFeel.cast, FishingFeel.result, FishingFeel.tension = cast, nil, 0
 	FishingFeel.set("cast")
+	if fromCharge then
+		FishingFeel.startedAt -= 18 / 60 -- straight into the release
+	end
+	FishingFeel.castRating = nil
 	situation = "fishing"
-	task.wait(math.max(cast.biteWait, 0.9))
+	-- osu! SHAKE (13 Oct 2026, HJHJH): while you wait, numbered circles pop up with rings closing in
+	-- (FischUI.osu); hit each as its ring meets it. Rarer fish bring more circles, faster rings and bigger jumps.
+	-- Every hit shakes the rod; the bite comes as the chart ends (never before the 35% of the wait the server
+	-- allows). 13 Oct 2026 (HJHJH): the circles only come here, at the start, and a good SHAKE is a bonus, never
+	-- a penalty: 95%+ accuracy gives +25% progress speed on the reel, 85% +15%, 70% +8%.
+	task.wait(0.9)
+	local Rfx = require(Shared.RodFx)
+	local rodId = cast.rod or "Drift"
+	local tierColor = (Config.Tiers[cast.difficulty] or Config.Tiers[1]).color
+	fishHint.Text = "SHAKE! Click each circle as its ring closes in."
+	local shakeScore = hudExtra.fisch.osu(hudExtra.fisch.chart(cast.difficulty), tierColor, "SHAKE", function(judge)
+		if judge.score > 0 then
+			FishingFeel.shake(0.04 + judge.score / 300 * 0.05, 0.12)
+			if typeof(cast.spot) == "Vector3" then
+				require(Shared.WaterFx).droplets(cast.spot + Vector3.new(0, 0.3, 0), 8, 7, 45, 0.12)
+				if judge.score == 300 then
+					Rfx.burst(cast.spot + Vector3.new(0, 0.8, 0), rodId, 0.6)
+				end
+			end
+		else
+			FishingFeel.shake(0.1, 0.15)
+		end
+	end)
+	local shakeBonus = shakeScore.accuracy >= 0.95 and 0.25 or shakeScore.accuracy >= 0.85 and 0.15 or shakeScore.accuracy >= 0.7 and 0.08 or 0
+	if shakeBonus > 0 then
+		hudExtra.fisch.word(("+%d%% Speed!"):format(math.floor(shakeBonus * 100 + 0.5)), Color3.fromRGB(130, 255, 150))
+	end
+	local biteFloor = castStarted + math.max(cast.biteWait * 0.35, 0.9) + 0.05
+	while os.clock() < biteFloor do
+		task.wait()
+	end
 
 	-- the bite tell and the hook set (18 frames) come before the reel bar
 	FishingFeel.set("bite")
+	-- the camera punches in, the screen jolts and the rod tip bursts in its colours
+	Rfx.kick(-5, 0.22, 0.35)
+	do
+		local tip = Rfx.tipOf(player.Character)
+		if tip then
+			Rfx.burst(tip, rodId, 0.8)
+		end
+	end
 	fishTitle.Text = "BITE! Reel it in!"
 	fishTitle.TextColor3 = C.gold
 	-- Patch 10: the bite pops the panel
@@ -623,8 +735,10 @@ local function runMinigame(cast)
 	FishingFeel.set("reel")
 	fishHint.Text = "Hold click (or touch) to push the bar right. Keep the fish inside it."
 	reelTrack.Visible, progressTrack.Visible = true, true
+	hudExtra.fisch.reelShow(fishFrame, (rating and rating.bonus or 0) + shakeBonus, cast.plus and cast.plus.total or nil, cast.plus and cast.plus.roamer or nil)
 	local rng = Random.new()
-	local barWidth = math.clamp(f.baseBarWidth * cast.control, f.barMin, f.barMax)
+	-- 13 Oct 2026: rarer fish give you a narrower bar (a Celestial's is 27% narrower than a Common's)
+	local barWidth = math.clamp(f.baseBarWidth * cast.control * (1 - 0.045 * (cast.difficulty - 1)), f.barMin, f.barMax)
 	reelBar.Size = UDim2.new(barWidth, 0, 1, 0)
 	local barPos, barVel = 0.5 - barWidth / 2, 0
 	local fishPos, fishTarget, retarget = 0.5, 0.5, 0.6
@@ -646,6 +760,19 @@ local function runMinigame(cast)
 	local spot = cast.spot
 	treasure.Visible = false
 	comboLabel.Text = ""
+	-- Fishing Fight (12 Oct 2026): rarer fish fight longer, and every few seconds the fish warns (a splash and a
+	-- red "!!" over it in the water, TideboundRod) and then lunges hard for the far side. Keep it in the bar
+	-- through the whole lunge for a burst of progress. TideboundRod reads FishingFeel to move the fish in the
+	-- water and to pose you straining against it.
+	-- a fight lasts about 3 s for a Common and 6 s for a Celestial (it was over in about a second), and the fish
+	-- swims a third faster, so even a wide bar has to chase it
+	local fightGain = f.gainPerSecond * 0.5 / (1 + 0.12 * cast.difficulty)
+	fightGain *= 1 + (rating and rating.bonus or 0) + shakeBonus -- "+X% Progress Speed": a good cast and a good SHAKE
+	fishSpeed *= 1.3
+	local nextThrash = os.clock() + rng:NextNumber(0.8, 1.4)
+	local thrashWarnAt, thrashUntil, thrashHeld = nil, 0, true
+	FishingFeel.thrash, FishingFeel.thrashAt, FishingFeel.heldAt = 0, 0, 0
+	FishingFeel.fishPos, FishingFeel.barPos, FishingFeel.barWidth = fishPos, barPos, barWidth
 
 	while true do
 		local dt = RunService.RenderStepped:Wait()
@@ -667,12 +794,39 @@ local function runMinigame(cast)
 			fishTarget = math.clamp(fishPos + rng:NextNumber(-f.fishJump, f.fishJump), 0.05, 0.95)
 			retarget = rng:NextNumber(0.6, math.max(0.9, 2.2 - cast.difficulty * 0.15))
 		end
+		local fightNow = os.clock()
+		if not thrashWarnAt and fightNow >= nextThrash and progress < 0.95 then
+			thrashWarnAt = fightNow
+			FishingFeel.thrash, FishingFeel.thrashAt = 1, fightNow
+		elseif thrashWarnAt and FishingFeel.thrash == 1 and fightNow - thrashWarnAt >= 0.55 then
+			FishingFeel.thrash, FishingFeel.thrashAt = 2, fightNow
+			thrashUntil = fightNow + 0.6 + 0.08 * cast.difficulty
+			fishTarget = fishPos < 0.5 and rng:NextNumber(0.78, 0.95) or rng:NextNumber(0.05, 0.22)
+			retarget = thrashUntil - fightNow + 0.25
+			thrashHeld = true
+		elseif FishingFeel.thrash == 2 and fightNow >= thrashUntil then
+			if thrashHeld then
+				progress += 0.06
+				FishingFeel.heldAt = fightNow
+				punch(fishFrame, 0.06)
+			end
+			FishingFeel.thrash = 0
+			thrashWarnAt = nil
+			nextThrash = fightNow + math.max(1.0, rng:NextNumber(1.6, 3.0) - 0.16 * cast.difficulty)
+		end
 		local speedNow = os.clock() < tiredUntil and fishSpeed * f.tiredMult or fishSpeed
+		if FishingFeel.thrash == 2 then
+			speedNow = math.max(fishSpeed * 2.6, 0.75)
+		end
 		fishPos += math.clamp(fishTarget - fishPos, -speedNow * dt, speedNow * dt)
 		local inside = fishPos >= barPos - f.edgeGrace and fishPos <= barPos + barWidth + f.edgeGrace
+		if FishingFeel.thrash == 2 and not inside then
+			thrashHeld = false
+		end
+		FishingFeel.fishPos, FishingFeel.barPos = fishPos, barPos
 		local sweet = inside and math.abs(fishPos - (barPos + barWidth / 2)) <= barWidth * f.sweetSpot / 2
 		if inside then
-			progress += f.gainPerSecond * (sweet and f.sweetMult or 1) * dt
+			progress += fightGain * (sweet and f.sweetMult or 1) * dt
 			sweetTime = sweet and sweetTime + dt or 0
 		else
 			sweetTime = 0
@@ -686,12 +840,15 @@ local function runMinigame(cast)
 		FishingFeel.shake(0.015 + 0.04 * FishingFeel.tension * (0.6 + 0.15 * cast.difficulty), 0.05)
 		FishingFeel.progress = progress
 		local clock = os.clock()
-		reelBar.Position = UDim2.new(barPos, 0, 0, 0)
-		-- the bar glows green and breathes while you hold the fish, and flushes red when it slips out
-		reelBar.BackgroundColor3 = inside and Color3.fromRGB(150, 255, 190):Lerp(WHITE, 0.25 + 0.25 * math.sin(clock * 9)) or Color3.fromRGB(255, 150, 150)
-		reelBar.BackgroundTransparency = inside and 0.25 or 0.4
-		fishIcon.Position = UDim2.new(fishPos, 0, 0.5, math.sin(clock * 17) * (2 + 4 * FishingFeel.tension))
-		fishIcon.Rotation = math.sin(clock * 11) * (10 + 25 * FishingFeel.tension)
+		reelBar.Position = UDim2.new(barPos, 0, 0, -2)
+		-- the white zone stays solid while you hold the fish and dims a touch when it slips out;
+		-- its arrow points the way the bar is moving
+		reelBar.BackgroundColor3 = inside and WHITE or Color3.fromRGB(236, 234, 232)
+		reelArrow.Text = barVel < -0.02 and "←" or "→"
+		reelArrow.Position = barVel < -0.02 and UDim2.new(0, 30, 0.5, 0) or UDim2.new(1, -8, 0.5, 0)
+		fishIcon.Position = UDim2.new(fishPos, 0, 0.5, 0)
+		fishGhost.Rotation = 18 + math.sin(clock * 11) * (8 + 20 * FishingFeel.tension)
+		fishGhost.Position = UDim2.new(0.5, 2, 0, 1 + math.sin(clock * 17) * (1 + 2 * FishingFeel.tension))
 		progressFill.Size = UDim2.new(math.clamp(progress, 0, 1), 0, 1, 0)
 		FishingFeel.sweet = sweet
 		sweetSpot.BackgroundTransparency = sweet and (0.15 + 0.15 * math.sin(clock * 14)) or 0.55
@@ -723,8 +880,8 @@ local function runMinigame(cast)
 					trackBubble(rng:NextNumber(barPos, barPos + barWidth), Color3.fromRGB(255, 214, 70))
 				end
 				if spot then
-					Fx.cubes(spot + Vector3.new(0, 1, 0), { Color3.fromRGB(255, 214, 70), Color3.fromRGB(255, 255, 255) }, { spread = 5, size = 0.45, life = 0.6, up = 1, count = 14 })
-					Fx.stars(spot + Vector3.new(0, 2, 0), 3)
+					-- 12 Oct 2026: a gold glimmer off the water (HJHJH didn't like the cube bursts)
+					require(Shared.WaterFx).glimmer(spot + Vector3.new(0, 1, 0), Color3.fromRGB(255, 214, 70), 1.4)
 				end
 			elseif clock >= treasureUntil then
 				treasureAt = nil
@@ -738,7 +895,7 @@ local function runMinigame(cast)
 			FishingFeel.milestone += 1
 			tiredUntil = clock + f.tiredSeconds
 			progressTrack.BackgroundColor3 = Color3.fromRGB(255, 220, 90)
-			TweenService:Create(progressTrack, TweenInfo.new(0.4), { BackgroundColor3 = Color3.fromRGB(40, 40, 44) }):Play()
+			TweenService:Create(progressTrack, TweenInfo.new(0.4), { BackgroundColor3 = REEL_PROGRESS_BG }):Play()
 			fishTitle.Text = cheers[FishingFeel.milestone]
 			fishTitle.TextColor3 = C.gold
 			punch(fishFrame, 0.06)
@@ -763,14 +920,16 @@ local function runMinigame(cast)
 	fishTitle.TextColor3 = caught and C.good or C.bad
 	fishTitle.Text = caught and (perfect and "PERFECT CATCH!" or "CAUGHT!") or "It got away..."
 	reelTrack.Visible, progressTrack.Visible = false, false
+	hudExtra.fisch.reelHide()
 	treasure.Visible = false
 	comboLabel.Text = ""
 	fishHint.Text = ""
 	FishingFeel.sweet = false
+	FishingFeel.thrash = 0
 	if caught then
 		punch(fishFrame, 0.15)
 		-- the server checks a catch can't be quicker than the bite plus a moment; hold the fish until then
-		local earliest = math.max(cast.biteWait, 0.9) + f.minReelSeconds + 0.2
+		local earliest = math.max(cast.biteWait * 0.35, 0.9) + f.minReelSeconds + 0.2
 		local waitFor = earliest - (os.clock() - castStarted)
 		if waitFor > 0 then
 			fishHint.Text = "Landing it..."
@@ -785,7 +944,24 @@ local function runMinigame(cast)
 		-- Master Patches 5 and 6: the fish flips into your hands, then the reveal plays
 		FishingFeel.result = result
 		FishingFeel.set("land")
-		hudExtra.reveal(result)
+		-- Fisch video: the quick catch (the fish held over your head in a burst of light, a word over you and
+		-- lines along the bottom) replaces the long cinematic reveal (hudExtra.reveal stays, unused)
+		fishFrame.Visible = false
+		-- Catch a Brainrot style: the camera punches in as the fish flies out, then out with a shake and a burst
+		-- in your rod's colours as it lands in your hands (bigger for rarer fish)
+		local catchTier = math.clamp(tonumber(result.tier) or 1, 1, 7)
+		Rfx.kick(-6, 0.15, 0.5)
+		task.delay(0.95, function()
+			Rfx.kick(6 + catchTier, 0.15 + 0.05 * catchTier, 0.5)
+			local character = player.Character
+			local head = character and character:FindFirstChild("Head")
+			if head then
+				Rfx.burst(head.Position + Vector3.new(0, 1.8, 0), rodId, 1 + 0.25 * catchTier)
+			end
+		end)
+		hudExtra.fisch.catch(result)
+		task.spawn(act, "RevealDone")
+		situation = nil
 	else
 		if caught then
 			FishingFeel.set("break")
@@ -799,6 +975,8 @@ local function runMinigame(cast)
 	FishingFeel.result = nil
 	fishFrame.Visible = false
 	fishing = false
+	FishingFeel.busy = false
+	FishingFeel.castLockUntil = os.clock() + 0.4
 end
 
 FishingEvent.OnClientEvent:Connect(function(cast)
@@ -837,6 +1015,7 @@ local bannerText = label({ Font = DISPLAY, TextSize = 26, Position = UDim2.new(0
 
 local function closeMenu()
 	menu.Visible = false
+	ClientBus.setMenu("Main", false)
 	TweenService:Create(blur, TweenInfo.new(0.2), { Size = 0 }):Play()
 end
 
@@ -861,7 +1040,6 @@ local TABS = {
 	{ id = "DASHES", title = "DASHES", group = "dash" }, -- Patch 20
 	{ id = "CAPSULES", title = "DASH CAPSULE ODDS", group = "dash" },
 	{ id = "TRIALS", title = "ROD TRIALS", group = "dash" }, -- Patch 21
-	{ id = "CHEST", title = "TIDE CHEST", group = "dash" }, -- Patch 23
 }
 local groupSize = {}
 for _, tab in ipairs(TABS) do
@@ -1231,6 +1409,19 @@ for tierIndex, tier in ipairs(Config.Tiers) do
 	end
 end
 local creatureTiles = tileGrid(creaturesPage, #creatureList)
+-- Phase 4 (12 Oct): click an owned fish to open the drag-to-rotate 3D viewer (Tidebound.FishView)
+for i, entry in ipairs(creatureList) do
+	local hit = new("TextButton", { Text = "", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = creatureTiles[i].frame })
+	hit.Activated:Connect(function()
+		local n = state and state.collection[entry.name]
+		if n then
+			local tier = Config.Tiers[entry.tier]
+			require(Shared:WaitForChild("FishView")).open(gui, entry.name, tier.color, ("%s · x%d"):format(tier.id, n))
+		else
+			toast(("Hatch a %s first to inspect it."):format(entry.name), "info")
+		end
+	end)
+end
 
 refreshers.CREATURES = function()
 	local owned = 0
@@ -1246,6 +1437,15 @@ refreshers.CREATURES = function()
 			retile(t, "red")
 			t.caption.Text = Config.Tiers[entry.tier].id
 			t.count.Text = ""
+		end
+		-- Phase 4: the fish thumbnail replaces the trophy (black silhouette until hatched)
+		t.icon.Visible = false
+		if t.thumbOwned ~= (n ~= nil) then
+			if t.thumb then
+				t.thumb:Destroy()
+			end
+			t.thumb = require(Shared:WaitForChild("FishView")).thumb(t.frame, entry.name, n ~= nil)
+			t.thumbOwned = n ~= nil
 		end
 	end
 	creatureHeader.Text = ("CREATURES %d/%d · Aquarium +%.1f Pearls/min"):format(owned, #creatureList, state.incomePerMin)
@@ -1409,37 +1609,54 @@ do
 end
 
 do
-	-- QUESTS tab: Quill's daily quests and the season board (Delta Sections 8 and 11)
+	-- QUESTS tab: Quill's daily quests (LiveOps picks 3 a day from a pool). The full quest log, weekly goals, the
+	-- live event, collection goals and the season pass are in TideboundMenus; the button below opens it.
 	local questsPage = makePage("QUESTS")
 	section(questsPage, "DAILY QUESTS · reset at 00:00 UTC")
 	local questRows = {}
-	for _, quest in ipairs(Config.Quests) do
+	for i = 1, 3 do
 		local row = rowFrame(questsPage, 52)
-		label({ Text = quest.text, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 4), Size = UDim2.new(0.66, -12, 0, 22), TextSize = 15, Parent = row })
+		local title = label({ Font = DISPLAY, Position = UDim2.new(0, 12, 0, 4), Size = UDim2.new(0.66, -12, 0, 22), TextSize = 15, Parent = row })
 		local progressText = label({ Position = UDim2.new(0, 12, 0, 26), Size = UDim2.new(0.2, 0, 0, 20), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
 		local fill = bar(row, UDim2.new(0.2, 12, 0, 32), UDim2.new(0.46, -24, 0, 10), "gold")
-		local claim = button({ Size = UDim2.new(0.34, -10, 0, 36), Position = UDim2.new(0.66, 0, 0.5, -18), TextSize = 13, Parent = row }, "gold", function()
-			act("ClaimQuest", quest.id)
+		local entry = { row = row, title = title, progress = progressText, fill = fill }
+		entry.claim = button({ Size = UDim2.new(0.34, -10, 0, 36), Position = UDim2.new(0.66, 0, 0.5, -18), TextSize = 13, Parent = row }, "gold", function()
+			if entry.quest then
+				act("ClaimQuest", entry.quest.id)
+			end
 		end)
-		questRows[quest.id] = { progress = progressText, fill = fill, claim = claim, quest = quest }
+		questRows[i] = entry
 	end
 	local questReset = note(questsPage, "")
 	divider(questsPage)
-	section(questsPage, "SEASON TRACK · Captain Brask")
-	note(questsPage, "The free season track opens with Season 1. It will pay Pearls, cosmetics and 100 Tideglass per 10 tiers, and nothing on it changes stats.")
+	section(questsPage, "QUEST LOG · weekly goals, events, collection, season pass")
+	local logRow = rowFrame(questsPage, 52)
+	button({ Text = "OPEN QUEST LOG", Size = UDim2.new(0.5, -12, 0, 38), Position = UDim2.new(0, 8, 0.5, -19), TextSize = 15, Parent = logRow }, "blue", function()
+		closeMenu()
+		ClientBus.signal:Fire("open", "Quests")
+	end)
+	button({ Text = "SEASON PASS", Size = UDim2.new(0.5, -12, 0, 38), Position = UDim2.new(0.5, 4, 0.5, -19), TextSize = 15, Parent = logRow }, "gold", function()
+		closeMenu()
+		ClientBus.signal:Fire("open", "Pass")
+	end)
 
 	refreshers.QUESTS = function()
-		for id, row in pairs(questRows) do
-			local count = state.quests.progress[id] or 0
-			local claimed = state.quests.claimed[id]
-			row.progress.Text = ("%d / %d"):format(count, row.quest.goal)
-			row.fill.Size = UDim2.new(math.clamp(count / row.quest.goal, 0, 1), 0, 1, 0)
-			if claimed then
-				row.claim.Text = "CLAIMED"
-				restyle(row.claim, "grey")
-			else
-				row.claim.Text = ("CLAIM · %d P"):format(row.quest.reward)
-				restyle(row.claim, count >= row.quest.goal and "gold" or "grey")
+		local list = state.quests and state.quests.quests or {}
+		for i, entry in ipairs(questRows) do
+			local quest = list[i]
+			entry.quest = quest
+			entry.row.Visible = quest ~= nil
+			if quest then
+				entry.title.Text = quest.text
+				entry.progress.Text = ("%d / %d"):format(quest.progress, quest.goal)
+				entry.fill.Size = UDim2.new(math.clamp(quest.progress / quest.goal, 0, 1), 0, 1, 0)
+				if quest.claimed then
+					entry.claim.Text = "CLAIMED"
+					restyle(entry.claim, "grey")
+				else
+					entry.claim.Text = quest.reward.pearls and ("CLAIM · %d P"):format(quest.reward.pearls) or "CLAIM"
+					restyle(entry.claim, quest.progress >= quest.goal and "gold" or "grey")
+				end
 			end
 		end
 		local secondsLeft = 86400 - (os.time() % 86400)
@@ -1772,6 +1989,7 @@ openMenu = function(id)
 	selectTab(id)
 	if not menu.Visible then
 		menu.Visible = true
+		ClientBus.setMenu("Main", true)
 		menuScale.Scale = 0.88
 		TweenService:Create(menuScale, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 		TweenService:Create(blur, TweenInfo.new(0.22), { Size = 16 }):Play()
@@ -1891,68 +2109,6 @@ do
 			local labelInst = dz.pity[row.key]
 			if labelInst then
 				labelInst.Text = row.remaining <= 1 and "NEXT CAPSULE!" or ("%d / %d · %d left"):format(row.count, row.at, row.remaining)
-				labelInst.TextColor3 = row.remaining <= 1 and C.gold or C.text
-			end
-		end
-	end
-end
-
--- Patch 23: the CHEST tab. Open a Tide Chest (the hatch scene, with a treasure chest whose lid flips open): a
--- creature or a dash of the rolled rarity. One table inside this block: this script is at the 200-local limit.
-do
-	local ch = { pity = {} }
-	ch.page = makePage("CHEST")
-
-	function ch.open()
-		if not state or HatchScene.playing() then
-			return
-		end
-		local result = act("OpenChest")
-		if result and result.ok then
-			if menu.Visible then
-				closeMenu()
-			end
-			task.spawn(function()
-				local r = result.result
-				HatchScene.play(r)
-				local tier = Config.Tiers[r.tier]
-				if r.prize == "dash" then
-					toast(("%s %s dash: %s%s"):format(r.isNew and "New" or "Duplicate", tier.id, r.creature, r.isNew and (r.equipped and " (equipped)" or ": equip it in DASHES") or (" · +%d Shards"):format(r.shards)), r.isNew and "good" or "info")
-				else
-					toast(("%s %s %s, it's in your aquarium%s"):format(r.isNew and "New!" or "Got a", tier.id, r.creature, r.isNew and "" or (" · +%d Shards"):format(r.shards)), r.isNew and "good" or "info")
-				end
-			end)
-		end
-	end
-
-	ch.action = rowFrame(ch.page, 54)
-	ch.pearls = label({ Font = DISPLAY, TextSize = 19, Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(0.45, -14, 1, 0), Parent = ch.action })
-	button({ Text = ("OPEN CHEST · %d PEARLS"):format(Config.Chest.pearlCost), Size = UDim2.new(0.55, -14, 0, 38), Position = UDim2.new(0.45, 0, 0.5, -19), Parent = ch.action }, "gold", ch.open)
-	note(ch.page, ("Every chest holds a creature (it goes in your aquarium) or, %d%% of the time, a dash move, of the rarity below."):format(math.floor(Config.Chest.dashChance * 100 + 0.5)))
-
-	section(ch.page, "DROP RATES · per chest (same as Tide Eggs)")
-	for _, tier in ipairs(Config.Tiers) do
-		local row = rowFrame(ch.page, 30)
-		new("Frame", { Position = UDim2.new(0, 10, 0.5, -7), Size = UDim2.new(0, 14, 0, 14), BackgroundColor3 = tier.color, Parent = row }, { corner(3), stroke(WHITE, 1) })
-		label({ Text = tier.id, Font = DISPLAY, TextColor3 = tier.color, Position = UDim2.new(0, 32, 0, 0), Size = UDim2.new(0.3, 0, 1, 0), TextSize = 15, Parent = row })
-		label({ Text = pct(tier.rate), Font = DISPLAY, Position = UDim2.new(0.34, 10, 0, 0), Size = UDim2.new(0.2, 0, 1, 0), TextSize = 15, Parent = row })
-		label({ Text = "creature or dash", Position = UDim2.new(0.56, 0, 0, 0), Size = UDim2.new(0.44, -10, 1, 0), TextSize = 13, TextColor3 = C.muted, Parent = row }, { textStroke(1) })
-	end
-	divider(ch.page)
-	section(ch.page, "PITY · counted separately from eggs and capsules")
-	for _, pity in ipairs(Config.Pity) do
-		local row = rowFrame(ch.page, 30)
-		label({ Text = pity.label, Font = DISPLAY, Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0.3, 0, 1, 0), TextSize = 14, Parent = row })
-		ch.pity[pity.key] = label({ Font = DISPLAY, TextSize = 14, Position = UDim2.new(0.3, 0, 0, 0), Size = UDim2.new(0.7, -12, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, Parent = row })
-	end
-	note(ch.page, "The chest sits in front of the Tide Lab. Pearls only; Robux can't buy chests.")
-
-	refreshers.CHEST = function()
-		ch.pearls.Text = ("PEARLS: %d"):format(state.pearls or 0)
-		for _, row in ipairs(Gacha.pityProgress(state.chestPity or {})) do
-			local labelInst = ch.pity[row.key]
-			if labelInst then
-				labelInst.Text = row.remaining <= 1 and "NEXT CHEST!" or ("%d / %d · %d left"):format(row.count, row.at, row.remaining)
 				labelInst.TextColor3 = row.remaining <= 1 and C.gold or C.text
 			end
 		end
@@ -2097,6 +2253,10 @@ local function showReveal(result, instant)
 	reveal.Visible = true
 	revealClose.Visible = false
 	retile(revealTile, "red")
+	local oldFish = revealTile.frame:FindFirstChild("FishViewport")
+	if oldFish then
+		oldFish:Destroy()
+	end
 	revealTier.Text = "HATCHING..."
 	revealTier.TextColor3 = C.text
 	revealName.Text, revealMutation.Text, revealDetails.Text = "", "", ""
@@ -2112,6 +2272,11 @@ local function showReveal(result, instant)
 	revealScale.Scale = 0.6
 	TweenService:Create(revealScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	retile(revealTile, result.tier >= 4 and "gold" or "blue")
+	-- Phase 5 (12 Oct): the hatched fish in 3D pops out of the card and slowly turns
+	revealTile.icon.Visible = false
+	local fishVp = require(Shared:WaitForChild("FishView")).viewport(revealTile.frame, result.creature, { spin = 40, zindex = 4, size = UDim2.fromScale(1.3, 1.3), zoom = 0.95 })
+	local fishPop = new("UIScale", { Scale = 0.2, Parent = fishVp })
+	TweenService:Create(fishPop, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 	revealTier.Text = tier.id:upper()
 	revealTier.TextColor3 = tier.color
 	revealName.Text = result.creature
@@ -2166,62 +2331,8 @@ hatch = function()
 	end
 end
 
--- Zone lighting: snowy pink haze over the Nest (REF 1), bright turquoise over the Shoals (REF 2) ---
-
-local ZONES = {
-	-- Patch 14: copied from the references. The town is the winter town (pale blue haze, cool soft light, glowing
-	-- windows); the Shoals are the green hub (clear air, saturated greens and blues, crisp light).
-	-- Patch 15: dimmed a lot (lower exposure and ambient, bloom only on real light sources)
-	-- Patch 23: the summer town of the Catch a Brainrot reference: clear warm light, saturated colour
-	Nest = {
-		atmosphere = { Density = 0.24, Offset = 0.2, Color = Color3.fromRGB(196, 220, 240), Decay = Color3.fromRGB(130, 170, 220), Glare = 0, Haze = 0.6 },
-		grade = { Saturation = 0.28, Contrast = 0.12, Brightness = -0.05, TintColor = Color3.fromRGB(255, 252, 244) },
-		bloom = { Intensity = 0.25, Size = 22, Threshold = 2.2 },
-		lighting = { Ambient = Color3.fromRGB(110, 110, 118), OutdoorAmbient = Color3.fromRGB(128, 128, 136), Brightness = 1.8, ExposureCompensation = -0.4, ColorShift_Top = Color3.fromRGB(255, 244, 222) },
-	},
-	Shoals = {
-		atmosphere = { Density = 0.26, Offset = 0.15, Color = Color3.fromRGB(160, 196, 226), Decay = Color3.fromRGB(100, 150, 200), Glare = 0, Haze = 0.6 },
-		grade = { Saturation = 0.28, Contrast = 0.14, Brightness = -0.08, TintColor = Color3.fromRGB(246, 250, 255) },
-		bloom = { Intensity = 0.25, Size = 22, Threshold = 2.2 },
-		lighting = { Ambient = Color3.fromRGB(96, 106, 126), OutdoorAmbient = Color3.fromRGB(116, 126, 148), Brightness = 1.7, ExposureCompensation = -0.55, ColorShift_Top = Color3.fromRGB(240, 230, 214) },
-	},
-	-- Patch 10: the Outer Reef (the Open Isles' third ring), a grey storm over dark rock
-	Storm = {
-		atmosphere = { Density = 0.42, Color = Color3.fromRGB(150, 160, 178), Decay = Color3.fromRGB(88, 98, 120), Haze = 2.4 },
-		grade = { Saturation = -0.04, Contrast = 0.08, Brightness = -0.08, TintColor = Color3.fromRGB(226, 234, 246) },
-		bloom = { Intensity = 0.35, Size = 24, Threshold = 1.6 },
-		lighting = { Ambient = Color3.fromRGB(108, 112, 128), OutdoorAmbient = Color3.fromRGB(118, 122, 140), Brightness = 1.9, ExposureCompensation = -0.15, ColorShift_Top = Color3.fromRGB(200, 210, 230) },
-	},
-	-- Big Update: Kelp Cathedral, a dim teal cavern where everything that glows really glows
-	Kelp = {
-		atmosphere = { Density = 0.45, Color = Color3.fromRGB(46, 120, 110), Decay = Color3.fromRGB(18, 60, 70), Haze = 2.2 },
-		grade = { Saturation = 0.3, Contrast = 0.1, Brightness = 0, TintColor = Color3.fromRGB(214, 255, 240) },
-		bloom = { Intensity = 1, Size = 30, Threshold = 1.1 },
-		lighting = { Ambient = Color3.fromRGB(64, 104, 108), OutdoorAmbient = Color3.fromRGB(70, 120, 120), Brightness = 1.6, ExposureCompensation = 0, ColorShift_Top = Color3.fromRGB(150, 255, 230) },
-	},
-}
-local currentZone = nil
-local function applyZone(name)
-	if currentZone == name then
-		return
-	end
-	currentZone = name
-	local zone = ZONES[name]
-	local info = TweenInfo.new(2)
-	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-	if atmosphere then
-		TweenService:Create(atmosphere, info, zone.atmosphere):Play()
-	end
-	local grade = Lighting:FindFirstChild("TideboundGrade")
-	if grade then
-		TweenService:Create(grade, info, zone.grade):Play()
-	end
-	local bloom = Lighting:FindFirstChild("TideboundBloom")
-	if bloom then
-		TweenService:Create(bloom, info, type(zone.bloom) == "table" and zone.bloom or { Intensity = zone.bloom }):Play()
-	end
-	TweenService:Create(Lighting, info, zone.lighting):Play()
-end
+-- Zone lighting moved to TideboundBiomeLook (GDD Section 7: lighting, atmosphere and post-processing per canon
+-- biome). This script no longer touches Lighting's atmosphere, grade or bloom.
 
 local refreshGreed -- set in the block below
 do
@@ -2242,8 +2353,13 @@ do
 	end
 	local flash = new("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 40, Parent = gui })
 	local function screenFlash(color, from)
+		-- GDD Section 8 Rules 3 and 5: at most 3 full-screen flashes a second, 80% weaker with Reduce Flashing
+		local strength = ClientBus.flashAllowed()
+		if strength <= 0 then
+			return
+		end
 		flash.BackgroundColor3 = color
-		flash.BackgroundTransparency = from or 0.4
+		flash.BackgroundTransparency = 1 - (1 - (from or 0.4)) * strength
 		TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
 	end
 
@@ -2369,9 +2485,9 @@ do
 	end
 
 	-- the stamina bar: a slim pill at the bottom of the screen that only shows while it isn't full
-	mv.bar = new("Frame", { Name = "Stamina", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -26), Size = UDim2.new(0, 230, 0, 12), BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.25, Visible = false, Parent = gui }, {
+	mv.bar = new("Frame", { Name = "Stamina", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -26), Size = UDim2.new(0, 230, 0, 14), BackgroundColor3 = Color3.fromRGB(12, 40, 110), Visible = false, Parent = gui }, {
 		new("UICorner", { CornerRadius = UDim.new(1, 0) }),
-		new("UIStroke", { Color = Color3.fromRGB(255, 255, 255), Transparency = 0.7, Thickness = 1.5 }),
+		new("UIStroke", { Color = TILE.blue.outline, Thickness = 2 }),
 	})
 	mv.fill = new("Frame", { Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(120, 230, 120), BorderSizePixel = 0, Parent = mv.bar }, {
 		new("UICorner", { CornerRadius = UDim.new(1, 0) }),
@@ -2828,8 +2944,9 @@ do
 		Audio.play("RevealHum")
 		gui.Enabled = false
 		rv.grade.Enabled = true
-		TweenService:Create(rv.grade, TweenInfo.new(0.25), { Saturation = -0.8 }):Play()
-		TweenService:Create(rv.soft, TweenInfo.new(0.25), { Size = 10 }):Play()
+		-- 12 Oct 2026: the world stays bright and warm (draining it to grey felt like a horror game)
+		TweenService:Create(rv.grade, TweenInfo.new(0.25), { Saturation = 0.15, Brightness = 0.03, TintColor = Color3.fromRGB(255, 250, 238) }):Play()
+		TweenService:Create(rv.soft, TweenInfo.new(0.25), { Size = 4 }):Play()
 		if rv.shown then
 			rv.shown:Destroy()
 		end
@@ -2958,7 +3075,7 @@ do
 
 		-- Phase 5: colour floods back, the camera returns and you can move again
 		task.spawn(act, "RevealDone")
-		TweenService:Create(rv.grade, TweenInfo.new(RV.back), { Saturation = 0 }):Play()
+		TweenService:Create(rv.grade, TweenInfo.new(RV.back), { Saturation = 0, Brightness = 0, TintColor = Color3.new(1, 1, 1) }):Play()
 		TweenService:Create(rv.soft, TweenInfo.new(RV.back), { Size = 0 }):Play()
 		TweenService:Create(rv.card, TweenInfo.new(RV.back * 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Position = UDim2.fromScale(1.6, 0.74) }):Play()
 		if root then
@@ -2985,7 +3102,7 @@ end
 
 -- Wiring -------------------------------------------------------------------------------
 
-local PANEL_TO_TAB = { Odds = "ODDS", Tackle = "RODS", Dashes = "DASHES", Chest = "CHEST" }
+local PANEL_TO_TAB = { Odds = "ODDS", Tackle = "RODS", Dashes = "DASHES" }
 
 local function refreshAll()
 	refreshHUD()
@@ -3012,18 +3129,10 @@ HazardEvent.OnClientEvent:Connect(function(kind, direction)
 	end
 end)
 
--- Patch 23: TideboundDialogue shows NPC lines in the reference's dialogue box and opens their panel through this
-require(Shared:WaitForChild("MotionBus")).openPanel = function(panel)
-	openMenu(PANEL_TO_TAB[panel] or panel)
-end
-
 ProximityPromptService.PromptTriggered:Connect(function(prompt)
 	local npcId = prompt:GetAttribute("Npc")
 	if npcId then
 		local npc = Config.Npcs[npcId]
-		if npc and require(Shared:WaitForChild("MotionBus")).dialogue then
-			return
-		end
 		if npc then
 			toast(("%s: %s"):format(npc.name, npc.lines[math.random(1, #npc.lines)]), "info")
 			if npc.panel then
@@ -3048,20 +3157,11 @@ task.spawn(function()
 	end
 end)
 
--- Beacon countdown between server pushes, and the zone lighting check
+-- Beacon countdown between server pushes
 task.spawn(function()
 	while true do
 		task.wait(0.5)
 		refreshHUD()
 		refreshGreed()
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if root then
-			local zone = Config.zoneOf(root.Position)
-			if zone == "Shoals" and root.Position.X > 1240 then
-				zone = "Storm" -- the Outer Reef ring of the Open Isles
-			end
-			applyZone(zone)
-		end
 	end
 end)

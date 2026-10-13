@@ -124,7 +124,7 @@ function Companions.refresh(player, data, force)
 	for i, name in ipairs(awake) do
 		local copy = bestCopy(data, name)
 		local side = i == 1 and -3 or 3
-		local model = CreatureModels.build(tierOf(name), copy and copy.m or "None", root.CFrame * CFrame.new(side, 0, 3), 2)
+		local model = CreatureModels.build(tierOf(name), copy and copy.m or "None", root.CFrame * CFrame.new(side, 0, 3), 2, name)
 		model.Name = "Companion_" .. player.UserId .. "_" .. i
 		model:SetAttribute("Owner", player.UserId)
 		model:SetAttribute("Slot", i)

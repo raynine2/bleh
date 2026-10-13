@@ -827,7 +827,7 @@ end
 
 local function canDash(humanoid)
 	local stamina = MotionBus.stamina
-	return humanoid.Health > 0 and not humanoid.Sit and not FishingFeel.frozen and not MotionBus.cutscene and FishingFeel.phase == "" and not (stamina and stamina.winded) and humanoid:GetState() ~= Enum.HumanoidStateType.Swimming
+	return humanoid.Health > 0 and not humanoid.Sit and not FishingFeel.frozen and not MotionBus.cutscene and FishingFeel.phase == "" and not (stamina and stamina.winded) and humanoid:GetState() ~= Enum.HumanoidStateType.Swimming and not (MotionBus.ride and MotionBus.ride[humanoid.Parent]) -- no dashing off your fish
 end
 
 local function pickMove(character, humanoid)

@@ -1463,21 +1463,32 @@ end
 
 -- Your ability: the pill, the key, the request ------------------------------------------------------------------
 
-UI.pill = frame({ AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -46), Size = UDim2.new(0, 230, 0, 26), BackgroundColor3 = Color3.fromRGB(16, 20, 32), BackgroundTransparency = 0.25, ZIndex = 5 })
-corner(UI.pill)
+-- HUD restyle (12 Oct 2026): the side buttons' blue tile look (gradient, light outline, rounded corners); the white
+-- cooldown fill still sweeps across it.
+UI.pill = frame({ AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -46), Size = UDim2.new(0, 230, 0, 30), BackgroundColor3 = WHITE, BackgroundTransparency = 0, ZIndex = 5 })
+corner(UI.pill, UDim.new(0, 10))
+local pillGradient = Instance.new("UIGradient")
+pillGradient.Rotation = 90
+pillGradient.Color = ColorSequence.new(Color3.fromRGB(40, 140, 255), Color3.fromRGB(18, 76, 214))
+pillGradient.Parent = UI.pill
 UI.pillFill = frame({ Parent = UI.pill, Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BackgroundTransparency = 0.82, ZIndex = 5 })
-corner(UI.pillFill)
+corner(UI.pillFill, UDim.new(0, 10))
 UI.pillText = Instance.new("TextLabel")
 UI.pillText.BackgroundTransparency = 1
 UI.pillText.Size = UDim2.fromScale(1, 1)
-UI.pillText.Font = Enum.Font.GothamBold
-UI.pillText.TextSize = 14
+UI.pillText.Font = Enum.Font.FredokaOne
+UI.pillText.TextSize = 16
 UI.pillText.TextColor3 = WHITE
 UI.pillText.ZIndex = 6
 UI.pillText.Parent = UI.pill
+local pillTextStroke = Instance.new("UIStroke")
+pillTextStroke.Color = Color3.fromRGB(26, 4, 10)
+pillTextStroke.Thickness = 2
+pillTextStroke.Parent = UI.pillText
 local pillStroke = Instance.new("UIStroke")
-pillStroke.Thickness = 1.5
-pillStroke.Transparency = 0.5
+pillStroke.Thickness = 2.5
+pillStroke.Transparency = 0
+pillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 pillStroke.Parent = UI.pill
 
 local me = { readyAt = 0, cooldown = 1, busy = false }

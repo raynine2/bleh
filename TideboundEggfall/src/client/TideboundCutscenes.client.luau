@@ -740,6 +740,10 @@ local function checkIntro(state)
 	task.spawn(function()
 		local c = player.Character or player.CharacterAdded:Wait()
 		c:WaitForChild("HumanoidRootPart", 10)
+		-- the loading screen (ReplicatedFirst.TideboundLoading) is up: start the flyover once it's gone
+		while player:GetAttribute("Loading") do
+			task.wait(0.2)
+		end
 		task.wait(1.5)
 		enqueue("Intro", {})
 	end)

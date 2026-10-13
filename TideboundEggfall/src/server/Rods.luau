@@ -11,6 +11,7 @@ local RodModels = require(ReplicatedStorage:WaitForChild("Tidebound"):WaitForChi
 local Rods = {}
 
 local inHand = {} -- [Player] = true while the rod is in the hand
+local fighting = {} -- [Player] = true in the fighting stance (13 Oct 2026): the rod stays in the hand
 
 -- Where the rod sits: across the back (the middle of the rod behind the shoulders, tilted 40 degrees),
 -- or gripped in the right hand with the tip forward and up (about 30 degrees above level at rest).
@@ -84,7 +85,7 @@ end
 
 -- Moves the rod between the back and the right hand.
 function Rods.hold(player, hand)
-	inHand[player] = hand or nil
+	inHand[player] = (hand or fighting[player]) or nil
 	local model = Rods.model(player)
 	if model then
 		place(player, model)
@@ -93,6 +94,14 @@ end
 
 function Rods.release(player)
 	inHand[player] = nil
+	fighting[player] = nil
+end
+
+-- The fighting stance keeps the rod in your right hand between swings; the fishing stance puts it back on
+-- your back whenever you aren't casting.
+function Rods.stance(player, fight)
+	fighting[player] = fight or nil
+	Rods.hold(player, fight)
 end
 
 return Rods

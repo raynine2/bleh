@@ -20,6 +20,10 @@
         "$path": "TideboundEggfall/src/client",
         "$ignoreUnknownInstances": true
       }
+    },
+    "ReplicatedFirst": {
+      "$path": "TideboundEggfall/src/first",
+      "$ignoreUnknownInstances": true
     }
   }
 }

@@ -15,9 +15,8 @@ local VERSION = 14
 
 -- REF 1 palette
 -- Patch 12: the snow is a soft blue-grey, not paper white, so it doesn't glare
--- Patch 23: the summer town of the Catch a Brainrot reference: the old snow colours are the grass greens now
-local SNOW_GROUND = Color3.fromRGB(104, 196, 74)
-local SNOW_CAP = Color3.fromRGB(124, 210, 86)
+local SNOW_GROUND = Color3.fromRGB(168, 182, 206)
+local SNOW_CAP = Color3.fromRGB(186, 198, 220)
 local DIRT = Color3.fromRGB(146, 104, 82)
 local DIRT_DARK = Color3.fromRGB(122, 86, 70)
 local COBBLE = Color3.fromRGB(128, 132, 140)
@@ -457,28 +456,30 @@ local function setupEnvironment()
 	-- the lanterns and windows to light their surroundings like the references.)
 	-- Patch 15: much dimmer. The snow glared because bright ambient, high exposure and a low bloom threshold all
 	-- stacked on near-white ground; now the light is softer and only real light sources (neon, lanterns) bloom.
-	-- Patch 23: a clear summer afternoon (the Catch a Brainrot reference): warm sun, saturated colour, light clean
-	-- air. Exposure stays below zero so the bright greens never glare.
-	Lighting.ClockTime = 14
-	Lighting.GeographicLatitude = 30
-	Lighting.Brightness = 1.8
-	Lighting.ExposureCompensation = -0.4
-	Lighting.Ambient = Color3.fromRGB(110, 110, 118)
-	Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 136)
-	Lighting.ColorShift_Top = Color3.fromRGB(255, 244, 222)
-	Lighting.ColorShift_Bottom = Color3.fromRGB(110, 120, 140)
-	Lighting.EnvironmentDiffuseScale = 0.4
+	-- GDD Section 7 Table A (global lighting) and Table B/C for the Open Sea, the default biome. Clients blend to the
+	-- biome they stand in (TideboundBiomeLook); these are the server's own values and what Studio shows in edit mode.
+	local Biomes = require(game:GetService("ReplicatedStorage"):WaitForChild("Tidebound"):WaitForChild("Biomes"))
+	local A, open = Biomes.lighting, Biomes.list.OpenSea
+	Lighting.ClockTime = A.dayClock
+	Lighting.GeographicLatitude = A.GeographicLatitude
+	Lighting.Brightness = A.Brightness
+	Lighting.ExposureCompensation = Biomes.exposure()
+	Lighting.Ambient = A.Ambient
+	Lighting.OutdoorAmbient = A.OutdoorAmbient
+	Lighting.ColorShift_Top = Color3.fromRGB(200, 214, 240)
+	Lighting.ColorShift_Bottom = Color3.fromRGB(90, 110, 150)
+	Lighting.EnvironmentDiffuseScale = A.EnvironmentDiffuseScale
 	Lighting.EnvironmentSpecularScale = 0.2
 	Lighting.GlobalShadows = true
-	Lighting.ShadowSoftness = 0.35
+	Lighting.ShadowSoftness = A.ShadowSoftness
 
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
-	atmosphere.Density = 0.24
-	atmosphere.Offset = 0.2
-	atmosphere.Color = Color3.fromRGB(196, 220, 240)
-	atmosphere.Decay = Color3.fromRGB(130, 170, 220)
-	atmosphere.Glare = 0
-	atmosphere.Haze = 0.6
+	atmosphere.Density = open.atmosphere.Density
+	atmosphere.Offset = open.atmosphere.Offset
+	atmosphere.Color = open.atmosphere.Color
+	atmosphere.Decay = Biomes.decayColor("OpenSea")
+	atmosphere.Glare = open.atmosphere.Glare
+	atmosphere.Haze = Biomes.haze("OpenSea")
 	atmosphere.Parent = Lighting
 
 	for _, name in ipairs({ "TideboundRays" }) do
@@ -495,11 +496,12 @@ local function setupEnvironment()
 		end
 		e.Parent = Lighting
 	end
-	effect("ColorCorrectionEffect", "TideboundGrade", { Saturation = 0.2, Contrast = 0.14, Brightness = -0.1, TintColor = Color3.fromRGB(232, 240, 255) })
-	effect("BloomEffect", "TideboundBloom", { Intensity = 0.25, Size = 22, Threshold = 2.2 })
-	effect("SunRaysEffect", "TideboundSunRays", { Intensity = 0.015, Spread = 0.5 })
+	local post = open.post
+	effect("ColorCorrectionEffect", "TideboundGrade", { Saturation = post.saturation, Contrast = post.contrast, Brightness = 0, TintColor = post.tint })
+	effect("BloomEffect", "TideboundBloom", { Intensity = post.bloomIntensity, Size = post.bloomSize, Threshold = Biomes.bloomThreshold("OpenSea") })
+	effect("SunRaysEffect", "TideboundSunRays", { Intensity = post.sunIntensity, Spread = post.sunSpread })
 
-	workspace.GlobalWind = Vector3.new(6, 0, 3)
+	workspace.GlobalWind = open.wind.vector -- WindService takes over once the game starts (GDD Section 8 Table C)
 
 	local terrain = workspace.Terrain
 	terrain.WaterColor = Color3.fromRGB(56, 190, 190)
@@ -675,7 +677,7 @@ local function greyHouse(parent, center, facing)
 	local angle = math.rad(32)
 	local half = d / 2 + 1.5
 	for _, dir in ipairs({ -1, 1 }) do
-		decor({ Name = "Roof", Size = Vector3.new(w + 2, 1.2, half), CFrame = cf * CFrame.new(0, h + math.sin(angle) * half / 2, dir * math.cos(angle) * half / 2) * CFrame.Angles(dir * angle, 0, 0), Color = Color3.fromRGB(70, 130, 230), Parent = model })
+		decor({ Name = "Roof", Size = Vector3.new(w + 2, 1.2, half), CFrame = cf * CFrame.new(0, h + math.sin(angle) * half / 2, dir * math.cos(angle) * half / 2) * CFrame.Angles(dir * angle, 0, 0), Color = SNOW_CAP, Parent = model })
 	end
 	decor({ Name = "Gable", Size = Vector3.new(0.8, math.sin(angle) * half * 1.6, d - 1), CFrame = cf * CFrame.new(w / 2, h + math.sin(angle) * half * 0.4, 0), Color = HOUSE_WALL, Parent = model })
 	decor({ Name = "Gable", Size = Vector3.new(0.8, math.sin(angle) * half * 1.6, d - 1), CFrame = cf * CFrame.new(-w / 2, h + math.sin(angle) * half * 0.4, 0), Color = HOUSE_WALL, Parent = model })
@@ -818,7 +820,7 @@ local function buildNest(world)
 	if spawn then
 		spawn.Size = Vector3.new(8, 0.4, 8)
 		spawn.CFrame = CFrame.new(0, TOP + 0.4, -24)
-		spawn.Color = Color3.fromRGB(196, 116, 56) -- Patch 23: on the orange brick road
+		spawn.Color = Color3.fromRGB(150, 162, 186)
 		spawn.Material = Enum.Material.Plastic
 		spawn.TopSurface = Enum.SurfaceType.Studs
 		for _, child in ipairs(spawn:GetChildren()) do

@@ -20,6 +20,10 @@
         "$path": "src/client",
         "$ignoreUnknownInstances": true
       }
+    },
+    "ReplicatedFirst": {
+      "$path": "src/first",
+      "$ignoreUnknownInstances": true
     }
   }
 }

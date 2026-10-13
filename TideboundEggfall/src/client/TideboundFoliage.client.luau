@@ -3,6 +3,10 @@
 -- terraces) fills with chunky blades in that ground's greens, with the odd flower. The blades sway in the wind
 -- (Workspace.GlobalWind) and bend away from you as you wade through. Far away there's no grass to pay for: a fixed
 -- pool of blades is handed out to the cells near the camera and taken back as you leave them.
+-- 13 Oct 2026 (HJHJH: "i dont like it when im walking and i just see unloaded grass ... let me see more"): grass
+-- now reaches about three times as far. Two rings: up to NEAR the tufts sway and bend as before; out to FAR they
+-- stand still (placed once, nearly free) with fewer per cell. The ground is checked nearest first and much faster,
+-- and new tufts rise out of the ground instead of popping in.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,12 +16,21 @@ local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
 
 local CELL = 6
-local RADIUS = 62
-local PER_CELL = 7
-local POOL = 2600
-local RAYS_PER_TICK = 70
+local NEAR = 70 -- swaying tufts inside this
+local RADIUS = 175 -- still tufts out to here
+local PER_CELL = 5
+local FAR_PER_CELL = 3
+local POOL = 7500
+local RAYS_PER_TICK = 260
+local TICK = 0.15
+local RISE = 0.45 -- seconds a new tuft takes to grow out of the ground
 local TAU = math.pi * 2
 local FLOWERS = { Color3.fromRGB(255, 120, 170), Color3.fromRGB(255, 230, 110), Color3.fromRGB(250, 250, 255), Color3.fromRGB(180, 140, 255) }
+
+-- Soft 3D grass tufts and flower clumps (generated meshes) replace the old block blades when present.
+local meshes = game:GetService("ReplicatedStorage"):WaitForChild("TideboundFoliageMeshes", 10)
+local TUFT = meshes and meshes:FindFirstChild("GrassTuft")
+local FLOWER_TUFT = meshes and meshes:FindFirstChild("FlowerTuft")
 
 local folder = Instance.new("Folder")
 folder.Name = "TideboundFoliage"
@@ -51,6 +64,11 @@ local function takeBlade()
 		return nil
 	end
 	made += 1
+	if TUFT then
+		local tuft = TUFT:Clone()
+		tuft.Name = "Blade"
+		return { blade = tuft, head = nil }
+	end
 	return { blade = newPart("Blade", Vector3.new(0.7, 2, 0.7), Color3.new(0, 1, 0)), head = nil }
 end
 local function giveBack(item)
@@ -96,12 +114,12 @@ local function probe(cx, cz)
 end
 
 -- Each active cell keeps its blades and where they stand.
-local active = {} -- [key] = { items = { { item, base, height, yaw, phase, lean } } }
-local function fill(k, cx, cz, info)
+local active = {} -- [key] = { items = { { item, base, height, yaw, phase, lean } }, near = bool }
+local function fill(k, cx, cz, info, near, had)
 	local rng = Random.new(k)
 	local items = {}
 	local h0, s0, v0 = info.color:ToHSV()
-	for _ = 1, PER_CELL do
+	for _ = 1, near and PER_CELL or FAR_PER_CELL do
 		local item = takeBlade()
 		if not item then
 			break
@@ -109,21 +127,68 @@ local function fill(k, cx, cz, info)
 		local flower = rng:NextNumber() < 0.07
 		local height = flower and rng:NextNumber(1.2, 1.8) or rng:NextNumber(1.4, 3.4)
 		local blade = item.blade
-		blade.Size = Vector3.new(rng:NextNumber(0.55, 0.85), height, rng:NextNumber(0.55, 0.85))
+		if TUFT then
+			height = rng:NextNumber(0.8, 1.5)
+			local w = rng:NextNumber(1.6, 2.6)
+			blade.Size = Vector3.new(w, height, w * rng:NextNumber(0.85, 1.15))
+		else
+			blade.Size = Vector3.new(rng:NextNumber(0.55, 0.85), height, rng:NextNumber(0.55, 0.85))
+		end
 		-- the ground's own green, a little lighter or darker per blade, lighter toward the tips of tall ones
 		blade.Color = Color3.fromHSV(h0 + rng:NextNumber(-0.02, 0.03), math.clamp(s0 * rng:NextNumber(0.9, 1.15), 0, 1), math.clamp(v0 * rng:NextNumber(0.85, 1.2), 0, 1))
 		if flower then
-			item.head = item.head or newPart("Flower", Vector3.new(0.9, 0.7, 0.9), Color3.new(1, 1, 1))
-			item.head.Color = FLOWERS[rng:NextInteger(1, #FLOWERS)]
+			if FLOWER_TUFT then
+				if not item.head then
+					item.head = FLOWER_TUFT:Clone()
+					item.head.Name = "Flower"
+				end
+				local fs = rng:NextNumber(1.3, 1.9)
+				item.head.Size = Vector3.new(fs, fs * 1.1, fs)
+			else
+				item.head = item.head or newPart("Flower", Vector3.new(0.9, 0.7, 0.9), Color3.new(1, 1, 1))
+				item.head.Color = FLOWERS[rng:NextInteger(1, #FLOWERS)]
+			end
 			item.head.Parent = folder
 		elseif item.head then
 			item.head.Parent = nil
 		end
 		blade.Parent = folder
 		local base = Vector3.new((cx + rng:NextNumber(0.05, 0.95)) * CELL, info.y, (cz + rng:NextNumber(0.05, 0.95)) * CELL)
-		table.insert(items, { item = item, flower = flower, base = base, height = height, yaw = rng:NextNumber(0, TAU), phase = rng:NextNumber(0, TAU), lean = rng:NextNumber(-0.12, 0.12) })
+		table.insert(items, { item = item, flower = flower, base = base, height = height, yaw = rng:NextNumber(0, TAU), phase = rng:NextNumber(0, TAU), lean = rng:NextNumber(-0.12, 0.12), born = #items < (had or 0) and -10 or os.clock() })
 	end
-	active[k] = { items = items, cx = cx, cz = cz }
+	active[k] = { items = items, cx = cx, cz = cz, near = near }
+end
+
+-- where a tuft (and its flower) stands for a given tilt; `sink` pushes it into the ground while it grows in
+local function placeOf(e, tiltX, tiltZ, sink)
+	local pivot = CFrame.new(e.base - Vector3.new(0, sink, 0)) * CFrame.Angles(tiltZ + e.lean, 0, -tiltX) * CFrame.Angles(0, e.yaw, 0)
+	local cf = pivot * CFrame.new(0, e.height / 2 - (TUFT and 0.08 or 0), 0)
+	local headCf = nil
+	if e.flower and e.item.head and e.item.head.Parent then
+		if FLOWER_TUFT then
+			headCf = pivot * CFrame.new(0.9, e.item.head.Size.Y / 2 - 0.1, 0.4)
+		else
+			headCf = pivot * CFrame.new(0, e.height + 0.25, 0)
+		end
+	end
+	return cf, headCf
+end
+
+-- far tufts don't sway: stand them up once
+local function standStill(cell)
+	local parts, cframes = {}, {}
+	for _, e in ipairs(cell.items) do
+		local cf, headCf = placeOf(e, 0, 0, 0)
+		table.insert(parts, e.item.blade)
+		table.insert(cframes, cf)
+		if headCf then
+			table.insert(parts, e.item.head)
+			table.insert(cframes, headCf)
+		end
+	end
+	if #parts > 0 then
+		workspace:BulkMoveTo(parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)
+	end
 end
 
 local function empty(k)
@@ -142,11 +207,28 @@ local function center()
 	return root and root.Position or camera.CFrame.Position
 end
 
--- Every quarter second: hand blades to the cells that came into range, take them back from the ones that left.
+-- The cells around you, nearest first, so the ground right ahead is always checked before the far rings.
+local OFFSETS = {}
+do
+	local reach = math.ceil(RADIUS / CELL)
+	for dz = -reach, reach do
+		for dx = -reach, reach do
+			local d2 = (dx * dx + dz * dz) * CELL * CELL
+			if d2 <= RADIUS * RADIUS then
+				table.insert(OFFSETS, { dx, dz, d2 <= NEAR * NEAR, d2 })
+			end
+		end
+	end
+	table.sort(OFFSETS, function(a, b)
+		return a[4] < b[4]
+	end)
+end
+
+-- Every few frames: hand blades to the cells that came into range, take them back from the ones that left.
 task.spawn(function()
 	local filterAt = 0
 	while true do
-		task.wait(0.25)
+		task.wait(TICK)
 		local now = os.clock()
 		if now > filterAt then
 			filterAt = now + 2
@@ -161,25 +243,32 @@ task.spawn(function()
 			continue
 		end
 		local ccx, ccz = math.floor(c.X / CELL), math.floor(c.Z / CELL)
-		local reach = math.ceil(RADIUS / CELL)
 		local rays = 0
 		local wanted = {}
-		for dz = -reach, reach do
-			for dx = -reach, reach do
-				if (dx * dx + dz * dz) * CELL * CELL <= RADIUS * RADIUS then
-					local cx, cz = ccx + dx, ccz + dz
-					local k = key(cx, cz)
-					local info = ground[k]
-					if info == nil and rays < RAYS_PER_TICK then
-						rays += 1
-						info = probe(cx, cz)
-						ground[k] = info
-					end
-					if info then
-						wanted[k] = true
-						if not active[k] then
-							fill(k, cx, cz, info)
-						end
+		for _, off in ipairs(OFFSETS) do
+			local cx, cz = ccx + off[1], ccz + off[2]
+			local k = key(cx, cz)
+			local info = ground[k]
+			if info == nil and rays < RAYS_PER_TICK then
+				rays += 1
+				info = probe(cx, cz)
+				ground[k] = info
+			end
+			if info then
+				wanted[k] = true
+				local near = off[3]
+				local cell = active[k]
+				local had = 0
+				if cell and cell.near ~= near then
+					had = #cell.items
+					-- crossing between the rings: the same seed puts the first tufts back in the same places
+					empty(k)
+					cell = nil
+				end
+				if not cell then
+					fill(k, cx, cz, info, near, had)
+					if not near then
+						standStill(active[k])
 					end
 				end
 			end
@@ -205,6 +294,9 @@ RunService.RenderStepped:Connect(function()
 	local me = center()
 	local parts, cframes = {}, {}
 	for _, cell in pairs(active) do
+		if not cell.near then
+			continue
+		end
 		for _, e in ipairs(cell.items) do
 			local base = e.base
 			-- a gust is a slow wave rolling along the wind
@@ -217,13 +309,14 @@ RunService.RenderStepped:Connect(function()
 			if d < 3.5 and math.abs(base.Y - (me.Y - 3)) < 4 then
 				tilt += (d > 0.01 and away.Unit or Vector3.new(1, 0, 0)) * (1 - d / 3.5) * 0.9
 			end
-			local pivot = CFrame.new(base) * CFrame.Angles(tilt.Z + e.lean, 0, -tilt.X) * CFrame.Angles(0, e.yaw, 0)
-			local cf = pivot * CFrame.new(0, e.height / 2, 0)
+			local grow = math.clamp((t - e.born) / RISE, 0, 1)
+			local sink = (1 - grow * grow * (3 - 2 * grow)) * (e.height + 0.3)
+			local cf, headCf = placeOf(e, tilt.X, tilt.Z, sink)
 			table.insert(parts, e.item.blade)
 			table.insert(cframes, cf)
-			if e.flower and e.item.head and e.item.head.Parent then
+			if headCf then
 				table.insert(parts, e.item.head)
-				table.insert(cframes, pivot * CFrame.new(0, e.height + 0.25, 0))
+				table.insert(cframes, headCf)
 			end
 		end
 	end

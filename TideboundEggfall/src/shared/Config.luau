@@ -17,15 +17,17 @@ Config.Currencies = {
 }
 
 -- 7 rarity tiers. `rate` is the Tide Egg base odds (sums to 100.00).
+-- Colours follow the canon rarity spectrum (GDD Section 7 Rule 1): White, Green, Blue, Purple, then Gold for
+-- Legendary, Mythic (deep gold) and Celestial (pale gold); see Biomes.rarityBands.
 -- `fishRate` is the Sunken Shoals fishing table before rod/bait luck (sums to 100.00).
 Config.Tiers = {
-	{ id = "Common", rate = 58.00, fishRate = 55.00, color = Color3.fromRGB(176, 190, 197), pearlValue = 50, fishPearls = 25, creatures = { "Tide Sprite", "Barnacle Pup" } },
-	{ id = "Uncommon", rate = 24.00, fishRate = 25.00, color = Color3.fromRGB(102, 214, 140), pearlValue = 120, fishPearls = 35, creatures = { "Kelp Crawler", "Shellback Newt" } },
-	{ id = "Rare", rate = 12.00, fishRate = 12.00, color = Color3.fromRGB(74, 160, 255), pearlValue = 300, fishPearls = 50, creatures = { "Storm Eel", "Coral Drake" } },
-	{ id = "Epic", rate = 4.50, fishRate = 5.00, color = Color3.fromRGB(176, 102, 255), pearlValue = 800, fishPearls = 70, creatures = { "Abyss Angler", "Rift Serpent" } },
-	{ id = "Legendary", rate = 1.20, fishRate = 2.20, color = Color3.fromRGB(255, 184, 48), pearlValue = 2500, fishPearls = 90, creatures = { "Tempest Wyrm", "Leviathan Calf" } },
-	{ id = "Mythic", rate = 0.25, fishRate = 0.65, color = Color3.fromRGB(255, 72, 120), pearlValue = 8000, fishPearls = 105, creatures = { "Aurora Kraken", "Deep Sovereign" } },
-	{ id = "Celestial", rate = 0.05, fishRate = 0.15, color = Color3.fromRGB(140, 255, 250), pearlValue = 30000, fishPearls = 120, creatures = { "Tidebound God", "Prismatic Leviathan" } },
+	{ id = "Common", rate = 58.00, fishRate = 55.00, color = Color3.fromRGB(240, 244, 248), pearlValue = 50, fishPearls = 25, creatures = { "Goldfish", "Guppy", "Tetra", "Molly", "Platy" } },
+	{ id = "Uncommon", rate = 24.00, fishRate = 25.00, color = Color3.fromRGB(80, 220, 120), pearlValue = 120, fishPearls = 35, creatures = { "Angelfish", "Betta", "Gourami", "Swordtail", "Rainbowfish" } },
+	{ id = "Rare", rate = 12.00, fishRate = 12.00, color = Color3.fromRGB(60, 150, 255), pearlValue = 300, fishPearls = 50, creatures = { "Clownfish", "Tang", "Discus", "Oscar", "Arowana" } },
+	{ id = "Epic", rate = 4.50, fishRate = 5.00, color = Color3.fromRGB(170, 90, 255), pearlValue = 800, fishPearls = 70, creatures = { "Lionfish", "Pufferfish", "MandarinFish", "MoorishIdol", "Seahorse" } },
+	{ id = "Legendary", rate = 1.20, fishRate = 2.20, color = Color3.fromRGB(255, 196, 40), pearlValue = 2500, fishPearls = 90, creatures = { "LuffyFish", "PikachuFish", "GokuFish", "MarioFish", "SonicFish" } },
+	{ id = "Mythic", rate = 0.25, fishRate = 0.65, color = Color3.fromRGB(255, 170, 20), pearlValue = 8000, fishPearls = 105, creatures = { "NarutoFish", "SaitamaFish", "TotoroFish" } },
+	{ id = "Celestial", rate = 0.05, fishRate = 0.15, color = Color3.fromRGB(255, 228, 130), pearlValue = 30000, fishPearls = 120, creatures = { "KirbyFish", "DeadpoolFish" } },
 }
 
 -- Independent roll on every hatch (sums to 100.00).
@@ -56,10 +58,6 @@ Config.Shards = { unique = 1, duplicate = 10 }
 -- but each pull is a dash move (DashMoves) of that rarity. A duplicate gives Shards like a creature does. You
 -- equip up to `slots` dashes; Q rolls one of them. Everyone starts with Zoomies equipped and one capsule.
 Config.Capsules = { name = "Dash Capsule", pearlCost = 400, slots = 3, starterDash = "Zoomies" }
--- Patch 23: Tide Chests, the chest gacha at the Tide Lab. Pearls only, opened on the spot. Same rates (Config.Tiers)
--- and pity (Config.Pity, counted on its own); each chest holds a creature of the rolled rarity or, `dashChance` of
--- the time, a dash move of it.
-Config.Chest = { name = "Tide Chest", pearlCost = 600, dashChance = 0.5 }
 
 -- Locked rod stats table. Costs are Pearls; Celestial Rod is prestige only.
 Config.Rods = {
@@ -314,11 +312,10 @@ Config.Npcs = {
 	Pinch = { name = "Pinch", role = "Guide crab", lines = { "New here? Walk east down Harbor Street and through the Tidegate: 22 islands of the Sunken Shoals are out there.", "Cast at the glowing spots, bank fish at a Tide Cache (it heals you too), steal eggs, then hold at a beacon to extract.", "Crabs, puffers and gulls camp on the islands. Click or press F to swipe your rod at them!", "Geysers launch you between far islands. The Tide Slide behind me goes to the Harbor Ring, where your Home Nest is." } },
 	OldHarl = { name = "Old Harl", role = "Tackle Shop", panel = "RODS", lines = { "Every rod's stats are on the rack. No secrets, no Robux.", "Worn rod? I'll repair it for Pearls before you dive." } },
 	Nim = { name = "Nim", role = "Bait Shop", panel = "BAIT", lines = { "Brineworm for the shallows, Glowmite when you want rarer bites!", "Mending Vials heal you, Revive Vials wake a companion. Pearls only!" } },
-	SisterCoralie = { name = "Sister Coralie", role = "Tide Lab · Egg Shrine", panel = "ODDS", lines = { "These are the odds, child, every one of them. Your pity never resets on a wipe." } },
+	SisterCoralie = { name = "Sister Coralie", role = "Tide Egg Shrine", panel = "ODDS", lines = { "These are the odds, child, every one of them. Your pity never resets on a wipe." } },
 	CaptainBrask = { name = "Captain Brask", role = "Season Pass Board", panel = "QUESTS", lines = { "The season track isn't posted yet. Quill's quests pay Pearls today." } },
 	Quill = { name = "Quill", role = "Daily Quest Board", panel = "QUESTS", lines = { "Three quests a day, reset at midnight UTC. Squawk!" } },
 	ArchivistOphel = { name = "Archivist Ophel", role = "Leaderboard Hall", panel = "BOARDS", lines = { "The Hall remembers this server's rarest hatches and boldest escapes." } },
-	NursePip = { name = "Nurse Pip", role = "Tide Center", lines = { "Welcome to the Tide Center! Hatching goes on at the incubator right out front.", "A companion got knocked out in the Shoals? A Revive Vial from Nim wakes it right up.", "Rest a moment, sweetie. The Shoals will still be there!" } },
 	GateWardenSel = { name = "Gate Warden Sel", role = "Tidegate", panel = "DIVE", lines = { "Dive Solo or Dive With Crew and I'll send you straight out to Landing Reef. Contested Waters stays off unless you switch it on.", "Push past a beacon and the Shoals pay more, but the Warden gets angrier.", "The Outer Reef past the Coral Maze is stormy. The best eggs and the worst mobs are out there." } },
 	TradesmanKobb = { name = "Tradesman Kobb", role = "Trading Post", lines = { "Trades open when cosmetics arrive. Creatures, eggs and bait never trade, so nobody buys power." } },
 }

@@ -25,19 +25,23 @@ local INK = Color3.fromRGB(46, 30, 24)
 local SEA_TOP = Color3.fromRGB(86, 196, 214)
 local SEA_DEEP = Color3.fromRGB(38, 118, 168)
 local SAND = Color3.fromRGB(236, 214, 160)
-local SNOW = Color3.fromRGB(150, 214, 110) -- Patch 23: the town is green now
-local STREET = Color3.fromRGB(236, 160, 84) -- the orange brick paths
+local SNOW = Color3.fromRGB(226, 234, 244)
+local STREET = Color3.fromRGB(196, 186, 170)
 local BRIDGE = Color3.fromRGB(150, 100, 64)
 local RING_LAND = { Color3.fromRGB(128, 214, 112), Color3.fromRGB(86, 186, 84), Color3.fromRGB(118, 128, 132) }
 local RING_EDGE = { Color3.fromRGB(70, 150, 70), Color3.fromRGB(46, 120, 56), Color3.fromRGB(70, 78, 86) }
 local TREE = { Color3.fromRGB(52, 140, 62), Color3.fromRGB(38, 110, 50), Color3.fromRGB(80, 92, 84) }
-local GOLD_LIGHT = Color3.fromRGB(255, 232, 160)
-local GOLD_DARK = Color3.fromRGB(200, 140, 60)
+-- HUD restyle (12 Oct 2026): the side buttons' gold and blue tiles (gradient top/bottom and their light outline)
+local GOLD_LIGHT = Color3.fromRGB(255, 196, 30)
+local GOLD_DARK = Color3.fromRGB(214, 132, 8)
+local GOLD_EDGE = Color3.fromRGB(255, 226, 90)
+local BLUE_TOP, BLUE_BOTTOM, BLUE_EDGE = Color3.fromRGB(40, 140, 255), Color3.fromRGB(18, 76, 214), Color3.fromRGB(90, 210, 255)
 local DISPLAY = Enum.Font.FredokaOne
 
 -- the whole charted area, a little past the play area, plus the Harbor Ring to the south
-local MIN = Vector3.new(L.playMin.X - 60, 0, math.min(L.playMin.Z, Config.Harbor.center.Z - 340))
-local MAX = Vector3.new(L.playMax.X + 60, 0, L.playMax.Z + 60)
+-- Updated for 2x scaled world
+local MIN = Vector3.new(L.playMin.X - 120, 0, math.min(L.playMin.Z, Config.Harbor.center.Z - 680))
+local MAX = Vector3.new(L.playMax.X + 120, 0, L.playMax.Z + 120)
 local SPAN_X, SPAN_Z = MAX.X - MIN.X, MAX.Z - MIN.Z
 
 local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
@@ -278,33 +282,64 @@ end
 
 -- The minimap ---------------------------------------------------------------------------------------------------
 
-local gui = new("ScreenGui", { Name = "TideboundMap", ResetOnSpawn = false, DisplayOrder = 4, Parent = player:WaitForChild("PlayerGui") })
+-- Sibling: a frame's children always draw over it (under Global, the map drew under the sea it sits on)
+local gui = new("ScreenGui", { Name = "TideboundMap", ResetOnSpawn = false, DisplayOrder = 4, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = player:WaitForChild("PlayerGui") })
 
 local SIZE = touch and 150 or 210
 local holder = new("Frame", { Name = "Minimap", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -18, 0, 18), Size = UDim2.new(0, SIZE, 0, SIZE + 30), BackgroundTransparency = 1, Parent = gui })
 
 -- the golden ring
-local ring = new("Frame", { Name = "Ring", Size = UDim2.new(0, SIZE, 0, SIZE), BackgroundColor3 = GOLD_LIGHT, BorderSizePixel = 0, ZIndex = 2, Parent = holder }, {
+local ring = new("Frame", { Name = "Ring", Size = UDim2.new(0, SIZE, 0, SIZE), BackgroundColor3 = WHITE, BorderSizePixel = 0, ZIndex = 2, Parent = holder }, {
 	round(),
-	stroke(INK, 3),
+	stroke(GOLD_EDGE, 3),
 	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(GOLD_LIGHT, GOLD_DARK) }),
 })
--- the round window onto the sea (a CanvasGroup clips everything inside to the circle)
+-- the round window onto the sea. A CanvasGroup's round clip isn't drawn on every PC (the map spilled out of
+-- the ring), so the map is clipped by plain strips instead (see "Clipping" below).
 local INSET = 9
-local window = new("CanvasGroup", { Name = "Window", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -INSET * 2, 1, -INSET * 2), BackgroundColor3 = SEA_TOP, BorderSizePixel = 0, ZIndex = 3, Parent = ring }, {
+local RING_R = SIZE / 2 -- the gold ring's outer radius
+local VIEW_R = RING_R - INSET - 6 -- the radius of sea you actually see; the gold bezel covers the rest
+local window = new("Frame", { Name = "Window", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -INSET * 2, 1, -INSET * 2), BackgroundColor3 = SEA_TOP, BorderSizePixel = 0, ZIndex = 3, Parent = ring }, {
 	round(),
 	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(SEA_TOP, SEA_DEEP) }),
 })
 -- inner shadow round the window's edge
-new("Frame", { Name = "InnerShadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -24, 1, -24), BackgroundTransparency = 1, ZIndex = 50, Parent = window }, {
+new("Frame", { Name = "InnerShadow", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, VIEW_R * 2 - 24, 0, VIEW_R * 2 - 24), BackgroundTransparency = 1, ZIndex = 50, Parent = window }, {
 	round(),
 	stroke(Color3.fromRGB(16, 40, 70), 12, 0.6),
 })
-new("Frame", { Name = "WindowEdge", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -INSET * 2, 1, -INSET * 2), BackgroundTransparency = 1, ZIndex = 4, Parent = ring }, { round(), stroke(INK, 2.5) })
+new("Frame", { Name = "WindowEdge", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, VIEW_R * 2, 0, VIEW_R * 2), BackgroundTransparency = 1, ZIndex = 4, Parent = ring }, { round(), stroke(INK, 2.5) })
 
 -- you, in the middle: a white arrow that points the way you face
 local arrow = new("TextLabel", { Name = "You", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 20, 0, 20), BackgroundTransparency = 1, Font = Enum.Font.GothamBlack, TextScaled = true, Text = "▲", TextColor3 = WHITE, TextStrokeColor3 = Color3.fromRGB(230, 60, 40), TextStrokeTransparency = 0, ZIndex = 60, Parent = window })
 local pulse = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 20, 0, 20), BackgroundTransparency = 1, ZIndex = 59, Parent = window }, { round(), stroke(WHITE, 2, 0.2) })
+
+-- Clipping: ClipsDescendants only clips rectangles, so the map is drawn once into each of a few horizontal
+-- strips whose widths follow the circle. Each strip's corners stay inside the ring, and a gold bezel from VIEW_R
+-- out to the ring covers them, so the map ends on a clean circle and nothing reaches past the ring.
+local strips = {}
+do
+	local slack = RING_R * RING_R - VIEW_R * VIEW_R
+	local edges = { 0 }
+	while edges[#edges] < VIEW_R do
+		local a = edges[#edges]
+		table.insert(edges, math.min(VIEW_R, math.sqrt(a * a + slack)))
+	end
+	local function strip(top, bottom, outer)
+		top, bottom = math.floor(top), math.ceil(bottom)
+		local width = math.floor(2 * math.sqrt(RING_R * RING_R - outer * outer))
+		table.insert(strips, new("Frame", { Name = "Strip", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.5, top), Size = UDim2.new(0, width, 0, bottom - top), BackgroundTransparency = 1, ClipsDescendants = true, ZIndex = 5, Parent = window }))
+	end
+	strip(-edges[2], edges[2], edges[2])
+	for i = 2, #edges - 1 do
+		strip(-edges[i + 1], -edges[i], edges[i + 1])
+		strip(edges[i], edges[i + 1], edges[i + 1])
+	end
+end
+new("Frame", { Name = "Bezel", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, VIEW_R * 2, 0, VIEW_R * 2), BackgroundTransparency = 1, ZIndex = 58, Parent = window }, {
+	round(),
+	new("UIStroke", { Color = WHITE, Thickness = RING_R - VIEW_R }, { new("UIGradient", { Rotation = 90, Color = ColorSequence.new(GOLD_LIGHT, GOLD_DARK) }) }),
+})
 
 
 -- the compass, the zoom buttons and the ribbon with the place name
@@ -312,7 +347,7 @@ local compass = new("Frame", { Name = "Compass", AnchorPoint = Vector2.new(0.5, 
 new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Font = Enum.Font.GothamBlack, TextScaled = true, Text = "N", TextColor3 = WHITE, ZIndex = 71, Parent = compass }, { new("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) }) })
 
 local function zoomButton(text, position)
-	local b = new("TextButton", { AnchorPoint = Vector2.new(0.5, 0.5), Position = position, Size = UDim2.new(0, 28, 0, 28), BackgroundColor3 = GOLD_LIGHT, AutoButtonColor = true, Font = Enum.Font.GothamBlack, TextScaled = true, Text = text, TextColor3 = INK, ZIndex = 70, Parent = ring }, {
+	local b = new("TextButton", { AnchorPoint = Vector2.new(0.5, 0.5), Position = position, Size = UDim2.new(0, 28, 0, 28), BackgroundColor3 = WHITE, AutoButtonColor = true, Font = Enum.Font.GothamBlack, TextScaled = true, Text = text, TextColor3 = INK, ZIndex = 70, Parent = ring }, {
 		round(),
 		stroke(INK, 2.5),
 		new("UIGradient", { Rotation = 90, Color = ColorSequence.new(GOLD_LIGHT, GOLD_DARK) }),
@@ -323,24 +358,28 @@ end
 local zoomIn = zoomButton("+", UDim2.new(0.08, 0, 0.78, 0))
 local zoomOut = zoomButton("–", UDim2.new(0.2, 0, 0.93, 0))
 
-local ribbon = new("Frame", { Name = "Ribbon", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, SIZE - 14), Size = UDim2.new(0.9, 0, 0, 30), BackgroundColor3 = Color3.fromRGB(70, 140, 210), ZIndex = 72, Parent = holder }, {
+local ribbon = new("Frame", { Name = "Ribbon", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, SIZE - 14), Size = UDim2.new(0.9, 0, 0, 30), BackgroundColor3 = WHITE, ZIndex = 72, Parent = holder }, {
 	round(UDim.new(0, 10)),
-	stroke(INK, 2.5),
-	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(110, 180, 240), Color3.fromRGB(50, 110, 190)) }),
+	stroke(BLUE_EDGE, 2.5),
+	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(BLUE_TOP, BLUE_BOTTOM) }),
 })
 local placeLabel = new("TextLabel", { BackgroundTransparency = 1, Size = UDim2.new(1, -10, 1, -6), Position = UDim2.new(0, 5, 0, 3), Font = DISPLAY, TextScaled = true, Text = "EGGFALL TOWN", TextColor3 = WHITE, ZIndex = 73, Parent = ribbon }, { stroke(INK, 2) })
 
 
-new("TextLabel", { Name = "Hint", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, SIZE + 18), Size = UDim2.new(1, 0, 0, 14), Font = Enum.Font.GothamBold, TextScaled = true, Text = touch and "tap the map: sea chart" or "N: sea chart · M: hide", TextColor3 = WHITE, TextStrokeTransparency = 0.3, ZIndex = 72, Parent = holder })
+new("TextLabel", { Name = "Hint", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, SIZE + 18), Size = UDim2.new(1, 0, 0, 15), Font = DISPLAY, TextScaled = true, Text = touch and "tap the map: sea chart" or "N: sea chart · M: hide", TextColor3 = WHITE, ZIndex = 72, Parent = holder }, { stroke(INK, 1.5) })
 
-local ZOOMS = { 0.18, 0.3, 0.5, 0.8 }
+-- Adjusted zoom levels for 2x scaled world (halved to compensate for larger coordinates)
+local ZOOMS = { 0.09, 0.15, 0.25, 0.4 }
 local zoomIndex = 2
-local miniWorld = nil
+local miniWorlds = {} -- one copy of the map per clipping strip
 local function redrawMini()
-	if miniWorld then
-		miniWorld:Destroy()
+	for _, world in ipairs(miniWorlds) do
+		world:Destroy()
 	end
-	miniWorld = drawWorld(window, ZOOMS[zoomIndex], { iconScale = 0.9 + 0.15 * zoomIndex, names = false })
+	table.clear(miniWorlds)
+	for _, strip in ipairs(strips) do
+		table.insert(miniWorlds, drawWorld(strip, ZOOMS[zoomIndex], { iconScale = 0.9 + 0.15 * zoomIndex, names = false }))
+	end
 end
 redrawMini()
 zoomIn.Activated:Connect(function()
@@ -358,12 +397,12 @@ local chartOpen = false
 local chart = new("Frame", { Name = "SeaChart", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromScale(0.82, 0.82), BackgroundTransparency = 1, Visible = false, ZIndex = 100, Parent = gui })
 new("UIAspectRatioConstraint", { AspectRatio = SPAN_X / SPAN_Z, Parent = chart })
 local chartScale = new("UIScale", { Scale = 1, Parent = chart })
-local chartFrame = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = GOLD_LIGHT, ZIndex = 100, Parent = chart }, {
+local chartFrame = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, ZIndex = 100, Parent = chart }, {
 	round(UDim.new(0, 24)),
 	stroke(INK, 4),
 	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(GOLD_LIGHT, GOLD_DARK) }),
 })
-local chartWindow = new("CanvasGroup", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -20, 1, -20), BackgroundColor3 = SEA_TOP, ZIndex = 101, Parent = chartFrame }, {
+local chartWindow = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(1, -20, 1, -20), BackgroundColor3 = SEA_TOP, ClipsDescendants = true, ZIndex = 101, Parent = chartFrame }, {
 	round(UDim.new(0, 18)),
 	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(SEA_TOP, SEA_DEEP) }),
 })
@@ -470,11 +509,15 @@ RunService.RenderStepped:Connect(function(dt)
 		openChart(false)
 	end
 	local t = os.clock()
-	if holder.Visible and root and miniWorld then
+	if holder.Visible and root and #miniWorlds > 0 then
 		local zoom = ZOOMS[zoomIndex]
 		local px = toPx(root.Position, zoom)
 		local half = window.AbsoluteSize / 2
-		miniWorld.Position = UDim2.new(0, half.X - px.X, 0, half.Y - px.Y)
+		local origin = window.AbsolutePosition
+		for i, strip in ipairs(strips) do
+			local offset = strip.AbsolutePosition - origin
+			miniWorlds[i].Position = UDim2.new(0, half.X - px.X - offset.X, 0, half.Y - px.Y - offset.Y)
+		end
 		local look = root.CFrame.LookVector
 		arrow.Rotation = math.deg(math.atan2(look.X, look.Z))
 		local beat = (t * 1.2) % 1
@@ -491,15 +534,13 @@ RunService.RenderStepped:Connect(function(dt)
 			if r then
 				seen[p] = true
 				local dot = others[p]
-				if not dot or dot.Parent ~= miniWorld then
-					if dot then
-						dot:Destroy()
-					end
-					dot = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.new(0, 9, 0, 9), BackgroundColor3 = Color3.fromRGB(255, 220, 70), ZIndex = 55, Parent = miniWorld }, { round(), stroke(INK, 1.5) })
+				if not dot or not dot.Parent then
+					dot = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.new(0, 9, 0, 9), BackgroundColor3 = Color3.fromRGB(255, 220, 70), ZIndex = 55, Parent = window }, { round(), stroke(INK, 1.5) })
 					others[p] = dot
 				end
-				local q = toPx(r.Position, zoom)
-				dot.Position = UDim2.new(0, q.X, 0, q.Y)
+				local q = toPx(r.Position, zoom) - px
+				dot.Position = UDim2.new(0, half.X + q.X, 0, half.Y + q.Y)
+				dot.Visible = q.Magnitude <= VIEW_R - 6 -- other divers past the edge aren't drawn outside the map
 			end
 		end
 		for p, dot in pairs(others) do

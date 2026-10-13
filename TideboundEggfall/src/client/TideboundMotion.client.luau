@@ -21,9 +21,11 @@ local Shared = ReplicatedStorage:WaitForChild("Tidebound")
 local Animations = require(Shared:WaitForChild("Animations"))
 local MotionBus = require(Shared:WaitForChild("MotionBus"))
 local Fx = require(Shared:WaitForChild("Fx"))
+local WaterFx = require(Shared:WaitForChild("WaterFx")) -- water footsteps (13 Oct 2026)
 local Audio = require(Shared:WaitForChild("Audio"))
 local DashMoves = require(Shared:WaitForChild("DashMoves")) -- Patch 19: every dash move's pose
 local RodSkills = require(Shared:WaitForChild("RodSkills")) -- Patch 21: every rod ability's pose
+local WaterMoves = require(Shared:WaitForChild("WaterMoves")) -- 12 Oct 2026: swim strokes and fish riding
 
 local player = Players.LocalPlayer
 local rng = Random.new()
@@ -283,25 +285,20 @@ local function airPose(rec, t, vy)
 	return mix(down, up, rising)
 end
 
-local function swimPose(rec, t, speed)
-	local m = math.clamp(speed / 12, 0, 1)
-	local stroke = t * (4 + 3 * m) + rec.seed
-	return {
-		rootX = -1.25 * m - 0.15,
-		neckX = 1.0 * m + 0.1,
-		shRX = 2.0 + 0.9 * math.sin(stroke),
-		shRZ = 0.45 + 0.55 * math.cos(stroke),
-		elRX = 0.4 + 0.3 * math.max(0, math.sin(stroke)),
-		shLX = 2.0 + 0.9 * math.sin(stroke),
-		shLZ = -(0.45 + 0.55 * math.cos(stroke)),
-		elLX = 0.4 + 0.3 * math.max(0, math.sin(stroke)),
-		hipRX = 0.35 * math.sin(stroke * 2.2),
-		hipLX = -0.35 * math.sin(stroke * 2.2),
-		kneeRX = -0.3 - 0.2 * math.max(0, math.sin(stroke * 2.2)),
-		kneeLX = -0.3 - 0.2 * math.max(0, -math.sin(stroke * 2.2)),
-		ankRX = -0.5,
-		ankLX = -0.5,
-	}
+-- 12 Oct 2026: the swim strokes live in WaterMoves (tread water, front crawl, butterfly on the sprint, dolphin kick
+-- under the surface). This finds how deep you are a few times a second.
+local waterRay = RaycastParams.new()
+waterRay.FilterType = Enum.RaycastFilterType.Exclude
+waterRay.IgnoreWater = false
+local function swimPose(rec, t, speed, vy)
+	local now = os.clock()
+	if rec.root and now > (rec.depthAt or 0) then
+		rec.depthAt = now + 0.25
+		waterRay.FilterDescendantsInstances = { rec.character }
+		local hit = workspace:Raycast(rec.root.Position + Vector3.new(0, 14, 0), Vector3.new(0, -14, 0), waterRay)
+		rec.depth = hit and hit.Material == Enum.Material.Water and (hit.Position.Y - rec.root.Position.Y) or 0
+	end
+	return WaterMoves.swimPose(t, rec.seed, speed, speed > SPRINT_SPEED, rec.depth or 0, vy or 0)
 end
 
 local HOLD_EGG = { shRX = 0.95, shRZ = -0.32, elRX = 1.25, shLX = 0.95, shLZ = 0.32, elLX = 1.25, waistX = 0.1 }
@@ -515,7 +512,7 @@ local function footstep(rec, footPart, strength)
 	end
 	local at = footPart.Position - Vector3.new(0, footPart.Size.Y / 2, 0)
 	if rec.inWater then
-		Fx.cubes(at, { Color3.fromRGB(200, 240, 255), Color3.fromRGB(150, 220, 255) }, { count = 3 + strength, spread = 1.6 + strength * 0.4, size = 0.3, life = 0.35, up = 1, material = Enum.Material.Glass })
+		WaterFx.spray(at, 3 + 2 * strength, 5 + strength) -- 13 Oct 2026: soft round drops, not cubes
 	else
 		Fx.cubes(at, dustColor(rec), { count = 2 + strength, spread = 1.2 + strength * 0.5, size = 0.3, life = 0.4, up = 0.5, material = Enum.Material.SmoothPlastic })
 	end
@@ -1033,7 +1030,22 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 		mix(pose, airPose(rec, t, vy), rec.air)
 	end
 	if rec.swim > 0.01 then
-		mix(pose, swimPose(rec, t, speed), rec.swim)
+		mix(pose, swimPose(rec, t, speed, vy), rec.swim)
+	end
+	-- 12 Oct 2026: riding your fish (your own ride at once from MotionBus.ride, everyone else's from Riding)
+	local ownRide = MotionBus.ride and MotionBus.ride[character]
+	local rideStyle, rideJump = nil, nil
+	if p ~= player or ownRide then
+		rideStyle, rideJump = WaterMoves.rideOf(character, ownRide, serverNow)
+	end
+	rec.ride = (rec.ride or 0) + (((rideStyle and 1 or 0) - (rec.ride or 0)) * math.min(1, dt * 8))
+	if rideStyle then
+		rec.rideStyle = rideStyle
+	end
+	if rec.ride > 0.01 and rec.rideStyle then
+		local rideSpeed = ownRide and ownRide.speed or math.clamp(speed / WaterMoves.cruise, 0, 1)
+		local rideLean = ownRide and ownRide.lean or rec.turnLean
+		mix(pose, WaterMoves.ridePose(rec.rideStyle, t, math.min(rideSpeed, 1), rideLean, rideStyle and rideJump or nil), rec.ride)
 	end
 
 	-- landing squash
@@ -1078,7 +1090,7 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 		local hold = table.clone(HOLD_EGG)
 		hold.shRX += 0.12 * math.sin(rec.phi) * rec.move
 		hold.shLX -= 0.12 * math.sin(rec.phi) * rec.move
-		mix(pose, hold, rec.carry * (1 - rec.swim), UPPER)
+		mix(pose, hold, rec.carry * (1 - rec.swim) * (1 - (rec.ride or 0)), UPPER)
 	end
 	-- only drawn up close; walking into range doesn't burst, a new or lost egg does
 	local shown = rec.near and eggs or 0
@@ -1091,7 +1103,11 @@ local function step(p, rec, dt, t, serverNow, cameraPos)
 	rec.arms += (armsW - rec.arms) * math.min(1, dt * 20)
 	if arms and armsW > 0 then
 		local a = arms.pose
-		mix(pose, { shRX = a.shR, shRZ = a.inR, elRX = a.elR, shLX = a.shL, shLZ = a.inL, elLX = a.elL, waistX = a.waist, waistY = 0, waistZ = 0, shRY = 0, shLY = 0 }, armsW, UPPER)
+		mix(pose, { shRX = a.shR, shRZ = a.inR, elRX = a.elR, shLX = a.shL, shLZ = a.inL, elLX = a.elL, waistX = a.waist, waistY = a.waistY or 0, waistZ = a.waistZ or 0, shRY = 0, shLY = 0 }, armsW, UPPER)
+	end
+	-- Fishing Fight (12 Oct 2026): the head follows the fish as it runs
+	if arms and armsW > 0 and arms.pose.neckY then
+		pose.neckY = (pose.neckY or 0) + (arms.pose.neckY - (pose.neckY or 0)) * armsW
 	end
 	-- Patch 10: the legs and hips join in (braced stance, lunge on the cast, squat and lean on the reel)
 	if arms and armsW > 0 and arms.body then
