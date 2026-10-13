@@ -18,5 +18,3 @@ Every gacha uses these seven tiers and rates (`Config.Tiers`). The server rolls 
 Used by [[Tide Eggs]] and [[Dash Capsules]]; every dash in [[Dashes]] and every creature has one. See also [[Pity]] and [[Mutations]].
 
 Creatures are voxel fish models (`ReplicatedStorage.VoxelFish`, shown with `FishView` and `FishThumbs`).
-
-> ⚠️ The Legendary to Celestial fish are named after well-known characters (Luffy, Pikachu, Goku, Mario, Sonic, Naruto, Saitama, Totoro, Kirby, Deadpool). Roblox can take down games that use other companies' characters, so give them original names before you publish.

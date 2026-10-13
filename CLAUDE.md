@@ -54,3 +54,5 @@ The session start hook installs `rojo` and `lune` in cloud sessions.
   Bump it when you change what they build.
 - Studio-only test helpers stay behind `RunService:IsStudio()`.
 - Use original names for anime-inspired content.
+- The fish creature names in `Config.Tiers` (LuffyFish, PikachuFish...) are placeholders the team will change
+  themselves. Don't rename them and don't raise them as an issue.
